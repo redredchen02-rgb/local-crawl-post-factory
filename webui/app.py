@@ -163,10 +163,13 @@ def create_app(config_path: str = WEBUI_CONFIG_PATH) -> FastAPI:
             return HTMLResponse('<p class="error">找不到此貼文包</p>', status_code=404)
         cfg, ns = prepared
         runner = {"draft": draft_post._run, "verify": verify_draft._run}[stage]
+        return _submit_job(request, stage, post_id, cfg, lambda: runner(ns))
 
+    def _submit_job(request, stage, post_id, cfg, call):
+        """Run a backend command in a job: record the run, flag session expiry."""
         def _work(job):
             try:
-                runner(ns)
+                call()
                 runs.record_run(cfg["state_path"], stage=stage, post_id=post_id, status="ok")
                 return {"stage": stage, "post_id": post_id}
             except Exception as exc:  # noqa: BLE001 - reported via job
@@ -200,22 +203,7 @@ def create_app(config_path: str = WEBUI_CONFIG_PATH) -> FastAPI:
             storage_state=cfg["storage_state"], headless=True,
             timeout_ms=backend_driver.DEFAULT_TIMEOUT_MS, retries=None,
             state=cfg["state_path"], approve=True)
-
-        def _work(job):
-            try:
-                publish_post._run(ns)
-                runs.record_run(cfg["state_path"], stage="publish", post_id=post_id, status="ok")
-                return {"stage": "publish", "post_id": post_id}
-            except Exception as exc:  # noqa: BLE001
-                if isinstance(exc, SessionExpiredError):
-                    _note_session_expiry(cfg)
-                runs.record_run(cfg["state_path"], stage="publish", post_id=post_id,
-                                status="failed", error=str(exc))
-                raise
-
-        job_id = jobs.submit(_work)
-        return templates.TemplateResponse(
-            request, "_job_status.html", {"job": jobs.get(job_id), "job_id": job_id})
+        return _submit_job(request, "publish", post_id, cfg, lambda: publish_post._run(ns))
 
     def _note_session_expiry(cfg):
         ss = Path(cfg["storage_state"])
