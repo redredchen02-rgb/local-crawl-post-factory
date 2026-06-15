@@ -4,7 +4,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-import pytest
 from PIL import Image
 
 from src import watermark_cover as wc

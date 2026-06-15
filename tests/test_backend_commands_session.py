@@ -3,7 +3,6 @@
 import contextlib
 import json
 
-import pytest
 
 from core import cli
 from core.errors import SessionExpiredError

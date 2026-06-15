@@ -13,7 +13,6 @@ Records without a ``cover_path`` are emitted unchanged with ``watermarked_cover_
 """
 
 import argparse
-import os
 from pathlib import Path
 
 import yaml
