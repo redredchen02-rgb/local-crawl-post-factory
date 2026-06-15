@@ -44,6 +44,15 @@ crawl-posts "https://example.com/news" \
 
 產出 `out/<post_id>/`：`manifest.json`、`caption.txt`、`cover.jpg`、`watermarked_cover.jpg`、`preview.html`。
 
+先產生登入態（手動登入一次，偵測到登入成功 URL 後存檔；不存密碼）：
+
+```bash
+auth-login \
+  --login-url "https://example.com/admin/login" \
+  --until-url-contains "/admin/posts" \
+  --storage-state ./auth/storage-state.json
+```
+
 後台階段（自家 admin，選擇器全來自 `configs/backend.yaml`，登入態用 `--storage-state`）：
 
 ```bash
@@ -63,7 +72,7 @@ publish-post --manifest out/<id>/manifest.json --backend configs/backend.yaml --
 ## 測試
 
 ```bash
-python3 -m pytest -q     # 68 passed (含 Playwright 端到端流程)
+python3 -m pytest -q     # 70 passed (含 Playwright 端到端流程)
 ```
 
 ## 設計與計畫

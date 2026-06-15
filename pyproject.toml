@@ -18,6 +18,7 @@ browser = ["playwright>=1.40"]
 dev = ["pytest>=8.0"]
 
 [project.scripts]
+auth-login = "src.auth_login:main"
 crawl-posts = "src.crawl_posts:main"
 normalize-items = "src.normalize_items:main"
 dedupe-posts = "src.dedupe_posts:main"
