@@ -82,17 +82,27 @@ def render(record: dict, template_cfg: dict) -> str:
 _render = render  # deprecated: remove in vNEXT (use render)
 
 
+def render_record(record: dict, template_cfg: dict) -> dict:
+    """Set ``caption`` + ``content_hash`` on ``record`` in place; return it.
+
+    Single source of the caption+hash step shared by the CLI ``_run`` and the
+    in-process pipeline (U5b) so the content_hash inputs/formula live in one
+    place.
+    """
+    caption = render(record, template_cfg)
+    record["caption"] = caption
+    record["content_hash"] = url_utils.content_hash(
+        str(record.get("canonical_url", "")),
+        str(record.get("title", "")),
+        caption,
+    )
+    return record
+
+
 def _run(template_path: str):
     template_cfg = load_template(template_path)
     for record in io_ndjson.read_lines():
-        caption = render(record, template_cfg)
-        record["caption"] = caption
-        record["content_hash"] = url_utils.content_hash(
-            str(record.get("canonical_url", "")),
-            str(record.get("title", "")),
-            caption,
-        )
-        io_ndjson.write_line(record)
+        io_ndjson.write_line(render_record(record, template_cfg))
 
 
 def main():

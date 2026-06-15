@@ -7,7 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from src.render_caption import _render, load_template
+from core import url_utils
+from src.render_caption import _render, load_template, render_record
 
 ROOT = Path(__file__).resolve().parent.parent
 REAL_TEMPLATE = ROOT / "templates" / "fixed-format.zh.yaml"
@@ -33,6 +34,15 @@ def test_happy_path_contains_all_parts(template_cfg):
     assert "這是一段描述 description text" in caption
     assert "https://example.com/posts/123" in caption
     assert "查看完整內容" in caption  # CTA text
+
+
+def test_render_record_sets_caption_and_content_hash(template_cfg):
+    """U5b: shared helper sets both fields; content_hash matches the formula."""
+    rec = render_record(_full_record(), template_cfg)
+    assert rec["caption"]
+    expected = url_utils.content_hash(
+        rec["canonical_url"], rec["title"], rec["caption"])
+    assert rec["content_hash"] == expected
 
 
 def test_missing_description_blank_rest_intact(template_cfg):
