@@ -1,0 +1,8 @@
+# Pre-commit hooks (U6/Q5): run ruff before each commit so style is caught locally,
+# mirroring CI's hard lint gate. Uses the same [tool.ruff] config in pyproject.toml.
+# Setup (once): pip install -e '.[dev]' && pre-commit install
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.10  # keep in sync with the ruff pin in pyproject.toml [dev]
+    hooks:
+      - id: ruff-check

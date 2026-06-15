@@ -1,4 +1,4 @@
-.PHONY: install install-browser install-webui test lint cov demo webui vendor-htmx clean
+.PHONY: install install-browser install-webui test lint typecheck cov demo webui vendor-htmx clean
 
 install:
 	python3 -m pip install -e '.[dev]'
@@ -21,6 +21,9 @@ test:
 
 lint:
 	python3 -m ruff check .
+
+typecheck:  # non-blocking baseline; prints the error count, never gates locally
+	python3 -m mypy || true
 
 cov:
 	python3 -m pytest --cov=core --cov=src --cov=browser --cov=webui --cov-report=term-missing

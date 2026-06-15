@@ -1,9 +1,10 @@
 ---
 title: "feat: 質量提升（自動守護 + 正確性收口 + 可維護性，分三階段）"
 type: feat
-status: active
+status: completed
 date: 2026-06-15
 deepened: 2026-06-15
+completed: 2026-06-15
 origin: docs/brainstorms/2026-06-15-quality-uplift-requirements.md
 ---
 
@@ -24,10 +25,12 @@ origin: docs/brainstorms/2026-06-15-quality-uplift-requirements.md
 - ✅ **U7（Q7 publish run_id）** — 已交付：run_id 經 manifest 串接、`list_runs`/`/history` 加 run_id 篩選、WebUI 不雙寫、CLI 記 None。
 - ✅ **U8（Q9 已審核持久化）** — 已交付：content-subtree 綁定、fail-closed、發布當下 opt-in 重驗、跨重啟持久、6 個安全測試。
 - ✅ **U10（部分）** — 交付高價值部分：穿越 + 閘門順序 characterization 錨、純函數 `check_publish_gates`（可單測）。**路由檔案拆分降級不做**（YAGNI：430 行單人 app 的純搬移、高 churn 低值；真正價值已入袋；錨點保護日後若要拆）。
-- ⏸ **U3（mypy）、U6（pre-commit）** — 暫緩（觸及 ci-safety-net 的 `pyproject.toml`，待其落地後再做）。
-- ⏸ **U9（Q8 批量連線）** — 暫緩（measure-first，見 Open Questions）。
+- ✅ **U3（mypy）** — 已交付：`[tool.mypy]`（`ignore_missing_imports`、`files`、`core.*` 高訊號嚴格旗標）、dev 加 `mypy`+`types-PyYAML`、`make typecheck`、CI `lint` job 加 mypy step（`continue-on-error` 非阻斷）。基線 **9 errors / 8 files**（`disallow_untyped_defs` 會暴出 50+ annotation 缺口，刻意延後到專門的 typing pass）。
+- ✅ **U6（pre-commit）** — 已交付：`.pre-commit-config.yaml`（`astral-sh/ruff-pre-commit` v0.15.10，與 `[tool.ruff]` 同源）、dev 加 `pre-commit`、README 安裝指引。`pre-commit run --all-files` 綠。
+- ⏸ **U9（Q8 批量連線）** — 維持暫緩（measure-first、預設 WONTFIX，見 Open Questions；達門檻才實作）。
+- ⏸ **U10 路由拆分** — 維持降級不做（YAGNI，見 U10）。
 
-測試：129 → **201 passing**。交付於分支 `feat/ci-safety-net`。
+測試：129 → **201 passing**（U3/U6 為純工具配置，無新增測試）。交付於分支 `feat/ci-safety-net`。
 
 ## Problem Frame
 
@@ -216,7 +219,7 @@ graph TB
 
 **Verification:** `make lint` 在乾淨工作樹回 0。
 
-- [ ] **U3: mypy 配置（非阻斷基線）**
+- [x] **U3: mypy 配置（非阻斷基線）** — 已交付（基線 9 errors / 8 files；CI continue-on-error）
 
 **Goal:** 建立型別檢查機制與基線。
 
@@ -279,7 +282,7 @@ graph TB
 
 **Verification:** PR 上看到 CI 跑、紅綠正確；Job A 綠＝非瀏覽器子集；憑證級檔案不出現在 artifact/log。
 
-- [ ] **U6: pre-commit hook**
+- [x] **U6: pre-commit hook** — 已交付（ruff-check hook，與 [tool.ruff] 同源；pre-commit run 綠）
 
 **Goal:** commit 前本機跑 ruff，與 CI 一致。
 

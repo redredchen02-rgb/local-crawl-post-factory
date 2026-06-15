@@ -20,6 +20,12 @@ jobs:
           python-version: "3.11"
       - run: python -m pip install -e '.[dev]'
       - run: python -m ruff check .
+      # Non-blocking type baseline (U3/Q3): records mypy's error count in the log but
+      # never gates merge. continue-on-error keeps the job green while the baseline is
+      # burned down over time. ruff above stays the hard gate.
+      - name: Type check (mypy, non-blocking baseline)
+        continue-on-error: true
+        run: python -m mypy
 
   test:
     runs-on: ubuntu-latest
