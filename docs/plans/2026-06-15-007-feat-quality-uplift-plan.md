@@ -17,6 +17,18 @@ origin: docs/brainstorms/2026-06-15-quality-uplift-requirements.md
 
 > **關鍵排序**：U1（去重修正）會修改一條鎖定舊行為的既有測試，故必須**先於或同階段於 CI** 落地，否則 CI 會把舊的錯誤去重行為鎖成綠燈基線（see origin: Key Decisions）。
 
+## Delivery Status (2026-06-15)
+
+- ✅ **U1（Q6 去重）** — 已交付：去重只認 `canonical_url`，4 個鎖定舊行為的測試更新。
+- ✅ **U2 / U4 / U5（ruff / coverage / CI）** — 由 ci-safety-net 切片（plan 006）交付並提交。
+- ✅ **U7（Q7 publish run_id）** — 已交付：run_id 經 manifest 串接、`list_runs`/`/history` 加 run_id 篩選、WebUI 不雙寫、CLI 記 None。
+- ✅ **U8（Q9 已審核持久化）** — 已交付：content-subtree 綁定、fail-closed、發布當下 opt-in 重驗、跨重啟持久、6 個安全測試。
+- ✅ **U10（部分）** — 交付高價值部分：穿越 + 閘門順序 characterization 錨、純函數 `check_publish_gates`（可單測）。**路由檔案拆分降級不做**（YAGNI：430 行單人 app 的純搬移、高 churn 低值；真正價值已入袋；錨點保護日後若要拆）。
+- ⏸ **U3（mypy）、U6（pre-commit）** — 暫緩（觸及 ci-safety-net 的 `pyproject.toml`，待其落地後再做）。
+- ⏸ **U9（Q8 批量連線）** — 暫緩（measure-first，見 Open Questions）。
+
+測試：129 → **201 passing**。交付於分支 `feat/ci-safety-net`。
+
 ## Problem Frame
 
 前兩輪功能性優化（基礎管線、日常營運硬化、全控制台）已落地。本輪不補功能，而是兩件事：① 把質量自動守住（目前無 CI/lint/型別/覆蓋率，全靠開發者記得本機 `pytest`）；② 收口代碼裡幾個便宜但會靜默出錯的缺口。去重缺口尤其關鍵——plan 005 雖把「R4 修去重」標為 completed，但 `core/state.py:57` 仍是 `canonical_url OR title_hash`、`tests/test_dedupe_posts.py:48` 仍斷言「同標題不同 URL 要跳過」，**該修正實際從未落地**。
