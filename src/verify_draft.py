@@ -1,15 +1,14 @@
-"""verify-draft — Phase 4 CONTRACT STUB (origin §11.9).
-
-Validates manifest + backend.yaml, then signals not-implemented (exit 3).
-"""
+"""verify-draft — search the admin backend to confirm the draft exists."""
 
 import argparse
+import json
 import sys
 
-from core import cli
-from core.errors import DependencyError
+from core import cli, manifest as mf, audit
 from browser.selector_recipe import load_backend
-from src.draft_post import load_manifest
+from browser import backend_driver
+
+LOG_PATH = "./logs/audit.jsonl"
 
 
 def _parse(argv):
@@ -18,14 +17,26 @@ def _parse(argv):
     p.add_argument("--backend", required=True)
     p.add_argument("--storage-state")
     p.add_argument("--headless", action="store_true")
-    p.add_argument("--timeout-ms", type=int)
+    p.add_argument("--timeout-ms", type=int, default=backend_driver.DEFAULT_TIMEOUT_MS)
     return p.parse_args(argv)
 
 
 def _run(args) -> int:
-    load_manifest(args.manifest)
-    load_backend(args.backend)
-    raise DependencyError("browser automation not implemented in this release")
+    manifest = mf.load(args.manifest)
+    cfg = load_backend(args.backend)
+    mf.require_status(manifest, "drafted")
+    post_id = manifest.get("post_id")
+    title = manifest.get("content", {}).get("title") or ""
+
+    with backend_driver.session(args.storage_state, args.headless, args.timeout_ms) as page:
+        backend_driver.verify_draft(page, cfg, title)
+
+    mf.set_backend(manifest, status="draft_verified")
+    mf.save(args.manifest, manifest)
+    audit.record(LOG_PATH, post_id, "verify-draft", "ok", mf.now_iso())
+    json.dump({"status": "draft_verified", "post_id": post_id}, sys.stdout)
+    sys.stdout.write("\n")
+    return 0
 
 
 def main(argv=None):

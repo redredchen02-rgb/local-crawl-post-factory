@@ -21,9 +21,10 @@ def _ns(**kw):
         backend=BACKEND,
         storage_state=None,
         headless=False,
-        timeout_ms=None,
+        timeout_ms=5000,
         approve=False,
         dry_run=False,
+        state=None,
     )
     base.update(kw)
     return type("NS", (), base)()
@@ -39,11 +40,6 @@ def test_publish_approve_but_wrong_status_exits_2(tmp_path):
     assert cli.run(lambda: publish_post._run(args)) == 2
 
 
-def test_publish_gates_pass_then_not_implemented_exits_3(tmp_path):
-    args = _ns(manifest=_manifest(tmp_path, "draft_verified"), approve=True)
-    assert cli.run(lambda: publish_post._run(args)) == 3
-
-
 def test_draft_dry_run_validated_exits_0(tmp_path, capsys):
     args = _ns(manifest=_manifest(tmp_path, "package_built"), dry_run=True)
     code = cli.run(lambda: draft_post._run(args))
@@ -51,8 +47,3 @@ def test_draft_dry_run_validated_exits_0(tmp_path, capsys):
     assert code == 0
     assert json.loads(out)["status"] == "validated"
     assert json.loads(out)["post_id"] == "20260615_demo"
-
-
-def test_draft_without_dry_run_exits_3(tmp_path):
-    args = _ns(manifest=_manifest(tmp_path, "package_built"), dry_run=False)
-    assert cli.run(lambda: draft_post._run(args)) == 3

@@ -6,8 +6,10 @@
 
 ## 本版範圍
 
-- **Phase 1-3（已實作）**：`crawl-posts`、`normalize-items`、`dedupe-posts`、`render-caption`、`select-cover`、`watermark-cover`、`build-manifest`。
-- **Phase 4-5（契約已定、行為未實作）**：`draft-post`、`verify-draft`、`publish-post` 解析旗標、驗證 manifest 與 `backend.yaml`、強制 `--approve`/狀態閘門，實際瀏覽器動作回傳「not implemented（exit 3）」。
+- **Phase 1-3 資料/媒體管線**：`crawl-posts`、`normalize-items`、`dedupe-posts`、`render-caption`、`select-cover`、`watermark-cover`、`build-manifest`。
+- **Phase 4-5 後台自動化（Playwright，已實作）**：`draft-post`、`verify-draft`、`publish-post`。選擇器全來自 `backend.yaml`（零硬編碼），登入態用 Playwright `storage_state`（不存密碼），`publish-post` 雙重閘門（`--approve` + 狀態 `draft_verified`）。以本地 mock admin 做端到端測試。
+
+安裝瀏覽器（首次）：`python3 -m playwright install chromium`
 
 ## 安裝
 
@@ -42,12 +44,16 @@ crawl-posts "https://example.com/news" \
 
 產出 `out/<post_id>/`：`manifest.json`、`caption.txt`、`cover.jpg`、`watermarked_cover.jpg`、`preview.html`。
 
-後台階段（自家 admin，選擇器全來自 `configs/backend.yaml`）：
+後台階段（自家 admin，選擇器全來自 `configs/backend.yaml`，登入態用 `--storage-state`）：
 
 ```bash
 draft-post   --manifest out/<id>/manifest.json --backend configs/backend.yaml --dry-run
-publish-post --manifest out/<id>/manifest.json --backend configs/backend.yaml --approve
+draft-post   --manifest out/<id>/manifest.json --backend configs/backend.yaml --storage-state auth/storage-state.json
+verify-draft --manifest out/<id>/manifest.json --backend configs/backend.yaml --storage-state auth/storage-state.json
+publish-post --manifest out/<id>/manifest.json --backend configs/backend.yaml --storage-state auth/storage-state.json --state ./state/published.sqlite --approve
 ```
+
+狀態流轉：`package_built → drafted → draft_verified → published`。`publish-post --state` 會把 `canonical_url` 標記為 `published`，下一輪 `dedupe-posts` 即會跳過。
 
 ## 狀態與去重
 
@@ -57,7 +63,7 @@ publish-post --manifest out/<id>/manifest.json --backend configs/backend.yaml --
 ## 測試
 
 ```bash
-python3 -m pytest -q     # 69 passed
+python3 -m pytest -q     # 68 passed (含 Playwright 端到端流程)
 ```
 
 ## 設計與計畫
