@@ -5,9 +5,13 @@
 </div>
 {% elif job.status == 'done' %}
 <div>
+  {% if job.result and job.result.get('built') is not none %}
   <p class="ok">完成 ✓ 建包 {{ job.result.built | length }} 篇，跳過 {{ job.result.skipped }}，失敗 {{ job.result.failed | length }}。</p>
   <ul>{% for b in job.result.built %}<li>{{ b.post_id }} — {{ b.title }}</li>{% endfor %}</ul>
-  <p class="hint"><a href="/packages">前往上膛清單 →</a>　發布請用 CLI：<code>publish-post --approve</code></p>
+  <p class="hint"><a href="/packages">前往上膛清單 →</a></p>
+  {% else %}
+  <p class="ok">完成 ✓ {{ job.result.stage }} — {{ job.result.post_id }}</p>
+  {% endif %}
 </div>
 {% else %}
 <div><p class="error">失敗：{{ job.error }}</p></div>

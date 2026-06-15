@@ -21,6 +21,8 @@ DEFAULTS = {
     "out_dir": "./out",
     "state_path": "./state/published.sqlite",
     "audit_log": "./logs/audit.jsonl",
+    "backend_config": "./configs/backend.yaml",
+    "storage_state": "./auth/storage-state.json",
 }
 
 _INT_FIELDS = ("limit",)

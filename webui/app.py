@@ -6,6 +6,7 @@ drafts or publishes (publishing stays a manual CLI action with --approve).
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 from fastapi import FastAPI, Form, Request
 from fastapi.responses import HTMLResponse, FileResponse, PlainTextResponse
@@ -14,6 +15,8 @@ from fastapi.templating import Jinja2Templates
 
 from core import webui_config, jobs, pipeline, runs
 from core.errors import CliError
+from browser import backend_driver
+from src import draft_post, verify_draft
 
 WEBUI_CONFIG_PATH = "./configs/webui.yaml"
 _HERE = Path(__file__).parent
@@ -109,6 +112,51 @@ def create_app(config_path: str = WEBUI_CONFIG_PATH) -> FastAPI:
             if f.exists():
                 return FileResponse(str(f))
         return PlainTextResponse("no cover", status_code=404)
+
+    @app.post("/packages/{post_id}/draft", response_class=HTMLResponse)
+    def action_draft(request: Request, post_id: str):
+        return _submit_action(request, "draft", post_id, _action_ns(post_id, "draft"))
+
+    @app.post("/packages/{post_id}/verify", response_class=HTMLResponse)
+    def action_verify(request: Request, post_id: str):
+        return _submit_action(request, "verify", post_id, _action_ns(post_id, "verify"))
+
+    def _action_ns(post_id, stage):
+        """Build the argparse-style namespace for a backend command from webui cfg."""
+        cfg = webui_config.load(app.state.config_path)
+        pkg = _safe_pkg_dir(cfg["out_dir"], post_id)
+        if pkg is None:
+            return None
+        return cfg, SimpleNamespace(
+            manifest=str(pkg / "manifest.json"),
+            backend=cfg["backend_config"],
+            storage_state=cfg["storage_state"],
+            headless=True,
+            timeout_ms=backend_driver.DEFAULT_TIMEOUT_MS,
+            retries=None,
+            state=cfg["state_path"],
+            dry_run=False,
+        )
+
+    def _submit_action(request, stage, post_id, prepared):
+        if prepared is None:
+            return HTMLResponse('<p class="error">找不到此貼文包</p>', status_code=404)
+        cfg, ns = prepared
+        runner = {"draft": draft_post._run, "verify": verify_draft._run}[stage]
+
+        def _work(job):
+            try:
+                runner(ns)
+                runs.record_run(cfg["state_path"], stage=stage, post_id=post_id, status="ok")
+                return {"stage": stage, "post_id": post_id}
+            except Exception as exc:  # noqa: BLE001 - reported via job
+                runs.record_run(cfg["state_path"], stage=stage, post_id=post_id,
+                                status="failed", error=str(exc))
+                raise
+
+        job_id = jobs.submit(_work)
+        return templates.TemplateResponse(
+            request, "_job_status.html", {"job": jobs.get(job_id), "job_id": job_id})
 
     @app.get("/history", response_class=HTMLResponse)
     def history(request: Request):

@@ -19,6 +19,14 @@
 <h2>文案</h2>
 <pre style="white-space:pre-wrap;background:#f7f7f8;padding:1rem;border-radius:6px">{{ caption }}</pre>
 
+<h2>後台動作</h2>
+<p class="hint">需先以 <code>auth-login</code> 取得登入態。動作於背景執行。</p>
+<div>
+  <button hx-post="/packages/{{ post_id }}/draft" hx-target="#action" hx-swap="innerHTML">建草稿</button>
+  <button hx-post="/packages/{{ post_id }}/verify" hx-target="#action" hx-swap="innerHTML">驗證草稿</button>
+</div>
+<div id="action"></div>
+
 <h2>確認無誤後發布（人工 CLI）</h2>
 <p class="hint">WebUI 不發布。複製以下指令在終端執行（需先 <code>auth-login</code> 取得 storage-state）：</p>
 <pre style="white-space:pre-wrap;background:#f7f7f8;padding:1rem;border-radius:6px">draft-post   --manifest out/{{ post_id }}/manifest.json --backend {{ backend_config }} --storage-state ./auth/storage-state.json --headless
