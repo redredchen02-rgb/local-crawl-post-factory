@@ -314,8 +314,8 @@ def _move_to_trash(out_dir: str, pkg):
 
 
 def _safe_pkg_dir(out_dir: str, post_id: str):
-    """Resolve out_dir/post_id, rejecting path traversal."""
-    if not post_id or "/" in post_id or "\\" in post_id or ".." in post_id:
+    """Resolve out_dir/post_id, rejecting path traversal and dot-dirs (e.g. .trash)."""
+    if not post_id or post_id.startswith(".") or "/" in post_id or "\\" in post_id or ".." in post_id:
         return None
     base = Path(out_dir).resolve()
     target = (base / post_id).resolve()

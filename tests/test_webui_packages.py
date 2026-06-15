@@ -181,6 +181,16 @@ def test_delete_unknown_404(tmp_path):
     assert client.post("/packages/nope/delete").status_code == 404
 
 
+def test_delete_trash_dir_itself_blocked(tmp_path):
+    """Crafted POST for a dot-dir (e.g. .trash) must be rejected, not nested into itself."""
+    out = tmp_path / "out"
+    _pkg(out, "20260615_a", "甲文")
+    client = _client(tmp_path, out)
+    client.post("/packages/20260615_a/delete")  # creates out/.trash
+    assert client.post("/packages/.trash/delete").status_code == 404
+    assert not (out / ".trash" / ".trash").exists()
+
+
 def test_trash_dir_not_listed_as_package(tmp_path):
     out = tmp_path / "out"
     _pkg(out, "20260615_a", "甲文")
