@@ -303,7 +303,9 @@ graph TB
 
 **Requirements:** R6（延伸，非本次承諾）
 
-**Approach（方向，待獨立規劃）:** 若要消除，正確做法**不是**接口化，而是把 per-item 那段抽成 `pipeline.process_one(rec, ctx)`，讓 CLI 與 WebUI 都走它——但這會改 CLI 的錯誤語意，超出 U5「不改行為」硬約束，故**明確排除在本三階段之外**，列為獨立後續項以免被 U5 的「解耦」措辭掩蓋。
+**Approach（方向，待獨立規劃）:** 若要消除，正確做法**不是**接口化，而是把 per-item 那段抽成 `pipeline.process_one(rec, ctx)`，讓 CLI 與 WebUI 都走它——但這會改 CLI 的錯誤語意，超出 U5「不改行為」硬約束。
+
+**進度（2026-06-15，行為保持切片已交付）:** 已抽 `render_caption.render_record()` 作為 caption+content_hash 的單一來源，`render_caption._run` 與 `core/pipeline` 共用，消除唯一一處真實跨模組邏輯重複（content_hash 公式不再寫兩遍），**零行為變更**。剩餘部分——「讓 CLI `_run` 走 in-process pipeline 以統一『一筆壞→不中斷』語意」——**仍 deferred**，因為它確會改 CLI 退出碼行為，需獨立 brainstorm/plan。
 
 - [x] **U6: 配置可移植（R7）**
 

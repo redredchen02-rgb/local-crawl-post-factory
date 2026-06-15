@@ -7,7 +7,7 @@ WebUI and the CLI share one implementation. crawl stays in its own subprocess
 
 from pathlib import Path
 
-from core import state, url_utils, runs
+from core import state, runs
 from core.errors import ValidationError
 from src import (
     normalize_items,
@@ -95,10 +95,7 @@ def run_pipeline(items, webui_cfg: dict, progress_cb=None) -> dict:
     for rec in deduped:
         title = rec.get("title", "")
         try:
-            caption = render_caption.render(rec, template_cfg)
-            rec["caption"] = caption
-            rec["content_hash"] = url_utils.content_hash(
-                str(rec.get("canonical_url", "")), str(title), caption)
+            rec = render_caption.render_record(rec, template_cfg)
             rec = select_cover.select(rec, download_dir, COVER_TIMEOUT_SEC,
                                       cover_retries, cover_backoff)
             rec = watermark_cover.watermark(rec, wm_cfg)
