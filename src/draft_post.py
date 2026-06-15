@@ -10,7 +10,6 @@ import json
 import sys
 
 from core import cli, manifest as mf, audit
-from core.errors import ValidationError
 from browser.selector_recipe import load_backend
 from browser import backend_driver
 

@@ -9,7 +9,6 @@ command with exit 2.
 import argparse
 
 from core import cli, io_ndjson, url_utils, validators
-from core.errors import ValidationError
 from core.schema import CRAWLED_REQUIRED
 
 # Text fields that get whitespace-collapsed/trimmed.

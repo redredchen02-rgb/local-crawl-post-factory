@@ -1,6 +1,5 @@
 """U4: WebUI run-history and audit views."""
 
-from pathlib import Path
 
 from fastapi.testclient import TestClient
 

@@ -48,7 +48,8 @@ def test_run_binds_localhost(monkeypatch):
     import webui.app as appmod
     monkeypatch.setattr(appmod, "uvicorn", type("U", (), {"run": staticmethod(fake_run)}), raising=False)
     # inject a fake uvicorn module import
-    import sys, types
+    import sys
+    import types
     fake = types.ModuleType("uvicorn")
     fake.run = fake_run
     monkeypatch.setitem(sys.modules, "uvicorn", fake)
