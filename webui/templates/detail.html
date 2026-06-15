@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block heading %}審核：{{ title }}{% endblock %}
+{% block content %}
+<p><a href="/packages">← 回上膛清單</a></p>
+
+<table>
+  <tr><th>post_id</th><td>{{ post_id }}</td></tr>
+  <tr><th>狀態</th><td>{{ status }}</td></tr>
+  <tr><th>來源</th><td><a href="{{ canonical_url }}" target="_blank" rel="noopener">{{ canonical_url }}</a></td></tr>
+</table>
+
+{% if has_cover %}
+<h2>封面（含浮水印）</h2>
+<img src="/packages/{{ post_id }}/cover" alt="cover" style="max-width:100%;border:1px solid #ddd">
+{% else %}
+<p class="hint">此貼文無封面圖。</p>
+{% endif %}
+
+<h2>文案</h2>
+<pre style="white-space:pre-wrap;background:#f7f7f8;padding:1rem;border-radius:6px">{{ caption }}</pre>
+
+<h2>確認無誤後發布（人工 CLI）</h2>
+<p class="hint">WebUI 不發布。複製以下指令在終端執行（需先 <code>auth-login</code> 取得 storage-state）：</p>
+<pre style="white-space:pre-wrap;background:#f7f7f8;padding:1rem;border-radius:6px">draft-post   --manifest out/{{ post_id }}/manifest.json --backend {{ backend_config }} --storage-state ./auth/storage-state.json --headless
+verify-draft --manifest out/{{ post_id }}/manifest.json --backend {{ backend_config }} --storage-state ./auth/storage-state.json --headless
+publish-post --manifest out/{{ post_id }}/manifest.json --backend {{ backend_config }} --storage-state ./auth/storage-state.json --state ./state/published.sqlite --approve --headless</pre>
+{% endblock %}

@@ -9,7 +9,8 @@
     <tbody>
     {% for p in packages %}
       <tr{% if p.broken %} class="error"{% endif %}>
-        <td>{{ p.post_id }}</td><td>{{ p.title }}</td><td>{{ p.status }}</td>
+        <td>{% if not p.broken %}<a href="/packages/{{ p.post_id }}">{{ p.post_id }}</a>{% else %}{{ p.post_id }}{% endif %}</td>
+        <td>{{ p.title }}</td><td>{{ p.status }}</td>
       </tr>
     {% endfor %}
     </tbody>

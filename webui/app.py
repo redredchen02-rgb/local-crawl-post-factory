@@ -8,7 +8,7 @@ import json
 from pathlib import Path
 
 from fastapi import FastAPI, Form, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -78,7 +78,50 @@ def create_app(config_path: str = WEBUI_CONFIG_PATH) -> FastAPI:
         return templates.TemplateResponse(
             request, "packages.html", {"packages": _scan_packages(cfg["out_dir"])})
 
+    @app.get("/packages/{post_id}", response_class=HTMLResponse)
+    def package_detail(request: Request, post_id: str):
+        cfg = webui_config.load(app.state.config_path)
+        pkg = _safe_pkg_dir(cfg["out_dir"], post_id)
+        if pkg is None or not (pkg / "manifest.json").exists():
+            return HTMLResponse('<p class="error">找不到此貼文包</p>', status_code=404)
+        m = json.loads((pkg / "manifest.json").read_text(encoding="utf-8"))
+        caption_file = pkg / "caption.txt"
+        caption = caption_file.read_text(encoding="utf-8") if caption_file.exists() else m.get("content", {}).get("body", "")
+        has_cover = (pkg / "watermarked_cover.jpg").exists() or (pkg / "cover.jpg").exists()
+        return templates.TemplateResponse(request, "detail.html", {
+            "post_id": post_id,
+            "title": m.get("content", {}).get("title", ""),
+            "status": m.get("backend", {}).get("status", "?"),
+            "canonical_url": m.get("source", {}).get("canonical_url", ""),
+            "caption": caption,
+            "has_cover": has_cover,
+            "backend_config": "configs/backend.yaml",
+        })
+
+    @app.get("/packages/{post_id}/cover")
+    def package_cover(post_id: str):
+        cfg = webui_config.load(app.state.config_path)
+        pkg = _safe_pkg_dir(cfg["out_dir"], post_id)
+        if pkg is None:
+            return PlainTextResponse("not found", status_code=404)
+        for name in ("watermarked_cover.jpg", "cover.jpg"):
+            f = pkg / name
+            if f.exists():
+                return FileResponse(str(f))
+        return PlainTextResponse("no cover", status_code=404)
+
     return app
+
+
+def _safe_pkg_dir(out_dir: str, post_id: str):
+    """Resolve out_dir/post_id, rejecting path traversal."""
+    if not post_id or "/" in post_id or "\\" in post_id or ".." in post_id:
+        return None
+    base = Path(out_dir).resolve()
+    target = (base / post_id).resolve()
+    if target.parent != base or not target.is_dir():
+        return None
+    return target
 
 
 def _scan_packages(out_dir: str):
