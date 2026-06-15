@@ -1,0 +1,80 @@
+"""Tests for dedupe-posts (origin §14.5, R9/R10)."""
+
+import pytest
+
+from core import state
+from core.url_utils import title_hash
+from src.dedupe_posts import _dedupe
+
+
+def _seed(db_path, *, canonical_url, title, status):
+    with state.connect(str(db_path)) as conn:
+        state.upsert(
+            conn,
+            canonical_url=canonical_url,
+            title=title,
+            title_hash=title_hash(title),
+            status=status,
+            now="2026-06-15T00:00:00Z",
+        )
+
+
+def _run_dedupe(db_path, records):
+    with state.connect(str(db_path)) as conn:
+        return list(_dedupe(records, conn))
+
+
+def test_empty_state_passes_all(tmp_path):
+    # First-release always-pass case: empty state -> nothing dropped.
+    db = tmp_path / "state.db"
+    records = [
+        {"canonical_url": "https://x.test/a", "title": "A"},
+        {"canonical_url": "https://x.test/b", "title": "B"},
+    ]
+    assert _run_dedupe(db, records) == records
+
+
+def test_same_canonical_url_published_skipped(tmp_path):
+    db = tmp_path / "state.db"
+    _seed(db, canonical_url="https://x.test/a", title="A", status="published")
+    records = [
+        {"canonical_url": "https://x.test/a", "title": "A"},
+        {"canonical_url": "https://x.test/b", "title": "B"},
+    ]
+    out = _run_dedupe(db, records)
+    assert out == [{"canonical_url": "https://x.test/b", "title": "B"}]
+
+
+def test_same_title_hash_different_url_skipped(tmp_path):
+    db = tmp_path / "state.db"
+    _seed(db, canonical_url="https://x.test/old", title="Same Title", status="published")
+    # Different url, same title -> same title_hash -> skipped.
+    records = [{"canonical_url": "https://x.test/new", "title": "Same Title"}]
+    assert _run_dedupe(db, records) == []
+
+
+def test_new_canonical_url_emitted(tmp_path):
+    db = tmp_path / "state.db"
+    _seed(db, canonical_url="https://x.test/a", title="A", status="published")
+    records = [{"canonical_url": "https://x.test/fresh", "title": "Fresh"}]
+    assert _run_dedupe(db, records) == records
+
+
+def test_package_built_not_treated_as_processed(tmp_path):
+    # Only published counts (R9): package_built must NOT be dropped.
+    db = tmp_path / "state.db"
+    _seed(db, canonical_url="https://x.test/a", title="A", status="package_built")
+    records = [{"canonical_url": "https://x.test/a", "title": "A"}]
+    assert _run_dedupe(db, records) == records
+
+
+def test_missing_canonical_url_raises(tmp_path):
+    db = tmp_path / "state.db"
+    with pytest.raises(Exception):
+        _run_dedupe(db, [{"title": "A"}])
+
+
+def test_missing_title_raises(tmp_path):
+    db = tmp_path / "state.db"
+    with pytest.raises(Exception):
+        _run_dedupe(db, [{"canonical_url": "https://x.test/a"}])

@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "local-crawl-post-factory"
+version = "0.1.0"
+description = "Local-first, CLI-first crawl-to-post automation pipeline for owned/private sites."
+requires-python = ">=3.11"
+dependencies = [
+    "Scrapy>=2.11",
+    "Pillow>=10.0",
+    "PyYAML>=6.0",
+]
+
+[project.optional-dependencies]
+browser = ["playwright>=1.40"]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+crawl-posts = "src.crawl_posts:main"
+normalize-items = "src.normalize_items:main"
+dedupe-posts = "src.dedupe_posts:main"
+render-caption = "src.render_caption:main"
+select-cover = "src.select_cover:main"
+watermark-cover = "src.watermark_cover:main"
+build-manifest = "src.build_manifest:main"
+draft-post = "src.draft_post:main"
+verify-draft = "src.verify_draft:main"
+publish-post = "src.publish_post:main"
+
+[tool.setuptools]
+packages = ["src", "core", "browser"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -1,0 +1,18 @@
+create_url: "https://example.com/admin/posts/create"
+selectors:
+  title: 'input[name="title"]'
+  body: 'textarea[name="content"]'
+  cover: 'input[type="file"][name="cover"]'
+  category: 'select[name="category"]'
+  tags: 'input[name="tags"]'
+  save_draft: 'button:has-text("儲存草稿")'
+  publish: 'button:has-text("發布")'
+verify:
+  draft_success_text: "草稿已儲存"
+  publish_success_text: "發布成功"
+  after_draft_url_contains: "/admin/posts"
+  after_publish_url_contains: "/admin/posts"
+  search_url: "https://example.com/admin/posts"
+  search_input: 'input[name="keyword"]'
+  search_button: 'button:has-text("搜尋")'
+  result_title: 'table >> text={title}'

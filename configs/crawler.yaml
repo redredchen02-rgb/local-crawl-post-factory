@@ -1,0 +1,15 @@
+# crawl-posts defaults (origin §4.1 / §11.1).
+# All values are overridable by CLI flags of the same name.
+item_regex: ""           # URLs matching this regex are treated as content pages and emitted
+allow_regex: ""          # only follow links matching this regex (empty = allow all same-host)
+deny_regex: ""           # never follow/emit URLs matching this regex
+max_pages: 200           # hard cap on pages fetched
+limit: 50                # hard cap on items emitted
+depth: 3                 # max link depth from the start URLs
+min_text_chars: 0        # drop items whose extracted text is shorter than this
+max_text_chars: 20000    # clamp extracted text to at most this many chars
+source_id: ""            # source_id stamped on every emitted item
+user_agent: "crawl-posts/1.0 (+local-crawl-post-factory)"
+timeout_sec: 30          # per-request download timeout
+concurrency: 8           # concurrent requests
+no_robots: false         # when true, ignore robots.txt

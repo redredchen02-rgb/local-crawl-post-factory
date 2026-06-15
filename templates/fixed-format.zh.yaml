@@ -1,0 +1,11 @@
+name: fixed-format-zh
+max_chars: 800
+format: |
+  {title}
+
+  {description}
+
+  查看完整內容：
+  {canonical_url}
+
+  {hashtags}

@@ -1,0 +1,66 @@
+# local-crawl-post-factory
+
+本地優先、CLI 優先的「爬取 → 打包 → 後台建草稿 → 發布」內容管線，給**沒有 API、只能用後台表單**的自有/私有網站使用。每個階段都是獨立命令、以 NDJSON 串接、無狀態、可進 cron / agent / shell pipeline。
+
+> 安全原則：只操作自有或授權站台；不繞過登入 / CAPTCHA / 反爬；爬完**絕不**自動發布；發布必須帶 `--approve`。
+
+## 本版範圍
+
+- **Phase 1-3（已實作）**：`crawl-posts`、`normalize-items`、`dedupe-posts`、`render-caption`、`select-cover`、`watermark-cover`、`build-manifest`。
+- **Phase 4-5（契約已定、行為未實作）**：`draft-post`、`verify-draft`、`publish-post` 解析旗標、驗證 manifest 與 `backend.yaml`、強制 `--approve`/狀態閘門，實際瀏覽器動作回傳「not implemented（exit 3）」。
+
+## 安裝
+
+```bash
+python3 -m pip install -e .          # 核心 (Scrapy / Pillow / PyYAML)
+python3 -m pip install -e '.[dev]'   # 加 pytest
+```
+
+## I/O 契約（所有命令一致）
+
+| | stdout | stderr | exit |
+|---|---|---|---|
+| 成功 | 結構化 JSON / NDJSON | 空 | 0 |
+| 失敗 | 空 | 一行診斷 | 1–5 |
+
+退出碼：`0` 成功、`1` 用法錯、`2` 輸入/驗證錯、`3` 依賴缺失、`4` 外部服務錯、`5` 未預期內部錯。
+
+## 端到端範例
+
+```bash
+crawl-posts "https://example.com/news" \
+  --item-regex "/news/|/article/|/post/" \
+  --deny-regex "login|admin|tag|category|search|page/[0-9]+" \
+  --max-pages 300 --limit 30 \
+| normalize-items \
+| dedupe-posts --state ./state/published.sqlite \
+| render-caption --template ./templates/fixed-format.zh.yaml \
+| select-cover --download-dir ./out/assets \
+| watermark-cover --config ./configs/watermark.yaml \
+| build-manifest --out ./out
+```
+
+產出 `out/<post_id>/`：`manifest.json`、`caption.txt`、`cover.jpg`、`watermarked_cover.jpg`、`preview.html`。
+
+後台階段（自家 admin，選擇器全來自 `configs/backend.yaml`）：
+
+```bash
+draft-post   --manifest out/<id>/manifest.json --backend configs/backend.yaml --dry-run
+publish-post --manifest out/<id>/manifest.json --backend configs/backend.yaml --approve
+```
+
+## 狀態與去重
+
+- 狀態存於 SQLite（`--state`）。`crawl-posts` 不寫狀態；`build-manifest` 起寫 `package_built`；`publish-post` 寫 `published`。
+- **去重只認 `published`**：只有真正發布過的 `canonical_url` / `title_hash` 會被跳過。首版尚無發布階段，故 dedupe 實質永遠放行 —— 此為預期行為。
+
+## 測試
+
+```bash
+python3 -m pytest -q     # 69 passed
+```
+
+## 設計與計畫
+
+- 需求：`docs/brainstorms/2026-06-15-local-crawl-post-factory-requirements.md`
+- 技術計畫：`docs/plans/2026-06-15-001-feat-local-crawl-post-factory-plan.md`
