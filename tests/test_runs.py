@@ -83,6 +83,18 @@ def test_new_run_id_unique_and_monotonic():
     assert a != b
 
 
+def test_filter_by_run_id(tmp_path):
+    """Q7: filtering by run_id pulls a whole lifecycle (build+publish) as one group."""
+    db = _db(tmp_path)
+    runs.record_run(db, stage="build", post_id="p1", status="ok", run_id="r-A")
+    runs.record_run(db, stage="publish", post_id="p1", status="ok", run_id="r-A")
+    runs.record_run(db, stage="build", post_id="p2", status="ok", run_id="r-B")
+    out = runs.list_runs(db, run_id="r-A")
+    assert len(out) == 2
+    assert {r["stage"] for r in out} == {"build", "publish"}
+    assert all(r["run_id"] == "r-A" for r in out)
+
+
 def test_pipeline_runs_share_one_run_id(tmp_path):
     cfg = {
         "template_path": "./templates/fixed-format.zh.yaml",

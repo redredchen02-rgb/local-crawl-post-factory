@@ -1,5 +1,7 @@
 """core/pipeline orchestrator: in-process build without shell/network."""
 
+import json
+
 from core import pipeline, state, url_utils, runs
 from src import normalize_items
 
@@ -113,3 +115,20 @@ def test_build_stage_system_error_recorded(tmp_path, monkeypatch):
     f = result["failed"][0]
     assert f["stage"] == "build" and f["error_class"] == "system"
     assert any(r["status"] == "failed" for r in runs.list_runs(cfg["state_path"]))
+
+
+# --- U7 (Q7): build stamps run_id into the manifest for lifecycle correlation -
+
+def test_build_persists_run_id_to_manifest(tmp_path):
+    """Q7: build writes the run's id into manifest.backend.run_id so publish can
+    read it back and correlate the whole lifecycle by run_id."""
+    cfg = _cfg(tmp_path)
+    result = pipeline.run_pipeline([_item("a", "標題一")], cfg)
+    post_id = result["built"][0]["post_id"]
+    manifest = json.loads(
+        (tmp_path / "out" / post_id / "manifest.json").read_text(encoding="utf-8"))
+    run_id = manifest["backend"]["run_id"]
+    assert run_id  # set, not None
+    build_rows = [r for r in runs.list_runs(cfg["state_path"], run_id=run_id)
+                  if r["stage"] == "build"]
+    assert len(build_rows) == 1 and build_rows[0]["post_id"] == post_id

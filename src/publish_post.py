@@ -12,7 +12,7 @@ import json
 import sys
 from pathlib import Path
 
-from core import cli, manifest as mf, audit, state as state_mod, runs
+from core import cli, manifest as mf, audit, state as state_mod, runs, reviewed
 from core.errors import ValidationError
 from core.url_utils import title_hash
 from browser.selector_recipe import load_backend
@@ -45,9 +45,16 @@ def _run(args) -> int:
     if manifest.get("backend", {}).get("status") != "draft_verified":
         raise ValidationError("refusing: draft not verified")
     mf.require_status(manifest, "draft_verified")
+    # Q9 opt-in re-verify: when the WebUI passes the reviewed content-id, refuse to
+    # publish content that changed since review (defense-in-depth at execution time).
+    # CLI publish passes no expected_content_id and is unaffected (--approve intact).
+    expected_cid = getattr(args, "expected_content_id", None)
+    if expected_cid is not None and reviewed.content_id(manifest) != expected_cid:
+        raise ValidationError("refusing: content changed since review")
 
     post_id = manifest.get("post_id")
     draft_url = manifest.get("backend", {}).get("draft_url")
+    run_id = manifest.get("backend", {}).get("run_id")  # Q7: None for CLI-built manifests (not self-generated)
 
     with backend_driver.session(args.storage_state, args.headless, args.timeout_ms) as page:
         result = backend_driver.publish_draft(
@@ -61,7 +68,8 @@ def _run(args) -> int:
     _mark_published(args.state, manifest, post_id, published_url)
     if args.state:
         runs.record_run(args.state, stage="publish", post_id=post_id,
-                        status="ok", detail=published_url)
+                        status="ok", detail=published_url,
+                        run_id=run_id, severity="info")  # Q7: lifecycle correlation
     audit.record(LOG_PATH, post_id, "publish-post", "ok", mf.now_iso(),
                  published_url=published_url)
     json.dump({"status": "published", "post_id": post_id, "published_url": published_url},

@@ -99,6 +99,7 @@ def run_pipeline(items, webui_cfg: dict, progress_cb=None) -> dict:
             rec = select_cover.select(rec, download_dir, COVER_TIMEOUT_SEC,
                                       cover_retries, cover_backoff)
             rec = watermark_cover.watermark(rec, wm_cfg)
+            rec["run_id"] = run_id  # Q7: persist into manifest.backend.run_id (publish reads it back)
             manifest_path = build_manifest.build(rec, out_dir, audit_log)
             post_id = Path(manifest_path).parent.name
             built.append({"post_id": post_id, "title": title,

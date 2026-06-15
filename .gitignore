@@ -8,3 +8,6 @@ out/
 logs/*.jsonl
 out/assets/
 auth/
+.coverage
+htmlcov/
+.ruff_cache/

@@ -2,10 +2,11 @@
 
 Reads normalized NDJSON from stdin, writes only NEW items to stdout.
 
-For each record we compute ``title_hash(record['title'])`` and ask the SQLite
-state whether this item has already been *published* (``is_processed`` matches
-status='published' rows only -- R9). If so the record is dropped, otherwise it
-is emitted unchanged.
+For each record we ask the SQLite state whether its ``canonical_url`` has
+already been *published* (``is_processed`` matches status='published' rows only
+-- R9). Dedup is URL-only (Q6): a shared title is not identity, so two different
+articles with the same title are both emitted. If the URL was published the
+record is dropped, otherwise it is emitted unchanged.
 
 dedupe is READ-ONLY on state (R10): we never write/upsert here. State writes
 happen later at build-manifest (package_built) and publish (published).
@@ -20,17 +21,16 @@ import argparse
 from core import cli, state
 from core.errors import ValidationError
 from core.io_ndjson import read_lines, write_line
-from core.url_utils import title_hash
 
 
 def dedupe(records, conn, on_skip=None):
     """Yield records that are not already published in ``conn``.
 
     Read-only: never writes to state. When a record is dropped, ``on_skip`` (if
-    given) is called with ``(record, reason)`` where reason is 'url' or 'title'
-    -- letting the caller record the decision for observability (R5) without
-    making this stage a writer. Raises ValidationError when a record is missing
-    the required ``canonical_url`` or ``title`` field.
+    given) is called with ``(record, reason)`` where reason is 'url' (Q6:
+    URL-only dedup) -- letting the caller record the decision for observability
+    (R5) without making this stage a writer. Raises ValidationError when a record
+    is missing the required ``canonical_url`` or ``title`` field.
     """
     for record in records:
         canonical_url = record.get("canonical_url")
@@ -39,8 +39,7 @@ def dedupe(records, conn, on_skip=None):
             raise ValidationError("record missing required field 'canonical_url'")
         if not title:
             raise ValidationError("record missing required field 'title'")
-        th = title_hash(title)
-        reason = state.skip_reason(conn, canonical_url, th)
+        reason = state.skip_reason(conn, canonical_url)
         if reason is not None:
             if on_skip is not None:
                 on_skip(record, reason)

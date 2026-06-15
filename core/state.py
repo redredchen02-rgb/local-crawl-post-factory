@@ -51,32 +51,33 @@ def connect(path: str):
         conn.close()
 
 
-def is_processed(conn, canonical_url: str, title_hash: str) -> bool:
-    """True only if a *published* row matches this canonical_url or title_hash."""
+def is_processed(conn, canonical_url: str, title_hash: str | None = None) -> bool:
+    """True only if a *published* row matches this canonical_url (Q6: URL-only).
+
+    Dedup is URL-only: two different articles that share a title are NOT treated
+    as duplicates (a shared title is not identity). ``title_hash`` is accepted for
+    backward-compatible call sites but no longer affects the decision.
+    """
     cur = conn.execute(
-        "SELECT 1 FROM items WHERE status = ? AND (canonical_url = ? OR title_hash = ?) LIMIT 1",
-        (PUBLISHED, canonical_url, title_hash),
+        "SELECT 1 FROM items WHERE status = ? AND canonical_url = ? LIMIT 1",
+        (PUBLISHED, canonical_url),
     )
     return cur.fetchone() is not None
 
 
-def skip_reason(conn, canonical_url: str, title_hash: str):
-    """Why an item would be skipped: 'url', 'title', or None.
+def skip_reason(conn, canonical_url: str, title_hash: str | None = None):
+    """Why an item would be skipped: 'url' or None (Q6: URL-only).
 
-    Pure query (no writes). 'url' takes precedence over 'title' so the reason is
-    deterministic when both match. Mirrors :func:`is_processed`'s skip condition
-    (skip iff this returns non-None) but attributes the cause for observability.
+    Pure query (no writes). Only a published ``canonical_url`` match causes a
+    skip. ``title_hash`` is accepted for backward-compatible call sites but no
+    longer affects the decision. Mirrors :func:`is_processed`'s skip condition
+    (skip iff this returns non-None) for observability.
     """
     cur = conn.execute(
-        "SELECT canonical_url = ? AS url_match FROM items "
-        "WHERE status = ? AND (canonical_url = ? OR title_hash = ?) "
-        "ORDER BY url_match DESC LIMIT 1",
-        (canonical_url, PUBLISHED, canonical_url, title_hash),
+        "SELECT 1 FROM items WHERE status = ? AND canonical_url = ? LIMIT 1",
+        (PUBLISHED, canonical_url),
     )
-    row = cur.fetchone()
-    if row is None:
-        return None
-    return "url" if row[0] else "title"
+    return "url" if cur.fetchone() is not None else None
 
 
 def upsert(conn, *, canonical_url, title, title_hash, status, now,

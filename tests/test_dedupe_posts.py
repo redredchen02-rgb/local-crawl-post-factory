@@ -45,12 +45,12 @@ def test_same_canonical_url_published_skipped(tmp_path):
     assert out == [{"canonical_url": "https://x.test/b", "title": "B"}]
 
 
-def test_same_title_hash_different_url_skipped(tmp_path):
+def test_same_title_different_url_emitted(tmp_path):
     db = tmp_path / "state.db"
     _seed(db, canonical_url="https://x.test/old", title="Same Title", status="published")
-    # Different url, same title -> same title_hash -> skipped.
+    # Q6: dedup is URL-only. Different url + same title -> a different article -> emitted.
     records = [{"canonical_url": "https://x.test/new", "title": "Same Title"}]
-    assert _run_dedupe(db, records) == []
+    assert _run_dedupe(db, records) == records
 
 
 def test_new_canonical_url_emitted(tmp_path):
@@ -82,12 +82,13 @@ def test_missing_title_raises(tmp_path):
 
 # --- U4 (R5): skip reasons are reported, dedupe stays read-only --------------
 
-def test_skip_reason_url_title_none(tmp_path):
+def test_skip_reason_url_or_none(tmp_path):
     db = tmp_path / "state.db"
     _seed(db, canonical_url="https://x.test/a", title="A", status="published")
     with state.connect(str(db)) as conn:
         assert state.skip_reason(conn, "https://x.test/a", title_hash("A")) == "url"
-        assert state.skip_reason(conn, "https://x.test/z", title_hash("A")) == "title"
+        # Q6: a title-only match no longer skips.
+        assert state.skip_reason(conn, "https://x.test/z", title_hash("A")) is None
         assert state.skip_reason(conn, "https://x.test/z", title_hash("Z")) is None
 
 
@@ -96,12 +97,15 @@ def test_on_skip_callback_reports_reason(tmp_path):
     _seed(db, canonical_url="https://x.test/a", title="A", status="published")
     _seed(db, canonical_url="https://x.test/old", title="Dup", status="published")
     records = [
-        {"canonical_url": "https://x.test/a", "title": "A"},        # url match
-        {"canonical_url": "https://x.test/new", "title": "Dup"},    # title match
+        {"canonical_url": "https://x.test/a", "title": "A"},        # url match -> skip
+        {"canonical_url": "https://x.test/new", "title": "Dup"},    # Q6: title-only -> emitted
         {"canonical_url": "https://x.test/fresh", "title": "New"},  # passes
     ]
     seen = []
     with state.connect(str(db)) as conn:
         out = list(_dedupe(records, conn, on_skip=lambda r, reason: seen.append(reason)))
-    assert out == [{"canonical_url": "https://x.test/fresh", "title": "New"}]
-    assert sorted(seen) == ["title", "url"]
+    assert out == [
+        {"canonical_url": "https://x.test/new", "title": "Dup"},
+        {"canonical_url": "https://x.test/fresh", "title": "New"},
+    ]
+    assert seen == ["url"]

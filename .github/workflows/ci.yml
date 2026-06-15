@@ -1,0 +1,54 @@
+name: CI
+
+on: [push, pull_request]
+
+# Least-privilege token: this CI only checks out and runs tests -- it needs no write
+# scopes. Keep the workflow secret-free so untrusted PR code (arbitrary pip deps + PR
+# test files) cannot exfiltrate anything. Trigger stays `pull_request` (NOT
+# pull_request_target), which runs fork PRs without repo secrets.
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      # Actions pinned to verified major tags; SHA-pinning is the hardening upgrade.
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - run: python -m pip install -e '.[dev]'
+      - run: python -m ruff check .
+      # Non-blocking type baseline (U3/Q3): records mypy's error count in the log but
+      # never gates merge. continue-on-error keeps the job green while the baseline is
+      # burned down over time. ruff above stays the hard gate.
+      - name: Type check (mypy, non-blocking baseline)
+        continue-on-error: true
+        run: python -m mypy
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - run: python -m pip install -e '.[browser,webui,dev]'
+      # `--with-deps` runs a privileged apt install for chromium's system libs; this
+      # plus arbitrary pip deps + PR test code makes this job the primary untrusted-
+      # execution surface, bounded by the ephemeral runner + read-only token + no secrets.
+      - run: python -m playwright install --with-deps chromium
+      - name: Tests + coverage (fail-closed if any browser e2e is skipped, R1)
+        run: |
+          set -eo pipefail
+          python -m pytest \
+            --cov=core --cov=src --cov=browser --cov=webui \
+            --cov-report=term-missing -rs | tee /tmp/pytest.txt
+          # R1: the 4 Playwright e2e modules MUST actually run. With chromium installed
+          # their importorskip/skip guards should not fire; if any shows up as SKIPPED,
+          # fail the job rather than letting browser coverage silently disappear.
+          if grep -E "SKIPPED.*(test_browser_flow|test_webui_actions|test_auth_login|test_backend_driver_resilience)" /tmp/pytest.txt; then
+            echo "::error::Browser e2e were skipped -- chromium not exercised. R1 requires they actually run."
+            exit 1
+          fi

@@ -16,7 +16,7 @@ dependencies = [
 [project.optional-dependencies]
 browser = ["playwright>=1.40"]
 webui = ["fastapi>=0.110", "uvicorn[standard]>=0.27", "jinja2>=3.1", "python-multipart>=0.0.9"]
-dev = ["pytest>=8.0", "httpx>=0.27"]
+dev = ["pytest>=8.0", "httpx>=0.27", "ruff~=0.15.10", "pytest-cov>=4.0", "mypy~=1.18.2", "types-PyYAML>=6.0", "pre-commit>=3.5"]
 
 [project.scripts]
 auth-login = "src.auth_login:main"
@@ -37,3 +37,32 @@ packages = ["src", "core", "browser", "webui"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+# Lock ruff's current default rule set; the tree already passes these at 0.15.x.
+# Line-length (E501) and import sorting (I) are intentionally not enforced this
+# round (I flags 31 pre-existing import blocks) -- see the plan's deferred tuning note.
+select = ["E4", "E7", "E9", "F"]
+
+[tool.mypy]
+# Non-blocking baseline (U3/Q3). CI runs mypy with continue-on-error and records the
+# error count -- it never fails the build. This round captures a baseline of *real*
+# type issues (arg-type, bad assignments, implicit-Optional) without forcing
+# annotations tree-wide: `disallow_untyped_defs` surfaces 50+ annotation gaps and is
+# deferred to a dedicated typing pass.
+python_version = "3.11"
+files = ["core", "src", "browser", "webui"]
+ignore_missing_imports = true   # Scrapy / Playwright ship no type stubs
+warn_redundant_casts = true
+warn_unused_ignores = true
+
+[[tool.mypy.overrides]]
+# core/ is the correctness-critical zone -- hold it a notch higher than src/browser/webui.
+# Kept to high-signal flags that add zero noise today but raise the bar for new code.
+module = "core.*"
+warn_return_any = true
+warn_unreachable = true

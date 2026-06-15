@@ -31,12 +31,12 @@ def test_package_built_is_not_processed(tmp_path):
         assert state.is_processed(conn, "https://x.com/a", th) is False
 
 
-def test_title_hash_collision_is_processed(tmp_path):
+def test_title_collision_not_processed(tmp_path):
     db = _db(tmp_path)
     th = url_utils.title_hash("Same Title")
     with state.connect(db) as conn:
         state.upsert(conn, canonical_url="https://x.com/a", title="Same Title", title_hash=th,
                      status="published", now="2026-06-15T00:00:00Z")
     with state.connect(db) as conn:
-        # different url, same title_hash -> processed
-        assert state.is_processed(conn, "https://x.com/b", th) is True
+        # Q6: dedup is URL-only. Different url + same title_hash -> NOT processed.
+        assert state.is_processed(conn, "https://x.com/b", th) is False

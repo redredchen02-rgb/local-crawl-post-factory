@@ -55,6 +55,7 @@ def empty_manifest(post_id: str, item: dict) -> dict:
             "draft_url": None,
             "published_url": None,
             "remote_id": None,
+            "run_id": item.get("run_id"),  # Q7: build-time run_id for cross-process lifecycle
         },
         "audit": {
             "created_at": None,

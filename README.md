@@ -15,7 +15,15 @@
 
 ```bash
 python3 -m pip install -e .          # 核心 (Scrapy / Pillow / PyYAML)
-python3 -m pip install -e '.[dev]'   # 加 pytest
+python3 -m pip install -e '.[dev]'   # 加 pytest / ruff / mypy / pre-commit
+```
+
+## 品質檢查
+
+```bash
+make lint           # ruff check（CI 硬性閘門）
+make typecheck      # mypy 非阻斷型別基線（印錯誤數，不擋）
+pre-commit install  # 首次：提交前自動跑 ruff（與 CI 同一份 ruff 設定）
 ```
 
 ## I/O 契約（所有命令一致）
