@@ -13,7 +13,7 @@ from fastapi.responses import HTMLResponse, FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from core import webui_config, jobs, pipeline, runs
+from core import webui_config, jobs, pipeline, runs, reviewed
 from core.errors import CliError, SessionExpiredError
 from browser import backend_driver
 from src import draft_post, verify_draft, publish_post
@@ -27,8 +27,9 @@ def create_app(config_path: str = WEBUI_CONFIG_PATH) -> FastAPI:
     app = FastAPI(title="local-crawl-post-factory")
     app.mount("/static", StaticFiles(directory=str(_HERE / "static")), name="static")
     app.state.config_path = config_path
-    app.state.reviewed = set()          # post_ids whose review page was opened (R6 gate 1)
     app.state.session_expired_mtime = None  # storage-state mtime when expiry last seen
+    # Gate ① ("reviewed") is now persisted in the state DB, bound to the reviewed
+    # content version (core.reviewed) -- survives restart, fails closed on edits.
 
     def _cfg():
         """Load the current webui config (re-read each request: config is editable live)."""
@@ -110,8 +111,9 @@ def create_app(config_path: str = WEBUI_CONFIG_PATH) -> FastAPI:
         pkg = _safe_pkg_dir(cfg["out_dir"], post_id)
         if pkg is None or not (pkg / "manifest.json").exists():
             return HTMLResponse('<p class="error">找不到此貼文包</p>', status_code=404)
-        app.state.reviewed.add(post_id)  # R6 gate 1: this package has been reviewed
         m = json.loads((pkg / "manifest.json").read_text(encoding="utf-8"))
+        # Gate ① : record the review bound to the content version just shown (Q9).
+        reviewed.mark(cfg["state_path"], post_id, reviewed.content_id(m))
         caption_file = pkg / "caption.txt"
         caption = caption_file.read_text(encoding="utf-8") if caption_file.exists() else m.get("content", {}).get("body", "")
         has_cover = (pkg / "watermarked_cover.jpg").exists() or (pkg / "cover.jpg").exists()
@@ -267,9 +269,14 @@ def create_app(config_path: str = WEBUI_CONFIG_PATH) -> FastAPI:
         if pkg is None or not (pkg / "manifest.json").exists():
             return HTMLResponse('<p class="error">找不到此貼文包</p>', status_code=404)
         # R6 三重閘門，順序固定，任一不過即拒（不可逆動作不被繞過，R8）。
-        if post_id not in app.state.reviewed:
-            return HTMLResponse('<p class="error">請先開啟審核頁再發布</p>', status_code=400)
         m = json.loads((pkg / "manifest.json").read_text(encoding="utf-8"))
+        # Gate ① : reviewed AND the content is still the reviewed version (Q9).
+        # Fail-closed: no marker, or content changed since review -> reject.
+        stored_cid = reviewed.get(cfg["state_path"], post_id)
+        if stored_cid is None or stored_cid != reviewed.content_id(m):
+            return HTMLResponse(
+                '<p class="error">請先開啟審核頁再發布（或內容已變更，需重新審核）</p>',
+                status_code=400)
         if m.get("backend", {}).get("status") != "draft_verified":
             return HTMLResponse('<p class="error">尚未驗證，不可發布</p>', status_code=400)
         if title.strip() != (m.get("content", {}).get("title") or "").strip():
@@ -279,7 +286,8 @@ def create_app(config_path: str = WEBUI_CONFIG_PATH) -> FastAPI:
             manifest=str(pkg / "manifest.json"), backend=cfg["backend_config"],
             storage_state=cfg["storage_state"], headless=True,
             timeout_ms=backend_driver.DEFAULT_TIMEOUT_MS, retries=None,
-            state=cfg["state_path"], approve=True)
+            state=cfg["state_path"], approve=True,
+            expected_content_id=stored_cid)  # opt-in publish-time re-verify (Q9)
         return _submit_job(request, "publish", post_id, cfg, lambda: publish_post._run(ns))
 
     def _note_session_expiry(cfg):

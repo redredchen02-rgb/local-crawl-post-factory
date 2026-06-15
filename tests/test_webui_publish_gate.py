@@ -70,6 +70,57 @@ def test_publish_all_gates_pass_submits_job(tmp_path, monkeypatch):
     assert called["n"] == 1
 
 
+def _wait(flag):
+    for _ in range(100):
+        if flag["n"]:
+            return
+        time.sleep(0.02)
+
+
+def test_publish_after_content_change_400(tmp_path):
+    """Q9 security core: reviewing then editing the content invalidates the review
+    (content-binding, fail-closed) -- even when the typed title matches."""
+    client, pkg = _client(tmp_path)
+    _review(client)
+    m = json.loads((pkg / "manifest.json").read_text(encoding="utf-8"))
+    m["content"]["title"] = "改過的標題"  # content changed after review (re-render)
+    (pkg / "manifest.json").write_text(json.dumps(m), encoding="utf-8")
+    r = client.post("/packages/20260615_demo/publish", data={"title": "改過的標題"})
+    assert r.status_code == 400
+    assert "內容已變更" in r.text
+
+
+def test_publish_survives_lifecycle_save(tmp_path, monkeypatch):
+    """Q9 mtime-trap guard: a manifest re-save that changes status/audit but NOT
+    the content subtree keeps the review valid (gate ① still passes)."""
+    called = {"n": 0}
+    monkeypatch.setattr(publish_post, "_run", lambda ns: called.__setitem__("n", called["n"] + 1))
+    client, pkg = _client(tmp_path)
+    _review(client)
+    m = json.loads((pkg / "manifest.json").read_text(encoding="utf-8"))
+    m.setdefault("audit", {})["updated_at"] = "2026-06-15T12:00:00Z"  # lifecycle noise
+    m["backend"]["run_id"] = "r-xyz"
+    (pkg / "manifest.json").write_text(json.dumps(m), encoding="utf-8")
+    r = client.post("/packages/20260615_demo/publish", data={"title": "待發貼文"})
+    assert r.status_code == 200
+    _wait(called)
+    assert called["n"] == 1
+
+
+def test_review_persists_across_restart(tmp_path, monkeypatch):
+    """Q9: the reviewed marker is persisted, so a fresh app (restart) still passes
+    gate ① without re-opening the review page."""
+    called = {"n": 0}
+    monkeypatch.setattr(publish_post, "_run", lambda ns: called.__setitem__("n", called["n"] + 1))
+    client, _ = _client(tmp_path)
+    _review(client)
+    client2 = TestClient(create_app(str(tmp_path / "webui.yaml")))  # 'restart'
+    r = client2.post("/packages/20260615_demo/publish", data={"title": "待發貼文"})
+    assert r.status_code == 200
+    _wait(called)
+    assert called["n"] == 1
+
+
 def test_auth_light_three_states(tmp_path):
     client, _ = _client(tmp_path)
     # no storage-state file -> grey/none
