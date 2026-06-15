@@ -30,10 +30,14 @@ def create_app(config_path: str = WEBUI_CONFIG_PATH) -> FastAPI:
     app.state.reviewed = set()          # post_ids whose review page was opened (R6 gate 1)
     app.state.session_expired_mtime = None  # storage-state mtime when expiry last seen
 
+    def _cfg():
+        """Load the current webui config (re-read each request: config is editable live)."""
+        return webui_config.load(app.state.config_path)
+
     @app.get("/", response_class=HTMLResponse)
     @app.get("/settings", response_class=HTMLResponse)
     def settings_page(request: Request):
-        cfg = webui_config.load(app.state.config_path)
+        cfg = _cfg()
         return templates.TemplateResponse(
             request, "settings.html", {"cfg": cfg, "saved": False})
 
@@ -50,7 +54,7 @@ def create_app(config_path: str = WEBUI_CONFIG_PATH) -> FastAPI:
                     "deny_regex": deny_regex, "limit": limit, "source_id": source_id,
                     "download_delay": download_delay, "concurrency": concurrency}
         try:
-            cfg = webui_config.save(app.state.config_path, {**webui_config.load(app.state.config_path), **incoming})
+            cfg = webui_config.save(app.state.config_path, {**_cfg(), **incoming})
         except CliError as exc:
             return HTMLResponse(f'<p class="error">{exc.message}</p>', status_code=400)
         return templates.TemplateResponse(
@@ -58,7 +62,7 @@ def create_app(config_path: str = WEBUI_CONFIG_PATH) -> FastAPI:
 
     @app.post("/crawl", response_class=HTMLResponse)
     def start_crawl(request: Request):
-        cfg = webui_config.load(app.state.config_path)
+        cfg = _cfg()
         if not cfg.get("start_url"):
             return HTMLResponse('<p class="error">請先在設定填入 start_url</p>', status_code=400)
 
@@ -82,7 +86,7 @@ def create_app(config_path: str = WEBUI_CONFIG_PATH) -> FastAPI:
 
     @app.get("/packages", response_class=HTMLResponse)
     def packages(request: Request, q: str = "", status: str = ""):
-        cfg = webui_config.load(app.state.config_path)
+        cfg = _cfg()
         rows = _filter_packages(_scan_packages(cfg["out_dir"]), q, status)
         # HTMX requests (live filtering) get just the table fragment; full nav otherwise.
         template = "_packages_table.html" if request.headers.get("HX-Request") else "packages.html"
@@ -91,7 +95,7 @@ def create_app(config_path: str = WEBUI_CONFIG_PATH) -> FastAPI:
 
     @app.post("/packages/{post_id}/delete", response_class=HTMLResponse)
     def delete_package(request: Request, post_id: str):
-        cfg = webui_config.load(app.state.config_path)
+        cfg = _cfg()
         pkg = _safe_pkg_dir(cfg["out_dir"], post_id)
         if pkg is None:
             return HTMLResponse('<p class="error">找不到此貼文包</p>', status_code=404)
@@ -102,7 +106,7 @@ def create_app(config_path: str = WEBUI_CONFIG_PATH) -> FastAPI:
 
     @app.get("/packages/{post_id}", response_class=HTMLResponse)
     def package_detail(request: Request, post_id: str):
-        cfg = webui_config.load(app.state.config_path)
+        cfg = _cfg()
         pkg = _safe_pkg_dir(cfg["out_dir"], post_id)
         if pkg is None or not (pkg / "manifest.json").exists():
             return HTMLResponse('<p class="error">找不到此貼文包</p>', status_code=404)
@@ -124,7 +128,7 @@ def create_app(config_path: str = WEBUI_CONFIG_PATH) -> FastAPI:
 
     @app.get("/packages/{post_id}/failure-image")
     def package_failure_image(post_id: str):
-        cfg = webui_config.load(app.state.config_path)
+        cfg = _cfg()
         pkg = _safe_pkg_dir(cfg["out_dir"], post_id)
         if pkg is None:
             return PlainTextResponse("not found", status_code=404)
@@ -137,7 +141,7 @@ def create_app(config_path: str = WEBUI_CONFIG_PATH) -> FastAPI:
 
     @app.get("/packages/{post_id}/cover")
     def package_cover(post_id: str):
-        cfg = webui_config.load(app.state.config_path)
+        cfg = _cfg()
         pkg = _safe_pkg_dir(cfg["out_dir"], post_id)
         if pkg is None:
             return PlainTextResponse("not found", status_code=404)
@@ -157,7 +161,7 @@ def create_app(config_path: str = WEBUI_CONFIG_PATH) -> FastAPI:
 
     def _action_ns(post_id, stage):
         """Build the argparse-style namespace for a backend command from webui cfg."""
-        cfg = webui_config.load(app.state.config_path)
+        cfg = _cfg()
         pkg = _safe_pkg_dir(cfg["out_dir"], post_id)
         if pkg is None:
             return None
@@ -199,7 +203,7 @@ def create_app(config_path: str = WEBUI_CONFIG_PATH) -> FastAPI:
 
     @app.post("/packages/{post_id}/publish", response_class=HTMLResponse)
     def action_publish(request: Request, post_id: str, title: str = Form("")):
-        cfg = webui_config.load(app.state.config_path)
+        cfg = _cfg()
         pkg = _safe_pkg_dir(cfg["out_dir"], post_id)
         if pkg is None or not (pkg / "manifest.json").exists():
             return HTMLResponse('<p class="error">找不到此貼文包</p>', status_code=404)
@@ -225,7 +229,7 @@ def create_app(config_path: str = WEBUI_CONFIG_PATH) -> FastAPI:
 
     @app.get("/auth-status", response_class=HTMLResponse)
     def auth_status(request: Request):
-        cfg = webui_config.load(app.state.config_path)
+        cfg = _cfg()
         return templates.TemplateResponse(request, "_auth_status.html",
                                           {"light": _auth_light(cfg)})
 
@@ -241,14 +245,14 @@ def create_app(config_path: str = WEBUI_CONFIG_PATH) -> FastAPI:
 
     @app.get("/history", response_class=HTMLResponse)
     def history(request: Request):
-        cfg = webui_config.load(app.state.config_path)
+        cfg = _cfg()
         rows = runs.list_runs(cfg["state_path"], limit=200)
         template = "_history_table.html" if request.headers.get("HX-Request") else "history.html"
         return templates.TemplateResponse(request, template, {"runs": rows})
 
     @app.get("/audit", response_class=HTMLResponse)
     def audit(request: Request):
-        cfg = webui_config.load(app.state.config_path)
+        cfg = _cfg()
         lines = _tail_audit(cfg["audit_log"], 200)
         template = "_audit_table.html" if request.headers.get("HX-Request") else "audit.html"
         return templates.TemplateResponse(request, template, {"lines": lines})
