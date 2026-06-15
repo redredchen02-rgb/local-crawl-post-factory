@@ -106,8 +106,12 @@ def record_run(path, *, stage, status, post_id=None, detail=None, error=None,
         )
 
 
-def list_runs(path, limit=100, *, post_id=None, severity=None) -> list:
-    """Return the most recent runs (newest first) as dicts, optionally filtered."""
+def list_runs(path, limit=100, *, post_id=None, severity=None, run_id=None) -> list:
+    """Return the most recent runs (newest first) as dicts, optionally filtered.
+
+    Filter by ``run_id`` to pull the whole lifecycle of one pipeline/batch run
+    (build…publish) as a single correlated group (Q7).
+    """
     if not Path(path).exists():
         return []
     where, params = [], []
@@ -117,6 +121,9 @@ def list_runs(path, limit=100, *, post_id=None, severity=None) -> list:
     if severity is not None:
         where.append("severity = ?")
         params.append(severity)
+    if run_id is not None:
+        where.append("run_id = ?")
+        params.append(run_id)
     clause = (" WHERE " + " AND ".join(where)) if where else ""
     params.append(int(limit))
     with _connect(path) as conn:

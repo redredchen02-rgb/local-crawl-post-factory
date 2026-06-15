@@ -48,6 +48,7 @@ def _run(args) -> int:
 
     post_id = manifest.get("post_id")
     draft_url = manifest.get("backend", {}).get("draft_url")
+    run_id = manifest.get("backend", {}).get("run_id")  # Q7: None for CLI-built manifests (not self-generated)
 
     with backend_driver.session(args.storage_state, args.headless, args.timeout_ms) as page:
         result = backend_driver.publish_draft(
@@ -61,7 +62,8 @@ def _run(args) -> int:
     _mark_published(args.state, manifest, post_id, published_url)
     if args.state:
         runs.record_run(args.state, stage="publish", post_id=post_id,
-                        status="ok", detail=published_url)
+                        status="ok", detail=published_url,
+                        run_id=run_id, severity="info")  # Q7: lifecycle correlation
     audit.record(LOG_PATH, post_id, "publish-post", "ok", mf.now_iso(),
                  published_url=published_url)
     json.dump({"status": "published", "post_id": post_id, "published_url": published_url},
