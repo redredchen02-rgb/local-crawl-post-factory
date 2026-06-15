@@ -43,9 +43,12 @@ def create_app(config_path: str = WEBUI_CONFIG_PATH) -> FastAPI:
                       item_regex: str = Form(""),
                       deny_regex: str = Form(""),
                       limit: str = Form("30"),
+                      download_delay: str = Form("0"),
+                      concurrency: str = Form("8"),
                       source_id: str = Form("")):
         incoming = {"start_url": start_url.strip(), "item_regex": item_regex,
-                    "deny_regex": deny_regex, "limit": limit, "source_id": source_id}
+                    "deny_regex": deny_regex, "limit": limit, "source_id": source_id,
+                    "download_delay": download_delay, "concurrency": concurrency}
         try:
             cfg = webui_config.save(app.state.config_path, {**webui_config.load(app.state.config_path), **incoming})
         except CliError as exc:

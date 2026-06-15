@@ -28,6 +28,8 @@ def crawl_items(webui_cfg: dict) -> list:
         "item_regex": webui_cfg.get("item_regex", ""),
         "deny_regex": webui_cfg.get("deny_regex", ""),
         "limit": int(webui_cfg.get("limit", 30)),
+        "download_delay": float(webui_cfg.get("download_delay", 0.0)),
+        "concurrency": int(webui_cfg.get("concurrency", 8)),
         "source_id": webui_cfg.get("source_id", ""),
         "start_urls": [webui_cfg["start_url"]],
     })

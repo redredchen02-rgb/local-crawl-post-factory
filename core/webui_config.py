@@ -14,6 +14,8 @@ DEFAULTS = {
     "item_regex": "/news/|/article/|/post/",
     "deny_regex": "login|admin|tag|category|search|page/[0-9]+",
     "limit": 30,
+    "download_delay": 0.0,
+    "concurrency": 8,
     "source_id": "",
     "template_path": "./templates/fixed-format.zh.yaml",
     "watermark_config": "./configs/watermark.yaml",
@@ -25,7 +27,8 @@ DEFAULTS = {
     "storage_state": "./auth/storage-state.json",
 }
 
-_INT_FIELDS = ("limit",)
+_INT_FIELDS = ("limit", "concurrency")
+_FLOAT_FIELDS = ("download_delay",)
 
 
 def load(path) -> dict:
@@ -73,6 +76,10 @@ def validate(cfg: dict) -> None:
         raise ValidationError(f"invalid start_url: {cfg.get('start_url')!r}")
     if int(cfg.get("limit", 0)) < 0:
         raise ValidationError("limit must be >= 0")
+    if float(cfg.get("download_delay", 0)) < 0:
+        raise ValidationError("download_delay must be >= 0")
+    if int(cfg.get("concurrency", 1)) < 1:
+        raise ValidationError("concurrency must be >= 1")
 
 
 def _coerce(cfg: dict) -> None:
@@ -81,3 +88,8 @@ def _coerce(cfg: dict) -> None:
             cfg[field] = int(cfg[field])
         except (TypeError, ValueError):
             raise ValidationError(f"{field} must be an integer")
+    for field in _FLOAT_FIELDS:
+        try:
+            cfg[field] = float(cfg[field])
+        except (TypeError, ValueError):
+            raise ValidationError(f"{field} must be a number")

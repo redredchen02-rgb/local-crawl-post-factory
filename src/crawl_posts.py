@@ -44,6 +44,7 @@ CONFIG_DEFAULTS = {
     "user_agent": "crawl-posts/1.0 (+local-crawl-post-factory)",
     "timeout_sec": 30,
     "concurrency": 8,
+    "download_delay": 0.0,
     "no_robots": False,
 }
 
@@ -94,6 +95,7 @@ def _crawl_worker(opts: dict, out_path: str, status_path: str) -> None:
                 "ROBOTSTXT_OBEY": not opts["no_robots"],
                 "DOWNLOAD_TIMEOUT": opts["timeout_sec"],
                 "CONCURRENT_REQUESTS": opts["concurrency"],
+                "DOWNLOAD_DELAY": opts.get("download_delay", 0.0),
                 "DEPTH_LIMIT": opts["depth"],
                 "LOG_ENABLED": True,
                 "TELNETCONSOLE_ENABLED": False,
