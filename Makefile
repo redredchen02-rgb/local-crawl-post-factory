@@ -1,4 +1,4 @@
-.PHONY: install install-browser install-webui test demo webui vendor-htmx clean
+.PHONY: install install-browser install-webui test lint cov demo webui vendor-htmx clean
 
 install:
 	python3 -m pip install -e '.[dev]'
@@ -18,6 +18,12 @@ webui:
 
 test:
 	python3 -m pytest -q
+
+lint:
+	python3 -m ruff check .
+
+cov:
+	python3 -m pytest --cov=core --cov=src --cov=browser --cov=webui --cov-report=term-missing
 
 demo:
 	bash scripts/demo.sh
