@@ -66,7 +66,7 @@ def run_pipeline(items, webui_cfg: dict, progress_cb=None) -> dict:
     normalized = []
     for raw in items:
         try:
-            normalized.append(normalize_items._normalize(raw))
+            normalized.append(normalize_items.normalize_one(raw))
         except Exception as exc:  # noqa: BLE001 - classify, record, keep batch alive
             failed.append({"item": raw, "stage": "normalize",
                            "error": str(exc), "error_class": _error_class(exc)})
@@ -82,7 +82,7 @@ def run_pipeline(items, webui_cfg: dict, progress_cb=None) -> dict:
         skips.append((record, reason))
 
     with state.connect(webui_cfg["state_path"]) as conn:
-        deduped = list(dedupe_posts._dedupe(normalized, conn, on_skip=_on_skip))
+        deduped = list(dedupe_posts.dedupe(normalized, conn, on_skip=_on_skip))
     for record, reason in skips:
         runs.record_run(webui_cfg["state_path"], stage="dedupe", post_id=None,
                         status="skipped", detail=str(record.get("canonical_url", "")),
@@ -94,14 +94,14 @@ def run_pipeline(items, webui_cfg: dict, progress_cb=None) -> dict:
     for rec in deduped:
         title = rec.get("title", "")
         try:
-            caption = render_caption._render(rec, template_cfg)
+            caption = render_caption.render(rec, template_cfg)
             rec["caption"] = caption
             rec["content_hash"] = url_utils.content_hash(
                 str(rec.get("canonical_url", "")), str(title), caption)
-            rec = select_cover._select(rec, download_dir, COVER_TIMEOUT_SEC,
-                                       cover_retries, cover_backoff)
-            rec = watermark_cover._watermark(rec, wm_cfg)
-            manifest_path = build_manifest._build(rec, out_dir, audit_log)
+            rec = select_cover.select(rec, download_dir, COVER_TIMEOUT_SEC,
+                                      cover_retries, cover_backoff)
+            rec = watermark_cover.watermark(rec, wm_cfg)
+            manifest_path = build_manifest.build(rec, out_dir, audit_log)
             post_id = Path(manifest_path).parent.name
             built.append({"post_id": post_id, "title": title,
                           "manifest_path": manifest_path})

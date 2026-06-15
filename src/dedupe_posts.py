@@ -23,7 +23,7 @@ from core.io_ndjson import read_lines, write_line
 from core.url_utils import title_hash
 
 
-def _dedupe(records, conn, on_skip=None):
+def dedupe(records, conn, on_skip=None):
     """Yield records that are not already published in ``conn``.
 
     Read-only: never writes to state. When a record is dropped, ``on_skip`` (if
@@ -48,9 +48,12 @@ def _dedupe(records, conn, on_skip=None):
         yield record
 
 
+_dedupe = dedupe  # deprecated: remove in vNEXT (use dedupe)
+
+
 def _run(args) -> int:
     with state.connect(args.state) as conn:
-        for record in _dedupe(read_lines(), conn):
+        for record in dedupe(read_lines(), conn):
             write_line(record)
     return 0
 

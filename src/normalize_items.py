@@ -18,7 +18,7 @@ _TEXT_FIELDS = ("title", "description", "text")
 _URL_FIELDS = ("url", "canonical_url")
 
 
-def _normalize(obj: dict) -> dict:
+def normalize_one(obj: dict) -> dict:
     """Pure normalization of one crawled record.
 
     Normalizes url/canonical_url, derives canonical_url from url when missing,
@@ -55,9 +55,12 @@ def _normalize(obj: dict) -> dict:
     return out
 
 
+_normalize = normalize_one  # deprecated: remove in vNEXT (use normalize_one)
+
+
 def _run():
     for obj in io_ndjson.read_lines():
-        io_ndjson.write_line(_normalize(obj))
+        io_ndjson.write_line(normalize_one(obj))
 
 
 def main():

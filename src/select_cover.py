@@ -106,8 +106,8 @@ def _target_stem(record: dict, image_url: str) -> str:
     return url_utils.slug(basis)
 
 
-def _select(record: dict, download_dir: Path, timeout: int,
-            retries: int = DEFAULT_RETRIES, backoff_sec: float = DEFAULT_BACKOFF_SEC) -> dict:
+def select(record: dict, download_dir: Path, timeout: int,
+           retries: int = DEFAULT_RETRIES, backoff_sec: float = DEFAULT_BACKOFF_SEC) -> dict:
     """Return a copy of ``record`` with cover_source/cover_path set."""
     out = dict(record)
     image_url = record.get("image_url")
@@ -140,12 +140,15 @@ def _select(record: dict, download_dir: Path, timeout: int,
     return out
 
 
+_select = select  # deprecated: remove in vNEXT (use select)
+
+
 def _run_factory(download_dir: Path, timeout: int,
                  retries: int = DEFAULT_RETRIES, backoff_sec: float = DEFAULT_BACKOFF_SEC):
     def _run():
         filesystem.ensure_dir(download_dir)
         for obj in io_ndjson.read_lines():
-            io_ndjson.write_line(_select(obj, download_dir, timeout, retries, backoff_sec))
+            io_ndjson.write_line(select(obj, download_dir, timeout, retries, backoff_sec))
 
     return _run
 

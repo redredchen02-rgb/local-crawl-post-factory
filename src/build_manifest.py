@@ -52,7 +52,7 @@ def _preview_html(title: str, caption: str, has_cover: bool) -> str:
     )
 
 
-def _build(record: dict, out_dir: str, log_path: str) -> str:
+def build(record: dict, out_dir: str, log_path: str) -> str:
     """Build the package folder for one record; return its manifest path.
 
     Idempotent (R5): re-running with the same record reuses the same folder and
@@ -105,9 +105,12 @@ def _build(record: dict, out_dir: str, log_path: str) -> str:
     return str(manifest_file)
 
 
+_build = build  # deprecated: remove in vNEXT (use build)
+
+
 def _run(out_dir: str, log_path: str):
     for record in io_ndjson.read_lines():
-        record["manifest_path"] = _build(record, out_dir, log_path)
+        record["manifest_path"] = build(record, out_dir, log_path)
         io_ndjson.write_line(record)
 
 

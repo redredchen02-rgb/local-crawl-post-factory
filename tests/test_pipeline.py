@@ -87,14 +87,14 @@ def test_validation_error_tagged_validation(tmp_path):
 def test_system_error_tagged_system_without_aborting(tmp_path, monkeypatch):
     """A non-CliError in normalize is recorded as error_class=system, batch continues."""
     cfg = _cfg(tmp_path)
-    real = normalize_items._normalize
+    real = normalize_items.normalize_one
 
     def flaky(raw):
         if raw.get("title") == "炸彈":
             raise KeyError("boom")  # unexpected, not a CliError
         return real(raw)
 
-    monkeypatch.setattr(normalize_items, "_normalize", flaky)
+    monkeypatch.setattr(normalize_items, "normalize_one", flaky)
     result = pipeline.run_pipeline([_item("e", "炸彈"), _item("f", "正常")], cfg)
     assert len(result["built"]) == 1
     assert len(result["failed"]) == 1
@@ -108,7 +108,7 @@ def test_build_stage_system_error_recorded(tmp_path, monkeypatch):
     def boom(rec, template_cfg):
         raise RuntimeError("render exploded")
 
-    monkeypatch.setattr(pipeline.render_caption, "_render", boom)
+    monkeypatch.setattr(pipeline.render_caption, "render", boom)
     result = pipeline.run_pipeline([_item("g", "標題")], cfg)
     assert result["built"] == []
     assert len(result["failed"]) == 1
