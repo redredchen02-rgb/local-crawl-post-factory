@@ -1,0 +1,2 @@
+{"source_id":"example.com","url":"https://example.com/news/alpha/","canonical_url":"","title":"  範例文章一  ","description":"第一篇範例描述","image_url":"","published_at":"2026-06-15T10:00:00+08:00","text":"summary one","discovered_at":"2026-06-15T02:00:00Z"}
+{"source_id":"example.com","url":"https://example.com/news/beta","canonical_url":"https://example.com/news/beta","title":"範例文章二","description":"第二篇範例描述","image_url":"","published_at":"2026-06-14T09:00:00+08:00","text":"summary two","discovered_at":"2026-06-15T02:00:00Z"}

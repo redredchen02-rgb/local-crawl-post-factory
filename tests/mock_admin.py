@@ -4,10 +4,39 @@ Field names and button labels mirror configs/backend.yaml so the real driver
 (which sources every selector from backend.yaml) can drive it unchanged.
 """
 
-import cgi
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
+
+
+def _parse_multipart_fields(content_type, body):
+    """Extract text form fields from a multipart/form-data body.
+
+    Minimal parser for the mock: returns {name: text_value} for non-file parts
+    (file parts are ignored — the mock only needs title/content).
+    """
+    if "boundary=" not in content_type:
+        return {}
+    boundary = content_type.split("boundary=", 1)[1].strip().strip('"')
+    delim = ("--" + boundary).encode()
+    fields = {}
+    for part in body.split(delim):
+        if not part or part in (b"--\r\n", b"--"):
+            continue
+        head, _, value = part.partition(b"\r\n\r\n")
+        if not value:
+            continue
+        head_text = head.decode("utf-8", "replace")
+        if 'filename="' in head_text:  # skip file uploads
+            continue
+        name = None
+        for token in head_text.split(";"):
+            token = token.strip()
+            if token.startswith('name="'):
+                name = token[len('name="'):].rstrip('"')
+        if name is not None:
+            fields[name] = value.rsplit(b"\r\n", 1)[0].decode("utf-8", "replace")
+    return fields
 
 _POSTS = {}  # id -> {"title", "content", "published"}
 _NEXT = {"id": 1}
@@ -82,16 +111,14 @@ class _Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         if self.path == "/admin/posts/create":
-            form = cgi.FieldStorage(
-                fp=self.rfile, headers=self.headers,
-                environ={"REQUEST_METHOD": "POST",
-                         "CONTENT_TYPE": self.headers["Content-Type"]},
-            )
+            length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(length)
+            fields = _parse_multipart_fields(self.headers.get("Content-Type", ""), body)
             pid = _NEXT["id"]
             _NEXT["id"] += 1
             _POSTS[pid] = {
-                "title": form.getfirst("title", ""),
-                "content": form.getfirst("content", ""),
+                "title": fields.get("title", ""),
+                "content": fields.get("content", ""),
                 "published": False,
             }
             self.send_response(302)

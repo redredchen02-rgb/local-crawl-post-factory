@@ -75,6 +75,19 @@ publish-post --manifest out/<id>/manifest.json --backend configs/backend.yaml --
 python3 -m pytest -q     # 70 passed (含 Playwright 端到端流程)
 ```
 
+## 快速試跑（離線 demo，不需網路/瀏覽器）
+
+```bash
+make install        # 或 make install-browser 連同 Playwright
+make demo           # 把 inputs/sample.ndjson 跑成 out/demo/<post_id>/ 包
+make test           # 70 passed
+```
+
+## 排程 / Agent 自動化
+
+見 [`examples/scheduling.md`](examples/scheduling.md) — cron 建草稿範本、退出碼處理、登入態到期、人工發布。
+**自動化只到建草稿；發布永遠是人工 `--approve`。**
+
 ## 設計與計畫
 
 - 需求：`docs/brainstorms/2026-06-15-local-crawl-post-factory-requirements.md`
