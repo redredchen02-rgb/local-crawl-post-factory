@@ -104,8 +104,22 @@ def create_app(config_path: str = WEBUI_CONFIG_PATH) -> FastAPI:
             "canonical_url": m.get("source", {}).get("canonical_url", ""),
             "caption": caption,
             "has_cover": has_cover,
+            "failure": _read_failure(pkg),
             "backend_config": "configs/backend.yaml",
         })
+
+    @app.get("/packages/{post_id}/failure-image")
+    def package_failure_image(post_id: str):
+        cfg = webui_config.load(app.state.config_path)
+        pkg = _safe_pkg_dir(cfg["out_dir"], post_id)
+        if pkg is None:
+            return PlainTextResponse("not found", status_code=404)
+        failure = _read_failure(pkg)
+        shot = failure.get("screenshot") if failure else None
+        # Only serve a screenshot that lives inside this package dir (no traversal).
+        if shot and Path(shot).resolve().parent == pkg.resolve() and Path(shot).exists():
+            return FileResponse(shot)
+        return PlainTextResponse("no failure image", status_code=404)
 
     @app.get("/packages/{post_id}/cover")
     def package_cover(post_id: str):
@@ -236,6 +250,17 @@ def create_app(config_path: str = WEBUI_CONFIG_PATH) -> FastAPI:
             request, "audit.html", {"lines": _tail_audit(cfg["audit_log"], 200)})
 
     return app
+
+
+def _read_failure(pkg):
+    """Return the latest failure.json contents for a package, or None."""
+    f = Path(pkg) / "failure.json"
+    if not f.exists():
+        return None
+    try:
+        return json.loads(f.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return None
 
 
 def _tail_audit(audit_log: str, limit: int):

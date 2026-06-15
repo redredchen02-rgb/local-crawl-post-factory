@@ -19,6 +19,15 @@
 <h2>文案</h2>
 <pre style="white-space:pre-wrap;background:#f7f7f8;padding:1rem;border-radius:6px">{{ caption }}</pre>
 
+{% if failure %}
+<h2 class="error">上次後台動作失敗（{{ failure.stage }}）</h2>
+<p class="error">{{ failure.error }}</p>
+<p class="hint">時間：{{ failure.ts }}　URL：{{ failure.url }}</p>
+{% if failure.screenshot %}
+<img src="/packages/{{ post_id }}/failure-image" alt="失敗截圖" style="max-width:100%;border:1px solid #b00020">
+{% endif %}
+{% endif %}
+
 <h2>後台動作</h2>
 <p class="hint">需先以 <code>auth-login</code> 取得登入態。動作於背景執行。</p>
 <div>

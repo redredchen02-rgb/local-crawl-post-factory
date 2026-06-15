@@ -93,6 +93,36 @@ def test_detail_path_traversal_blocked(tmp_path):
     assert client.get("/packages/..%2f..%2fetc").status_code == 404
 
 
+def test_detail_shows_failure_evidence(tmp_path):
+    out = tmp_path / "out"
+    _pkg(out, "20260615_f", "失敗文")
+    pkg = out / "20260615_f"
+    shot = pkg / "failure_draft_x.png"
+    shot.write_bytes(b"\x89PNG\r\n")
+    (pkg / "failure.json").write_text(json.dumps({
+        "stage": "draft", "url": "https://example.com/admin/login",
+        "error": "draft did not confirm", "screenshot": str(shot), "ts": "t"}),
+        encoding="utf-8")
+    client = _client(tmp_path, out)
+    r = client.get("/packages/20260615_f")
+    assert r.status_code == 200
+    assert "上次後台動作失敗" in r.text and "draft did not confirm" in r.text
+    img = client.get("/packages/20260615_f/failure-image")
+    assert img.status_code == 200
+    assert img.headers["content-type"].startswith("image/")
+
+
+def test_failure_image_traversal_blocked(tmp_path):
+    out = tmp_path / "out"
+    _pkg(out, "20260615_f", "文")
+    pkg = out / "20260615_f"
+    # failure.json points outside the package dir -> must not be served
+    (pkg / "failure.json").write_text(json.dumps({
+        "stage": "draft", "screenshot": "/etc/hosts"}), encoding="utf-8")
+    client = _client(tmp_path, out)
+    assert client.get("/packages/20260615_f/failure-image").status_code == 404
+
+
 def test_publish_endpoint_is_gated_not_absent(tmp_path):
     """Control-center model: a publish route exists but is gated (see
     test_webui_publish_gate). It must never publish without the triple gate."""
