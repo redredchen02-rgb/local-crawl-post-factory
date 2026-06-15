@@ -78,3 +78,30 @@ def test_missing_title_raises(tmp_path):
     db = tmp_path / "state.db"
     with pytest.raises(Exception):
         _run_dedupe(db, [{"canonical_url": "https://x.test/a"}])
+
+
+# --- U4 (R5): skip reasons are reported, dedupe stays read-only --------------
+
+def test_skip_reason_url_title_none(tmp_path):
+    db = tmp_path / "state.db"
+    _seed(db, canonical_url="https://x.test/a", title="A", status="published")
+    with state.connect(str(db)) as conn:
+        assert state.skip_reason(conn, "https://x.test/a", title_hash("A")) == "url"
+        assert state.skip_reason(conn, "https://x.test/z", title_hash("A")) == "title"
+        assert state.skip_reason(conn, "https://x.test/z", title_hash("Z")) is None
+
+
+def test_on_skip_callback_reports_reason(tmp_path):
+    db = tmp_path / "state.db"
+    _seed(db, canonical_url="https://x.test/a", title="A", status="published")
+    _seed(db, canonical_url="https://x.test/old", title="Dup", status="published")
+    records = [
+        {"canonical_url": "https://x.test/a", "title": "A"},        # url match
+        {"canonical_url": "https://x.test/new", "title": "Dup"},    # title match
+        {"canonical_url": "https://x.test/fresh", "title": "New"},  # passes
+    ]
+    seen = []
+    with state.connect(str(db)) as conn:
+        out = list(_dedupe(records, conn, on_skip=lambda r, reason: seen.append(reason)))
+    assert out == [{"canonical_url": "https://x.test/fresh", "title": "New"}]
+    assert sorted(seen) == ["title", "url"]

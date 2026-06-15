@@ -8,6 +8,7 @@ WebUI and the CLI share one implementation. crawl stays in its own subprocess
 from pathlib import Path
 
 from core import state, url_utils, runs
+from core.errors import ValidationError
 from src import (
     normalize_items,
     dedupe_posts,
@@ -46,11 +47,18 @@ def run_pipeline(items, webui_cfg: dict, progress_cb=None) -> dict:
         if progress_cb:
             progress_cb(msg)
 
+    def _error_class(exc):
+        # ValidationError = bad data (expected, skip the item); anything else is
+        # an unexpected system fault worth distinguishing for observability.
+        return "validation" if isinstance(exc, ValidationError) else "system"
+
     template_cfg = render_caption.load_template(webui_cfg["template_path"])
     wm_cfg = watermark_cover.load_config(webui_cfg["watermark_config"])
     download_dir = Path(webui_cfg["download_dir"])
     out_dir = webui_cfg["out_dir"]
     audit_log = webui_cfg["audit_log"]
+    cover_retries = int(webui_cfg.get("cover_retries", 0))
+    cover_backoff = float(webui_cfg.get("cover_backoff_sec", 0.0))
 
     built, failed = [], []
 
@@ -58,15 +66,27 @@ def run_pipeline(items, webui_cfg: dict, progress_cb=None) -> dict:
     normalized = []
     for raw in items:
         try:
-            normalized.append(normalize_items._normalize(raw))
-        except Exception as exc:  # noqa: BLE001
-            failed.append({"item": raw, "stage": "normalize", "error": str(exc)})
+            normalized.append(normalize_items.normalize_one(raw))
+        except Exception as exc:  # noqa: BLE001 - classify, record, keep batch alive
+            failed.append({"item": raw, "stage": "normalize",
+                           "error": str(exc), "error_class": _error_class(exc)})
     _report(f"normalized {len(normalized)} item(s)")
 
-    # Stage 2: dedupe against published state (R9).
+    # Stage 2: dedupe against published state (R9). Record each skip so it is
+    # visible in run history instead of silently dropped (R5). dedupe stays
+    # read-only; the on_skip callback below owns the observability write.
     before = len(normalized)
+    skips = []
+
+    def _on_skip(record, reason):
+        skips.append((record, reason))
+
     with state.connect(webui_cfg["state_path"]) as conn:
-        deduped = list(dedupe_posts._dedupe(normalized, conn))
+        deduped = list(dedupe_posts.dedupe(normalized, conn, on_skip=_on_skip))
+    for record, reason in skips:
+        runs.record_run(webui_cfg["state_path"], stage="dedupe", post_id=None,
+                        status="skipped", detail=str(record.get("canonical_url", "")),
+                        error=f"reason={reason}")
     skipped = before - len(deduped)
     _report(f"deduped: {len(deduped)} new, {skipped} skipped")
 
@@ -74,21 +94,23 @@ def run_pipeline(items, webui_cfg: dict, progress_cb=None) -> dict:
     for rec in deduped:
         title = rec.get("title", "")
         try:
-            caption = render_caption._render(rec, template_cfg)
+            caption = render_caption.render(rec, template_cfg)
             rec["caption"] = caption
             rec["content_hash"] = url_utils.content_hash(
                 str(rec.get("canonical_url", "")), str(title), caption)
-            rec = select_cover._select(rec, download_dir, COVER_TIMEOUT_SEC)
-            rec = watermark_cover._watermark(rec, wm_cfg)
-            manifest_path = build_manifest._build(rec, out_dir, audit_log)
+            rec = select_cover.select(rec, download_dir, COVER_TIMEOUT_SEC,
+                                      cover_retries, cover_backoff)
+            rec = watermark_cover.watermark(rec, wm_cfg)
+            manifest_path = build_manifest.build(rec, out_dir, audit_log)
             post_id = Path(manifest_path).parent.name
             built.append({"post_id": post_id, "title": title,
                           "manifest_path": manifest_path})
             runs.record_run(webui_cfg["state_path"], stage="build", post_id=post_id,
                             status="ok", detail=title)
             _report(f"built {post_id}")
-        except Exception as exc:  # noqa: BLE001
-            failed.append({"title": title, "stage": "build", "error": str(exc)})
+        except Exception as exc:  # noqa: BLE001 - classify, record, keep batch alive
+            failed.append({"title": title, "stage": "build",
+                           "error": str(exc), "error_class": _error_class(exc)})
             runs.record_run(webui_cfg["state_path"], stage="build", post_id=None,
                             status="failed", detail=title, error=str(exc))
             _report(f"failed: {title}: {exc}")

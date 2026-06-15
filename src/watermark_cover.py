@@ -62,7 +62,7 @@ def _position_box(cover_size, logo_size, position: str, margin: int):
     return max(0, x), max(0, y)
 
 
-def _watermark(record: dict, cfg: dict) -> dict:
+def watermark(record: dict, cfg: dict) -> dict:
     """Pure helper: watermark one record's cover, return record + watermarked_cover_path.
 
     Never mutates the original cover file (R4). Reuses an existing output (no rewrite).
@@ -132,10 +132,13 @@ def _watermark(record: dict, cfg: dict) -> dict:
     return out
 
 
+_watermark = watermark  # deprecated: remove in vNEXT (use watermark)
+
+
 def _run(args) -> int:
     cfg = load_config(args.config)
     for record in read_lines():
-        write_line(_watermark(record, cfg))
+        write_line(watermark(record, cfg))
     return 0
 
 

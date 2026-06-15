@@ -67,7 +67,7 @@ def _enforce_max_chars(caption: str, canonical_url: str, max_chars: int) -> str:
     return body + tail
 
 
-def _render(record: dict, template_cfg: dict) -> str:
+def render(record: dict, template_cfg: dict) -> str:
     """Pure render: record + template config -> caption string."""
     values = defaultdict(str)
     for field in _RENDER_FIELDS:
@@ -79,10 +79,13 @@ def _render(record: dict, template_cfg: dict) -> str:
     return _enforce_max_chars(caption, values["canonical_url"], max_chars)
 
 
+_render = render  # deprecated: remove in vNEXT (use render)
+
+
 def _run(template_path: str):
     template_cfg = load_template(template_path)
     for record in io_ndjson.read_lines():
-        caption = _render(record, template_cfg)
+        caption = render(record, template_cfg)
         record["caption"] = caption
         record["content_hash"] = url_utils.content_hash(
             str(record.get("canonical_url", "")),

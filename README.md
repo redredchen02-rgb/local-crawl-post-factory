@@ -68,6 +68,7 @@ publish-post --manifest out/<id>/manifest.json --backend configs/backend.yaml --
 
 - 狀態存於 SQLite（`--state`）。`crawl-posts` 不寫狀態；`build-manifest` 起寫 `package_built`；`publish-post` 寫 `published`。
 - **去重只認 `published`**：只有真正發布過的 `canonical_url` / `title_hash` 會被跳過。首版尚無發布階段，故 dedupe 實質永遠放行 —— 此為預期行為。
+- **跳過皆可見**：經 WebUI/pipeline 跑時，每筆被跳過的項目都會記入運行歷史（`runs`，`stage=dedupe`、`status=skipped`，並標明命中 `url` 還是 `title`），不再靜默丟棄；`dedupe-posts` CLI 維持 READ-ONLY。
 
 ## 測試
 

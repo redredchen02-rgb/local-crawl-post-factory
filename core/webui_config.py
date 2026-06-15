@@ -4,6 +4,7 @@ Holds only WebUI-level fields; the crawler/watermark/template configs continue
 to live in their own existing yaml files, referenced here by path.
 """
 
+import os
 from pathlib import Path
 
 from core.errors import ValidationError, DependencyError
@@ -16,6 +17,8 @@ DEFAULTS = {
     "limit": 30,
     "download_delay": 0.0,
     "concurrency": 8,
+    "cover_retries": 0,
+    "cover_backoff_sec": 0.0,
     "source_id": "",
     "template_path": "./templates/fixed-format.zh.yaml",
     "watermark_config": "./configs/watermark.yaml",
@@ -27,8 +30,23 @@ DEFAULTS = {
     "storage_state": "./auth/storage-state.json",
 }
 
-_INT_FIELDS = ("limit", "concurrency")
-_FLOAT_FIELDS = ("download_delay",)
+_INT_FIELDS = ("limit", "concurrency", "cover_retries")
+_FLOAT_FIELDS = ("download_delay", "cover_backoff_sec")
+
+# Output/runtime path fields resolved relative to the config file's directory
+# (R7) so the WebUI writes to the same place regardless of launch directory.
+# Asset-config paths (template_path/watermark_config/backend_config) are
+# deliberately NOT resolved here: their defaults reference repo-shipped files
+# relative to the run directory; rewriting them against the config dir would
+# break the shipped defaults.
+_PATH_FIELDS = ("download_dir", "out_dir", "state_path", "audit_log", "storage_state")
+# Env overrides are scoped to the runtime-output paths an operator actually
+# relocates for CI/containers; precedence is env > yaml > default.
+_ENV_OVERRIDES = {
+    "state_path": "CPOST_STATE_PATH",
+    "out_dir": "CPOST_OUT_DIR",
+    "download_dir": "CPOST_DOWNLOAD_DIR",
+}
 
 
 def load(path) -> dict:
@@ -51,7 +69,38 @@ def load(path) -> dict:
             if key in cfg and value is not None:
                 cfg[key] = value
     _coerce(cfg)
+    _resolve_paths(cfg, base=p.parent)
     return cfg
+
+
+def _resolve_paths(cfg: dict, base) -> None:
+    """Resolve path fields to absolute paths (R7). Mutates ``cfg`` in place.
+
+    Relative paths are resolved against ``base`` (the config file's directory);
+    env overrides (``CPOST_*``) take precedence and are ``expanduser``-ed.
+    ``storage_state`` is credential-grade: it must not resolve inside ``out_dir``
+    or ``download_dir`` (which may be served / contain remote-fetched content).
+    """
+    base = Path(base).resolve()
+    for field in _PATH_FIELDS:
+        env_name = _ENV_OVERRIDES.get(field)
+        from_env = bool(env_name and os.environ.get(env_name))
+        raw = os.environ[env_name] if from_env else cfg.get(field)
+        if not isinstance(raw, str) or not raw.strip():
+            if from_env:
+                raise ValidationError(f"{env_name} is empty or not a valid path")
+            continue
+        p = Path(raw).expanduser() if from_env else Path(raw)
+        if not p.is_absolute():
+            p = base / p
+        cfg[field] = str(p.resolve())
+
+    ss = Path(cfg["storage_state"])
+    for guard in ("out_dir", "download_dir"):
+        gpath = Path(cfg[guard])
+        if ss == gpath or ss.is_relative_to(gpath):
+            raise ValidationError(
+                f"storage_state must not resolve inside {guard} (credential exposure)")
 
 
 def save(path, cfg: dict) -> dict:

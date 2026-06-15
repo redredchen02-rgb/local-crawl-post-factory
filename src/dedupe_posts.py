@@ -23,11 +23,14 @@ from core.io_ndjson import read_lines, write_line
 from core.url_utils import title_hash
 
 
-def _dedupe(records, conn):
+def dedupe(records, conn, on_skip=None):
     """Yield records that are not already published in ``conn``.
 
-    Read-only: never writes to state. Raises ValidationError when a record is
-    missing the required ``canonical_url`` or ``title`` field.
+    Read-only: never writes to state. When a record is dropped, ``on_skip`` (if
+    given) is called with ``(record, reason)`` where reason is 'url' or 'title'
+    -- letting the caller record the decision for observability (R5) without
+    making this stage a writer. Raises ValidationError when a record is missing
+    the required ``canonical_url`` or ``title`` field.
     """
     for record in records:
         canonical_url = record.get("canonical_url")
@@ -37,14 +40,20 @@ def _dedupe(records, conn):
         if not title:
             raise ValidationError("record missing required field 'title'")
         th = title_hash(title)
-        if state.is_processed(conn, canonical_url, th):
+        reason = state.skip_reason(conn, canonical_url, th)
+        if reason is not None:
+            if on_skip is not None:
+                on_skip(record, reason)
             continue  # already published -> drop
         yield record
 
 
+_dedupe = dedupe  # deprecated: remove in vNEXT (use dedupe)
+
+
 def _run(args) -> int:
     with state.connect(args.state) as conn:
-        for record in _dedupe(read_lines(), conn):
+        for record in dedupe(read_lines(), conn):
             write_line(record)
     return 0
 
