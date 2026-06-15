@@ -51,7 +51,7 @@ def connect(path: str):
         conn.close()
 
 
-def is_processed(conn, canonical_url: str, title_hash: str = None) -> bool:
+def is_processed(conn, canonical_url: str, title_hash: str | None = None) -> bool:
     """True only if a *published* row matches this canonical_url (Q6: URL-only).
 
     Dedup is URL-only: two different articles that share a title are NOT treated
@@ -65,7 +65,7 @@ def is_processed(conn, canonical_url: str, title_hash: str = None) -> bool:
     return cur.fetchone() is not None
 
 
-def skip_reason(conn, canonical_url: str, title_hash: str = None):
+def skip_reason(conn, canonical_url: str, title_hash: str | None = None):
     """Why an item would be skipped: 'url' or None (Q6: URL-only).
 
     Pure query (no writes). Only a published ``canonical_url`` match causes a
