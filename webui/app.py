@@ -268,19 +268,15 @@ def create_app(config_path: str = WEBUI_CONFIG_PATH) -> FastAPI:
         pkg = _safe_pkg_dir(cfg["out_dir"], post_id)
         if pkg is None or not (pkg / "manifest.json").exists():
             return HTMLResponse('<p class="error">找不到此貼文包</p>', status_code=404)
-        # R6 三重閘門，順序固定，任一不過即拒（不可逆動作不被繞過，R8）。
+        # R6 三重閘門（順序固定 ①→②→③）—— 純決策抽到 check_publish_gates 便於單測。
         m = json.loads((pkg / "manifest.json").read_text(encoding="utf-8"))
-        # Gate ① : reviewed AND the content is still the reviewed version (Q9).
-        # Fail-closed: no marker, or content changed since review -> reject.
         stored_cid = reviewed.get(cfg["state_path"], post_id)
-        if stored_cid is None or stored_cid != reviewed.content_id(m):
-            return HTMLResponse(
-                '<p class="error">請先開啟審核頁再發布（或內容已變更，需重新審核）</p>',
-                status_code=400)
-        if m.get("backend", {}).get("status") != "draft_verified":
-            return HTMLResponse('<p class="error">尚未驗證，不可發布</p>', status_code=400)
-        if title.strip() != (m.get("content", {}).get("title") or "").strip():
-            return HTMLResponse('<p class="error">標題不符，發布取消</p>', status_code=400)
+        msg = check_publish_gates(
+            stored_cid, reviewed.content_id(m),
+            m.get("backend", {}).get("status"),
+            title, m.get("content", {}).get("title"))
+        if msg:
+            return HTMLResponse(f'<p class="error">{msg}</p>', status_code=400)
 
         ns = SimpleNamespace(
             manifest=str(pkg / "manifest.json"), backend=cfg["backend_config"],
@@ -335,6 +331,21 @@ def create_app(config_path: str = WEBUI_CONFIG_PATH) -> FastAPI:
         return templates.TemplateResponse(request, template, {"lines": lines})
 
     return app
+
+
+def check_publish_gates(stored_cid, current_cid, status, submitted_title, manifest_title):
+    """Pure publish-gate decision (R6/Q9). Returns a rejection message, or None
+    if all three gates pass. Order is fixed and security-critical:
+    ① reviewed AND content unchanged (fail-closed) → ② draft_verified → ③ title.
+    Kept pure (no I/O) so the gate logic is unit-testable without the app.
+    """
+    if stored_cid is None or stored_cid != current_cid:
+        return "請先開啟審核頁再發布（或內容已變更，需重新審核）"
+    if status != "draft_verified":
+        return "尚未驗證，不可發布"
+    if (submitted_title or "").strip() != (manifest_title or "").strip():
+        return "標題不符，發布取消"
+    return None
 
 
 def _read_failure(pkg):

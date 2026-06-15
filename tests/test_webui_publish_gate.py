@@ -6,7 +6,7 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from webui.app import create_app
+from webui.app import create_app, check_publish_gates
 from core import webui_config
 from src import publish_post
 
@@ -68,6 +68,20 @@ def test_publish_all_gates_pass_submits_job(tmp_path, monkeypatch):
             break
         time.sleep(0.02)
     assert called["n"] == 1
+
+
+def test_check_publish_gates_pure():
+    """U10: the extracted pure gate decision, unit-tested without the app.
+    Order is ①→②→③, so an earlier failing gate masks later ones."""
+    ok = ("cid", "cid", "draft_verified", "T", "T")
+    assert check_publish_gates(*ok) is None
+    # ① no marker / content changed -> review message (and masks wrong title/status)
+    assert "審核頁" in check_publish_gates(None, "cid", "draft_verified", "X", "T")
+    assert "審核頁" in check_publish_gates("old", "new", "package_built", "X", "T")
+    # ② verified gate
+    assert "尚未驗證" in check_publish_gates("cid", "cid", "package_built", "T", "T")
+    # ③ title gate
+    assert "標題不符" in check_publish_gates("cid", "cid", "draft_verified", "X", "T")
 
 
 def _wait(flag):
