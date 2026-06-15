@@ -4,9 +4,17 @@ import json
 from pathlib import Path
 
 
-def record(log_path: str, post_id: str, stage: str, status: str, ts: str, **extra) -> None:
-    """Append one audit line to ``log_path``."""
-    entry = {"ts": ts, "post_id": post_id, "stage": stage, "status": status}
+def record(log_path: str, post_id: str, stage: str, status: str, ts: str,
+           *, severity: str = "info", run_id: str = None, **extra) -> None:
+    """Append one audit line to ``log_path``.
+
+    ``severity`` defaults to "info" (backward compatible); ``run_id`` correlates
+    entries across one pipeline/batch run for life-cycle lookups.
+    """
+    entry = {"ts": ts, "post_id": post_id, "stage": stage, "status": status,
+             "severity": severity}
+    if run_id is not None:
+        entry["run_id"] = run_id
     entry.update(extra)
     p = Path(log_path)
     p.parent.mkdir(parents=True, exist_ok=True)

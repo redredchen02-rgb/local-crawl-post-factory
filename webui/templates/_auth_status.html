@@ -5,3 +5,9 @@
       {% else %}background:#eee;color:#666{% endif %}">
   ● {{ light.label }}
 </span>
+{% if light.guidance %}
+<div class="auth-guidance" style="margin-top:.4rem;font-size:.85rem;color:#666">
+  <p>{{ light.guidance }}</p>
+  <code style="display:block;padding:.3rem .5rem;background:#f5f5f5;border-radius:4px;white-space:pre-wrap">{{ light.cmd }}</code>
+</div>
+{% endif %}

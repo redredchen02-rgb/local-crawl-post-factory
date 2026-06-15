@@ -15,6 +15,11 @@ from pathlib import Path
 
 from core.errors import DependencyError
 
+# Schema kept in sync with the migration in _ensure_schema(): a fresh DB gets
+# run_id/severity from this CREATE; an old DB gets them via ADD COLUMN. Both
+# must end with identical columns.
+# Table create only. Indexes are created in _ensure_schema *after* migration so
+# an index on a post-release column (run_id) is never built before ADD COLUMN.
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS runs (
   id        INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -23,15 +28,55 @@ CREATE TABLE IF NOT EXISTS runs (
   post_id   TEXT,
   status    TEXT NOT NULL,
   detail    TEXT,
-  error     TEXT
+  error     TEXT,
+  run_id    TEXT,
+  severity  TEXT
 );
-CREATE INDEX IF NOT EXISTS idx_runs_ts ON runs(ts);
-CREATE INDEX IF NOT EXISTS idx_runs_post ON runs(post_id);
 """
+
+# Columns added after the original release; applied to old DBs via ADD COLUMN.
+_ADDED_COLUMNS = (("run_id", "TEXT"), ("severity", "TEXT"))
+_INDEXES = (
+    "CREATE INDEX IF NOT EXISTS idx_runs_ts ON runs(ts)",
+    "CREATE INDEX IF NOT EXISTS idx_runs_post ON runs(post_id)",
+    "CREATE INDEX IF NOT EXISTS idx_runs_run_id ON runs(run_id)",
+)
 
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+_run_seq = 0
+
+
+def new_run_id() -> str:
+    """A process-unique correlation id for one pipeline/batch run.
+
+    Timestamp + in-process sequence (no random source needed); good enough to
+    group every record of a single run for life-cycle lookups.
+    """
+    global _run_seq
+    _run_seq += 1
+    return f"{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%f')}-{_run_seq}"
+
+
+def _ensure_schema(conn) -> None:
+    """Create the table and bring an old DB up to the current columns.
+
+    Kept off the hot write path: callers run this once per connection at open
+    time, not per insert. Tolerates a concurrent migration (duplicate column).
+    """
+    conn.executescript(_SCHEMA)
+    existing = {row[1] for row in conn.execute("PRAGMA table_info(runs)")}
+    for name, coltype in _ADDED_COLUMNS:
+        if name not in existing:
+            try:
+                conn.execute(f"ALTER TABLE runs ADD COLUMN {name} {coltype}")
+            except sqlite3.OperationalError:  # pragma: no cover - concurrent migrate
+                pass  # another connection added it first
+    for stmt in _INDEXES:  # after migration: run_id column now exists
+        conn.execute(stmt)
 
 
 @contextmanager
@@ -43,31 +88,42 @@ def _connect(path):
     except sqlite3.Error as exc:  # pragma: no cover
         raise DependencyError(f"sqlite unavailable: {exc}")
     try:
-        conn.executescript(_SCHEMA)
+        _ensure_schema(conn)
         yield conn
         conn.commit()
     finally:
         conn.close()
 
 
-def record_run(path, *, stage, status, post_id=None, detail=None, error=None) -> None:
+def record_run(path, *, stage, status, post_id=None, detail=None, error=None,
+               run_id=None, severity=None) -> None:
     """Append one run record. Never raises on a missing table (auto-created)."""
     with _connect(path) as conn:
         conn.execute(
-            "INSERT INTO runs (ts, stage, post_id, status, detail, error) VALUES (?,?,?,?,?,?)",
-            (_now(), stage, post_id, status, detail, error),
+            "INSERT INTO runs (ts, stage, post_id, status, detail, error, run_id, severity) "
+            "VALUES (?,?,?,?,?,?,?,?)",
+            (_now(), stage, post_id, status, detail, error, run_id, severity),
         )
 
 
-def list_runs(path, limit=100) -> list:
-    """Return the most recent runs (newest first) as dicts."""
+def list_runs(path, limit=100, *, post_id=None, severity=None) -> list:
+    """Return the most recent runs (newest first) as dicts, optionally filtered."""
     if not Path(path).exists():
         return []
+    where, params = [], []
+    if post_id is not None:
+        where.append("post_id = ?")
+        params.append(post_id)
+    if severity is not None:
+        where.append("severity = ?")
+        params.append(severity)
+    clause = (" WHERE " + " AND ".join(where)) if where else ""
+    params.append(int(limit))
     with _connect(path) as conn:
         conn.row_factory = sqlite3.Row
         cur = conn.execute(
-            "SELECT id, ts, stage, post_id, status, detail, error FROM runs "
-            "ORDER BY id DESC LIMIT ?",
-            (int(limit),),
+            "SELECT id, ts, stage, post_id, status, detail, error, run_id, severity "
+            "FROM runs" + clause + " ORDER BY id DESC LIMIT ?",
+            params,
         )
         return [dict(r) for r in cur.fetchall()]

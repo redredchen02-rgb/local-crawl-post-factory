@@ -3,12 +3,14 @@
 {% else %}
   <div class="table-wrap">
   <table>
-    <thead><tr><th>時間</th><th>階段</th><th>post_id</th><th>結果</th><th>細節</th></tr></thead>
+    <thead><tr><th>時間</th><th>階段</th><th>post_id</th><th>結果</th><th>severity</th><th>run_id</th><th>細節</th></tr></thead>
     <tbody>
     {% for r in runs %}
       <tr{% if r.status == 'failed' %} class="error"{% endif %}>
         <td>{{ r.ts }}</td><td>{{ r.stage }}</td><td>{{ r.post_id or '' }}</td>
-        <td><span class="pill {{ r.status }}">{{ r.status }}</span></td><td>{{ r.error or r.detail or '' }}</td>
+        <td><span class="pill {{ r.status }}">{{ r.status }}</span></td>
+        <td>{{ r.severity or '' }}</td><td class="hint">{{ r.run_id or '' }}</td>
+        <td>{{ r.error or r.detail or '' }}</td>
       </tr>
     {% endfor %}
     </tbody>

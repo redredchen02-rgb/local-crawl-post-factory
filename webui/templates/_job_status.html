@@ -9,6 +9,12 @@
   <p class="ok">完成 ✓ 建包 {{ job.result.built | length }} 篇，跳過 {{ job.result.skipped }}，失敗 {{ job.result.failed | length }}。</p>
   <ul>{% for b in job.result.built %}<li>{{ b.post_id }} — {{ b.title }}</li>{% endfor %}</ul>
   <p class="hint"><a href="/packages">前往上膛清單 →</a></p>
+  {% elif job.result and job.result.get('batch') %}
+  <p class="ok">批量 {{ job.result.stage }} 完成 ✓ 成功 {{ job.result.ok | length }}，失敗 {{ job.result.failed | length }}。</p>
+  {% if job.result.failed %}
+  <ul>{% for f in job.result.failed %}<li class="error">{{ f.post_id }} — {{ f.error }}</li>{% endfor %}</ul>
+  {% endif %}
+  <p class="hint"><a href="/packages">前往上膛清單 →</a></p>
   {% else %}
   <p class="ok">完成 ✓ {{ job.result.stage }} — {{ job.result.post_id }}</p>
   {% endif %}
