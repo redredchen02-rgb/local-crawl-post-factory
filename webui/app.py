@@ -12,7 +12,7 @@ from fastapi.responses import HTMLResponse, FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from core import webui_config, jobs, pipeline
+from core import webui_config, jobs, pipeline, runs
 from core.errors import CliError
 
 WEBUI_CONFIG_PATH = "./configs/webui.yaml"
@@ -110,7 +110,36 @@ def create_app(config_path: str = WEBUI_CONFIG_PATH) -> FastAPI:
                 return FileResponse(str(f))
         return PlainTextResponse("no cover", status_code=404)
 
+    @app.get("/history", response_class=HTMLResponse)
+    def history(request: Request):
+        cfg = webui_config.load(app.state.config_path)
+        rows = runs.list_runs(cfg["state_path"], limit=200)
+        return templates.TemplateResponse(request, "history.html", {"runs": rows})
+
+    @app.get("/audit", response_class=HTMLResponse)
+    def audit(request: Request):
+        cfg = webui_config.load(app.state.config_path)
+        return templates.TemplateResponse(
+            request, "audit.html", {"lines": _tail_audit(cfg["audit_log"], 200)})
+
     return app
+
+
+def _tail_audit(audit_log: str, limit: int):
+    """Return the last ``limit`` parsed audit lines (newest first); skip bad lines."""
+    p = Path(audit_log)
+    if not p.exists():
+        return []
+    parsed = []
+    for raw in p.read_text(encoding="utf-8").splitlines():
+        raw = raw.strip()
+        if not raw:
+            continue
+        try:
+            parsed.append(json.loads(raw))
+        except json.JSONDecodeError:
+            continue  # skip broken line, never crash the view
+    return list(reversed(parsed))[:limit]
 
 
 def _safe_pkg_dir(out_dir: str, post_id: str):
