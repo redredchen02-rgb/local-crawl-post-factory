@@ -3,6 +3,7 @@
 import argparse
 import json
 import sys
+from pathlib import Path
 
 from core import cli, manifest as mf, audit
 from browser.selector_recipe import load_backend
@@ -18,6 +19,7 @@ def _parse(argv):
     p.add_argument("--storage-state")
     p.add_argument("--headless", action="store_true")
     p.add_argument("--timeout-ms", type=int, default=backend_driver.DEFAULT_TIMEOUT_MS)
+    p.add_argument("--retries", type=int, default=None, help="override backend.yaml retry.count")
     return p.parse_args(argv)
 
 
@@ -29,7 +31,9 @@ def _run(args) -> int:
     title = manifest.get("content", {}).get("title") or ""
 
     with backend_driver.session(args.storage_state, args.headless, args.timeout_ms) as page:
-        backend_driver.verify_draft(page, cfg, title)
+        backend_driver.verify_draft(
+            page, cfg, title, pkg_dir=str(Path(args.manifest).parent),
+            **backend_driver.retry_kwargs(cfg, args.retries))
 
     mf.set_backend(manifest, status="draft_verified")
     mf.save(args.manifest, manifest)

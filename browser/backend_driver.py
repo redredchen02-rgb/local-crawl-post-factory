@@ -20,6 +20,13 @@ DEFAULT_RETRIES = 1
 DEFAULT_BACKOFF_SEC = 0.0
 
 
+def retry_kwargs(cfg, retries_override=None):
+    """Build {retries, backoff_sec} from backend.yaml ``retry`` + optional override."""
+    retry = cfg.get("retry") or {}
+    retries = retries_override if retries_override is not None else retry.get("count", DEFAULT_RETRIES)
+    return {"retries": int(retries), "backoff_sec": float(retry.get("backoff_sec", DEFAULT_BACKOFF_SEC))}
+
+
 def _check_session(cfg, page):
     """Raise SessionExpiredError if the page was redirected to a login page.
 

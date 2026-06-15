@@ -29,6 +29,7 @@ def _parse(argv):
     p.add_argument("--storage-state")
     p.add_argument("--headless", action="store_true")
     p.add_argument("--timeout-ms", type=int, default=backend_driver.DEFAULT_TIMEOUT_MS)
+    p.add_argument("--retries", type=int, default=None, help="override backend.yaml retry.count")
     p.add_argument("--dry-run", action="store_true")
     return p.parse_args(argv)
 
@@ -46,7 +47,9 @@ def _run(args) -> int:
         return 0
 
     with backend_driver.session(args.storage_state, args.headless, args.timeout_ms) as page:
-        result = backend_driver.create_draft(page, cfg, manifest, args.manifest)
+        result = backend_driver.create_draft(
+            page, cfg, manifest, args.manifest,
+            **backend_driver.retry_kwargs(cfg, args.retries))
 
     mf.set_backend(manifest, status="drafted", draft_url=result["draft_url"])
     mf.save(args.manifest, manifest)

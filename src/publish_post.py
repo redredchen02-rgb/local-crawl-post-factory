@@ -30,6 +30,7 @@ def _parse(argv):
     p.add_argument("--timeout-ms", type=int, default=backend_driver.DEFAULT_TIMEOUT_MS)
     p.add_argument("--approve", action="store_true")
     p.add_argument("--state", help="SQLite state path to mark published (R9)")
+    p.add_argument("--retries", type=int, default=None, help="override backend.yaml retry.count")
     return p.parse_args(argv)
 
 
@@ -49,7 +50,9 @@ def _run(args) -> int:
     draft_url = manifest.get("backend", {}).get("draft_url")
 
     with backend_driver.session(args.storage_state, args.headless, args.timeout_ms) as page:
-        result = backend_driver.publish_draft(page, cfg, draft_url)
+        result = backend_driver.publish_draft(
+            page, cfg, draft_url, pkg_dir=str(Path(args.manifest).parent),
+            **backend_driver.retry_kwargs(cfg, args.retries))
 
     published_url = result["published_url"]
     mf.set_backend(manifest, status="published", published_url=published_url)
