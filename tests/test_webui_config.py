@@ -19,6 +19,21 @@ def test_save_load_roundtrip(tmp_path):
     assert loaded["limit"] == 5
 
 
+def test_cover_retry_keys_roundtrip(tmp_path):
+    # R2: cover retry knobs must survive load() so the WebUI pipeline can use them.
+    p = str(tmp_path / "webui.yaml")
+    saved = webui_config.save(p, {"cover_retries": 2, "cover_backoff_sec": 0.5})
+    assert saved["cover_retries"] == 2 and saved["cover_backoff_sec"] == 0.5
+    loaded = webui_config.load(p)
+    assert loaded["cover_retries"] == 2
+    assert loaded["cover_backoff_sec"] == 0.5
+
+
+def test_invalid_cover_retries_rejected(tmp_path):
+    with pytest.raises(ValidationError):
+        webui_config.save(str(tmp_path / "webui.yaml"), {"cover_retries": "abc"})
+
+
 def test_invalid_start_url_rejected(tmp_path):
     with pytest.raises(ValidationError):
         webui_config.save(str(tmp_path / "webui.yaml"), {"start_url": "not-a-url"})

@@ -16,6 +16,8 @@ DEFAULTS = {
     "limit": 30,
     "download_delay": 0.0,
     "concurrency": 8,
+    "cover_retries": 0,
+    "cover_backoff_sec": 0.0,
     "source_id": "",
     "template_path": "./templates/fixed-format.zh.yaml",
     "watermark_config": "./configs/watermark.yaml",
@@ -27,8 +29,8 @@ DEFAULTS = {
     "storage_state": "./auth/storage-state.json",
 }
 
-_INT_FIELDS = ("limit", "concurrency")
-_FLOAT_FIELDS = ("download_delay",)
+_INT_FIELDS = ("limit", "concurrency", "cover_retries")
+_FLOAT_FIELDS = ("download_delay", "cover_backoff_sec")
 
 
 def load(path) -> dict:
