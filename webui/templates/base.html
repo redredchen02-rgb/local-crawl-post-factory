@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>local-crawl-post-factory</title>
+  <script src="/static/htmx.min.js"></script>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 820px; margin: 2rem auto; padding: 0 1rem; color: #1c1c1e; }
+    nav a { margin-right: 1rem; }
+    label { display: block; margin: .75rem 0 .25rem; font-weight: 600; }
+    input[type=text] { width: 100%; padding: .5rem; box-sizing: border-box; }
+    button { padding: .5rem 1rem; margin-top: 1rem; cursor: pointer; }
+    .error { color: #b00020; }
+    .ok { color: #0a7d32; }
+    table { border-collapse: collapse; width: 100%; margin-top: 1rem; }
+    th, td { border: 1px solid #ddd; padding: .5rem; text-align: left; }
+    .hint { color: #666; font-size: .9rem; }
+  </style>
+</head>
+<body>
+  <nav><a href="/settings">設定</a><a href="/packages">上膛清單</a></nav>
+  <h1>{% block heading %}{% endblock %}</h1>
+  {% block content %}{% endblock %}
+</body>
+</html>

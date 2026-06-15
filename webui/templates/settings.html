@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block heading %}設定 / Settings{% endblock %}
+{% block content %}
+{% if saved %}<p class="ok">已儲存 ✓</p>{% endif %}
+
+<form hx-post="/settings" hx-target="this" hx-swap="outerHTML">
+  <label>來源 URL（start_url）</label>
+  <input type="text" name="start_url" value="{{ cfg.start_url }}" placeholder="https://example.com/news">
+
+  <label>內容頁 regex（item_regex）</label>
+  <input type="text" name="item_regex" value="{{ cfg.item_regex }}">
+
+  <label>排除 regex（deny_regex）</label>
+  <input type="text" name="deny_regex" value="{{ cfg.deny_regex }}">
+
+  <label>數量上限（limit）</label>
+  <input type="text" name="limit" value="{{ cfg.limit }}">
+
+  <label>來源代號（source_id，可空）</label>
+  <input type="text" name="source_id" value="{{ cfg.source_id }}">
+
+  <button type="submit">儲存設定</button>
+</form>
+
+<hr>
+<h2>爬取並上膛</h2>
+<p class="hint">輸入 URL 後按下方按鈕：背景跑「爬取 → 建包」，發布仍維持人工 CLI。</p>
+<button hx-post="/crawl" hx-target="#job" hx-swap="innerHTML">爬取最新並建包</button>
+<div id="job"></div>
+{% endblock %}

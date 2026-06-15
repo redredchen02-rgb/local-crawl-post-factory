@@ -83,6 +83,19 @@ make demo           # 把 inputs/sample.ndjson 跑成 out/demo/<post_id>/ 包
 make test           # 70 passed
 ```
 
+## WebUI（本機）
+
+FastAPI + HTMX 的本機介面：設定頁輸入 URL → 一鍵「爬取並建包」→ 看「上膛清單」。
+**只綁 `127.0.0.1`、勿暴露公網；WebUI 自動化止於建包，發布仍走 CLI `publish-post --approve`。**
+
+```bash
+make install-webui      # 安裝 web 依賴
+make vendor-htmx        # 下載 htmx（首次，UI 互動需要）
+make webui              # 啟動 → http://127.0.0.1:8000
+```
+
+設定存 `configs/webui.yaml`（與 CLI 共用爬蟲/模板/浮水印的既有 yaml）。WebUI 與 CLI 跑的是**同一條** `core/pipeline` orchestrator，邏輯不重複。
+
 ## 排程 / Agent 自動化
 
 見 [`examples/scheduling.md`](examples/scheduling.md) — cron 建草稿範本、退出碼處理、登入態到期、人工發布。

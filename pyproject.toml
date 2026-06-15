@@ -15,10 +15,12 @@ dependencies = [
 
 [project.optional-dependencies]
 browser = ["playwright>=1.40"]
-dev = ["pytest>=8.0"]
+webui = ["fastapi>=0.110", "uvicorn[standard]>=0.27", "jinja2>=3.1", "python-multipart>=0.0.9"]
+dev = ["pytest>=8.0", "httpx>=0.27"]
 
 [project.scripts]
 auth-login = "src.auth_login:main"
+crawl-post-webui = "webui.app:run"
 crawl-posts = "src.crawl_posts:main"
 normalize-items = "src.normalize_items:main"
 dedupe-posts = "src.dedupe_posts:main"
@@ -31,7 +33,7 @@ verify-draft = "src.verify_draft:main"
 publish-post = "src.publish_post:main"
 
 [tool.setuptools]
-packages = ["src", "core", "browser"]
+packages = ["src", "core", "browser", "webui"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

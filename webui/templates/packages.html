@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block heading %}上膛清單 / Staged Packages{% endblock %}
+{% block content %}
+{% if not packages %}
+  <p class="hint">尚無上膛貼文。到<a href="/settings">設定</a>輸入 URL 並爬取。</p>
+{% else %}
+  <table>
+    <thead><tr><th>post_id</th><th>標題</th><th>狀態</th></tr></thead>
+    <tbody>
+    {% for p in packages %}
+      <tr{% if p.broken %} class="error"{% endif %}>
+        <td>{{ p.post_id }}</td><td>{{ p.title }}</td><td>{{ p.status }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <p class="hint">發布為人工動作：<code>publish-post --manifest out/&lt;post_id&gt;/manifest.json --backend configs/backend.yaml --approve</code></p>
+{% endif %}
+{% endblock %}

@@ -267,6 +267,23 @@ def _run(args) -> int:
         opts["no_robots"] = True
     opts["start_urls"] = start_urls
 
+    for item in crawl_items(opts):
+        write_line(item)
+    return 0
+
+
+def crawl_items(opts: dict) -> list:
+    """Run the crawl in a fresh child process and return the items as a list.
+
+    Shared by the CLI (`_run`) and the in-process pipeline orchestrator so both
+    use one crawl implementation. Same contracts: DependencyError if Scrapy is
+    missing, ExternalError if the site is unreachable/timed out.
+    """
+    try:
+        import scrapy  # noqa: F401
+    except ImportError as exc:
+        raise DependencyError(f"Scrapy is not installed: {exc}")
+
     tmpdir = tempfile.mkdtemp(prefix="crawl_posts_")
     out_path = os.path.join(tmpdir, "items.ndjson")
     status_path = os.path.join(tmpdir, "status.json")
@@ -276,7 +293,6 @@ def _run(args) -> int:
     proc.start()
     proc.join()
 
-    # Read status.
     status = {"responses": 0, "items": 0, "error": None}
     if os.path.exists(status_path):
         with open(status_path, encoding="utf-8") as fh:
@@ -289,20 +305,18 @@ def _run(args) -> int:
     if err and str(err).startswith("__dependency__"):
         raise DependencyError(str(err))
 
-    # Unreachable / DNS / timeout: no responses came back.
     if status.get("responses", 0) == 0:
         detail = err or "no response from any start URL"
         raise ExternalError(f"crawl failed: site unreachable or timed out ({detail})")
 
-    # Relay items to real stdout.
+    items = []
     if os.path.exists(out_path):
         with open(out_path, encoding="utf-8") as fh:
             for line in fh:
                 line = line.strip()
-                if not line:
-                    continue
-                write_line(json.loads(line))
-    return 0
+                if line:
+                    items.append(json.loads(line))
+    return items
 
 
 def main() -> None:
