@@ -27,8 +27,20 @@
 </div>
 <div id="action"></div>
 
-<h2>確認無誤後發布（人工 CLI）</h2>
-<p class="hint">WebUI 不發布。複製以下指令在終端執行（需先 <code>auth-login</code> 取得 storage-state）：</p>
+{% if status == 'draft_verified' %}
+<h2>發布（三重確認）</h2>
+<p class="hint">你正在此審核頁；狀態已驗證。請輸入貼文標題以確認發布——此動作不可逆。</p>
+<form hx-post="/packages/{{ post_id }}/publish" hx-target="#action" hx-swap="innerHTML">
+  <label>輸入標題以確認</label>
+  <input type="text" name="title" placeholder="{{ title }}">
+  <button type="submit">確認發布</button>
+</form>
+{% else %}
+<p class="hint">發布鈕僅在狀態為 <code>draft_verified</code> 時出現（目前：{{ status }}）。請先建草稿並驗證。</p>
+{% endif %}
+
+<h2>或用 CLI 發布</h2>
+<p class="hint">複製以下指令在終端執行（需先 <code>auth-login</code> 取得 storage-state）：</p>
 <pre style="white-space:pre-wrap;background:#f7f7f8;padding:1rem;border-radius:6px">draft-post   --manifest out/{{ post_id }}/manifest.json --backend {{ backend_config }} --storage-state ./auth/storage-state.json --headless
 verify-draft --manifest out/{{ post_id }}/manifest.json --backend {{ backend_config }} --storage-state ./auth/storage-state.json --headless
 publish-post --manifest out/{{ post_id }}/manifest.json --backend {{ backend_config }} --storage-state ./auth/storage-state.json --state ./state/published.sqlite --approve --headless</pre>

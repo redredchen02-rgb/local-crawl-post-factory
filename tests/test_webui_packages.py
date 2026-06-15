@@ -93,12 +93,9 @@ def test_detail_path_traversal_blocked(tmp_path):
     assert client.get("/packages/..%2f..%2fetc").status_code == 404
 
 
-def test_no_publish_endpoint_in_app(tmp_path):
-    """W6: the WebUI must never expose a publish action."""
-    source = Path("webui/app.py").read_text(encoding="utf-8")
-    assert "publish_post" not in source
-    assert "publish_draft" not in source
-    # routes: ensure no path contains 'publish'
+def test_publish_endpoint_is_gated_not_absent(tmp_path):
+    """Control-center model: a publish route exists but is gated (see
+    test_webui_publish_gate). It must never publish without the triple gate."""
     app = create_app(str(tmp_path / "webui.yaml"))
     paths = [r.path for r in app.routes]
-    assert not any("publish" in p for p in paths)
+    assert "/packages/{post_id}/publish" in paths

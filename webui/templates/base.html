@@ -19,7 +19,10 @@
   </style>
 </head>
 <body>
-  <nav><a href="/settings">設定</a><a href="/packages">上膛清單</a><a href="/history">運行歷史</a><a href="/audit">Audit</a></nav>
+  <nav>
+    <a href="/settings">設定</a><a href="/packages">上膛清單</a><a href="/history">運行歷史</a><a href="/audit">Audit</a>
+    <span style="float:right" hx-get="/auth-status" hx-trigger="load, every 10s" hx-swap="innerHTML">登入態：…</span>
+  </nav>
   <h1>{% block heading %}{% endblock %}</h1>
   {% block content %}{% endblock %}
 </body>

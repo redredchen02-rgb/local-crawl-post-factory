@@ -14,9 +14,9 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from core import webui_config, jobs, pipeline, runs
-from core.errors import CliError
+from core.errors import CliError, SessionExpiredError
 from browser import backend_driver
-from src import draft_post, verify_draft
+from src import draft_post, verify_draft, publish_post
 
 WEBUI_CONFIG_PATH = "./configs/webui.yaml"
 _HERE = Path(__file__).parent
@@ -27,6 +27,8 @@ def create_app(config_path: str = WEBUI_CONFIG_PATH) -> FastAPI:
     app = FastAPI(title="local-crawl-post-factory")
     app.mount("/static", StaticFiles(directory=str(_HERE / "static")), name="static")
     app.state.config_path = config_path
+    app.state.reviewed = set()          # post_ids whose review page was opened (R6 gate 1)
+    app.state.session_expired_mtime = None  # storage-state mtime when expiry last seen
 
     @app.get("/", response_class=HTMLResponse)
     @app.get("/settings", response_class=HTMLResponse)
@@ -87,6 +89,7 @@ def create_app(config_path: str = WEBUI_CONFIG_PATH) -> FastAPI:
         pkg = _safe_pkg_dir(cfg["out_dir"], post_id)
         if pkg is None or not (pkg / "manifest.json").exists():
             return HTMLResponse('<p class="error">找不到此貼文包</p>', status_code=404)
+        app.state.reviewed.add(post_id)  # R6 gate 1: this package has been reviewed
         m = json.loads((pkg / "manifest.json").read_text(encoding="utf-8"))
         caption_file = pkg / "caption.txt"
         caption = caption_file.read_text(encoding="utf-8") if caption_file.exists() else m.get("content", {}).get("body", "")
@@ -150,6 +153,8 @@ def create_app(config_path: str = WEBUI_CONFIG_PATH) -> FastAPI:
                 runs.record_run(cfg["state_path"], stage=stage, post_id=post_id, status="ok")
                 return {"stage": stage, "post_id": post_id}
             except Exception as exc:  # noqa: BLE001 - reported via job
+                if isinstance(exc, SessionExpiredError):
+                    _note_session_expiry(cfg)
                 runs.record_run(cfg["state_path"], stage=stage, post_id=post_id,
                                 status="failed", error=str(exc))
                 raise
@@ -157,6 +162,63 @@ def create_app(config_path: str = WEBUI_CONFIG_PATH) -> FastAPI:
         job_id = jobs.submit(_work)
         return templates.TemplateResponse(
             request, "_job_status.html", {"job": jobs.get(job_id), "job_id": job_id})
+
+    @app.post("/packages/{post_id}/publish", response_class=HTMLResponse)
+    def action_publish(request: Request, post_id: str, title: str = Form("")):
+        cfg = webui_config.load(app.state.config_path)
+        pkg = _safe_pkg_dir(cfg["out_dir"], post_id)
+        if pkg is None or not (pkg / "manifest.json").exists():
+            return HTMLResponse('<p class="error">找不到此貼文包</p>', status_code=404)
+        # R6 三重閘門，順序固定，任一不過即拒（不可逆動作不被繞過，R8）。
+        if post_id not in app.state.reviewed:
+            return HTMLResponse('<p class="error">請先開啟審核頁再發布</p>', status_code=400)
+        m = json.loads((pkg / "manifest.json").read_text(encoding="utf-8"))
+        if m.get("backend", {}).get("status") != "draft_verified":
+            return HTMLResponse('<p class="error">尚未驗證，不可發布</p>', status_code=400)
+        if title.strip() != (m.get("content", {}).get("title") or "").strip():
+            return HTMLResponse('<p class="error">標題不符，發布取消</p>', status_code=400)
+
+        ns = SimpleNamespace(
+            manifest=str(pkg / "manifest.json"), backend=cfg["backend_config"],
+            storage_state=cfg["storage_state"], headless=True,
+            timeout_ms=backend_driver.DEFAULT_TIMEOUT_MS, retries=None,
+            state=cfg["state_path"], approve=True)
+
+        def _work(job):
+            try:
+                publish_post._run(ns)
+                runs.record_run(cfg["state_path"], stage="publish", post_id=post_id, status="ok")
+                return {"stage": "publish", "post_id": post_id}
+            except Exception as exc:  # noqa: BLE001
+                if isinstance(exc, SessionExpiredError):
+                    _note_session_expiry(cfg)
+                runs.record_run(cfg["state_path"], stage="publish", post_id=post_id,
+                                status="failed", error=str(exc))
+                raise
+
+        job_id = jobs.submit(_work)
+        return templates.TemplateResponse(
+            request, "_job_status.html", {"job": jobs.get(job_id), "job_id": job_id})
+
+    def _note_session_expiry(cfg):
+        ss = Path(cfg["storage_state"])
+        app.state.session_expired_mtime = ss.stat().st_mtime if ss.exists() else 0.0
+
+    @app.get("/auth-status", response_class=HTMLResponse)
+    def auth_status(request: Request):
+        cfg = webui_config.load(app.state.config_path)
+        return templates.TemplateResponse(request, "_auth_status.html",
+                                          {"light": _auth_light(cfg)})
+
+    def _auth_light(cfg):
+        ss = Path(cfg["storage_state"])
+        if not ss.exists():
+            return {"state": "none", "label": "登入態：未設定"}
+        expired_at = app.state.session_expired_mtime
+        if expired_at is not None and ss.stat().st_mtime <= expired_at:
+            return {"state": "expired", "label": "登入態：已過期，請重跑 auth-login"}
+        app.state.session_expired_mtime = None  # storage-state refreshed
+        return {"state": "ok", "label": "登入態：有效"}
 
     @app.get("/history", response_class=HTMLResponse)
     def history(request: Request):
