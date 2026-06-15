@@ -16,3 +16,10 @@ verify:
   search_input: 'input[name="keyword"]'
   search_button: 'button:has-text("搜尋")'
   result_title: 'table >> text={title}'
+  # When the admin redirects an expired session here, the driver raises a
+  # distinguishable SessionExpiredError (remedy: re-run auth-login). Tune to the
+  # real backend's login URL marker.
+  login_required_url_contains: "/admin/login"
+retry:
+  count: 2          # total attempts per backend action on transient failure
+  backoff_sec: 0.5  # delay grows linearly: backoff_sec * attempt

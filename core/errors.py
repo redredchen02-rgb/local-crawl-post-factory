@@ -36,5 +36,13 @@ class ExternalError(CliError):
     exit_code = 4
 
 
+class SessionExpiredError(ExternalError):
+    """Login session expired / redirected to login page.
+
+    A distinguishable kind of external failure (still exit 4) whose remedy is to
+    re-run ``auth-login`` rather than to retry the action.
+    """
+
+
 class InternalError(CliError):
     exit_code = 5
