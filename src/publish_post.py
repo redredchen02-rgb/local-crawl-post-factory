@@ -12,7 +12,7 @@ import json
 import sys
 from pathlib import Path
 
-from core import cli, manifest as mf, audit, state as state_mod
+from core import cli, manifest as mf, audit, state as state_mod, runs
 from core.errors import ValidationError
 from core.url_utils import title_hash
 from browser.selector_recipe import load_backend
@@ -59,6 +59,9 @@ def _run(args) -> int:
     mf.save(args.manifest, manifest)
     _write_receipt(args.manifest, post_id, published_url)
     _mark_published(args.state, manifest, post_id, published_url)
+    if args.state:
+        runs.record_run(args.state, stage="publish", post_id=post_id,
+                        status="ok", detail=published_url)
     audit.record(LOG_PATH, post_id, "publish-post", "ok", mf.now_iso(),
                  published_url=published_url)
     json.dump({"status": "published", "post_id": post_id, "published_url": published_url},

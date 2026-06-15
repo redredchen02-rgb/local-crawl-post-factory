@@ -7,7 +7,7 @@ WebUI and the CLI share one implementation. crawl stays in its own subprocess
 
 from pathlib import Path
 
-from core import state, url_utils
+from core import state, url_utils, runs
 from src import (
     normalize_items,
     dedupe_posts,
@@ -82,9 +82,13 @@ def run_pipeline(items, webui_cfg: dict, progress_cb=None) -> dict:
             post_id = Path(manifest_path).parent.name
             built.append({"post_id": post_id, "title": title,
                           "manifest_path": manifest_path})
+            runs.record_run(webui_cfg["state_path"], stage="build", post_id=post_id,
+                            status="ok", detail=title)
             _report(f"built {post_id}")
         except Exception as exc:  # noqa: BLE001
             failed.append({"title": title, "stage": "build", "error": str(exc)})
+            runs.record_run(webui_cfg["state_path"], stage="build", post_id=None,
+                            status="failed", detail=title, error=str(exc))
             _report(f"failed: {title}: {exc}")
 
     return {"built": built, "failed": failed, "skipped": skipped}
