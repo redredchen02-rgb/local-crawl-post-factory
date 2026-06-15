@@ -5,26 +5,26 @@
 
 <table>
   <tr><th>post_id</th><td>{{ post_id }}</td></tr>
-  <tr><th>狀態</th><td>{{ status }}</td></tr>
+  <tr><th>狀態</th><td><span class="pill {{ status }}">{{ status }}</span></td></tr>
   <tr><th>來源</th><td><a href="{{ canonical_url }}" target="_blank" rel="noopener">{{ canonical_url }}</a></td></tr>
 </table>
 
 {% if has_cover %}
 <h2>封面（含浮水印）</h2>
-<img src="/packages/{{ post_id }}/cover" alt="cover" style="max-width:100%;border:1px solid #ddd">
+<img src="/packages/{{ post_id }}/cover" alt="cover" style="max-width:100%">
 {% else %}
 <p class="hint">此貼文無封面圖。</p>
 {% endif %}
 
 <h2>文案</h2>
-<pre style="white-space:pre-wrap;background:#f7f7f8;padding:1rem;border-radius:6px">{{ caption }}</pre>
+<pre class="preview">{{ caption }}</pre>
 
 {% if failure %}
 <h2 class="error">上次後台動作失敗（{{ failure.stage }}）</h2>
 <p class="error">{{ failure.error }}</p>
 <p class="hint">時間：{{ failure.ts }}　URL：{{ failure.url }}</p>
 {% if failure.screenshot %}
-<img src="/packages/{{ post_id }}/failure-image" alt="失敗截圖" style="max-width:100%;border:1px solid #b00020">
+<img src="/packages/{{ post_id }}/failure-image" alt="失敗截圖" style="max-width:100%">
 {% endif %}
 {% endif %}
 
@@ -50,7 +50,7 @@
 
 <h2>或用 CLI 發布</h2>
 <p class="hint">複製以下指令在終端執行（需先 <code>auth-login</code> 取得 storage-state）：</p>
-<pre style="white-space:pre-wrap;background:#f7f7f8;padding:1rem;border-radius:6px">draft-post   --manifest out/{{ post_id }}/manifest.json --backend {{ backend_config }} --storage-state ./auth/storage-state.json --headless
+<pre>draft-post   --manifest out/{{ post_id }}/manifest.json --backend {{ backend_config }} --storage-state ./auth/storage-state.json --headless
 verify-draft --manifest out/{{ post_id }}/manifest.json --backend {{ backend_config }} --storage-state ./auth/storage-state.json --headless
 publish-post --manifest out/{{ post_id }}/manifest.json --backend {{ backend_config }} --storage-state ./auth/storage-state.json --state ./state/published.sqlite --approve --headless</pre>
 {% endblock %}

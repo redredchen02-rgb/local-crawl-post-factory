@@ -69,3 +69,14 @@ def test_base_references_htmx(tmp_path):
     client, _ = _client(tmp_path)
     r = client.get("/settings")
     assert '<script src="/static/htmx.min.js">' in r.text
+
+
+def test_stylesheet_served_and_linked(tmp_path):
+    client, _ = _client(tmp_path)
+    css = client.get("/static/app.css")
+    assert css.status_code == 200
+    assert len(css.content) > 100
+    page = client.get("/settings")
+    assert '<link rel="stylesheet" href="/static/app.css">' in page.text
+    # inline <style> block was removed in favour of the external sheet
+    assert "<style>" not in page.text

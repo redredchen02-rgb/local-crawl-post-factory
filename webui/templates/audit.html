@@ -4,17 +4,19 @@
 {% if not lines %}
   <p class="hint">尚無 audit 紀錄。</p>
 {% else %}
+  <div class="table-wrap">
   <table>
     <thead><tr><th>ts</th><th>stage</th><th>post_id</th><th>status</th><th>其他</th></tr></thead>
     <tbody>
     {% for e in lines %}
       <tr{% if e.status == 'error' %} class="error"{% endif %}>
         <td>{{ e.ts }}</td><td>{{ e.stage }}</td><td>{{ e.post_id or '' }}</td>
-        <td>{{ e.status }}</td>
+        <td><span class="pill {{ e.status }}">{{ e.status }}</span></td>
         <td>{{ e.error or e.draft_url or e.published_url or '' }}</td>
       </tr>
     {% endfor %}
     </tbody>
   </table>
+  </div>
 {% endif %}
 {% endblock %}
