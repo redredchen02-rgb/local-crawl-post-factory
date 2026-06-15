@@ -72,7 +72,7 @@ publish-post --manifest out/<id>/manifest.json --backend configs/backend.yaml --
 ## 測試
 
 ```bash
-python3 -m pytest -q     # 70 passed (含 Playwright 端到端流程)
+python3 -m pytest -q     # 129 passed (含 Playwright 端到端 + 控制台閘門)
 ```
 
 ## 快速試跑（離線 demo，不需網路/瀏覽器）
@@ -95,6 +95,14 @@ make webui              # 啟動 → http://127.0.0.1:8000
 ```
 
 設定存 `configs/webui.yaml`（與 CLI 共用爬蟲/模板/浮水印的既有 yaml）。WebUI 與 CLI 跑的是**同一條** `core/pipeline` orchestrator，邏輯不重複。
+
+## 日常營運（硬化）
+
+- **瀏覽器韌性**：`draft/verify/publish` 對暫時性失敗自動重試（`backend.yaml` 的 `retry` 或 `--retries`）；失敗時於該包目錄存 `failure_<stage>_<ts>.png` + `failure.json`。
+- **登入態**：偵測到被導回登入頁（`backend.yaml` 的 `login_required_url_contains`）會回 `SessionExpiredError`（exit 4，訊息提示重跑 `auth-login`）；WebUI 導覽列有登入態狀態燈（綠有效／紅過期／灰未設定）。
+- **全控制台**：WebUI 審核頁可直接「建草稿 / 驗證 / 發布」。**發布三重閘門**：① 必須先開啟審核頁 ② 狀態須 `draft_verified` ③ 輸入正確標題；皆過才以 `--approve` 語意發布。
+- **運行歷史**：`/history` 查 `runs` 表、`/audit` 查 `audit.jsonl`，跨重啟保留。
+- **爬取禮貌**：設定頁可調 `download_delay` 與 `concurrency`。
 
 ## 排程 / Agent 自動化
 
