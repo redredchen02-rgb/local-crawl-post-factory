@@ -1,6 +1,9 @@
 """core/pipeline orchestrator: in-process build without shell/network."""
 
-from core import pipeline, state, url_utils
+import pytest
+
+from core import pipeline, state, url_utils, runs
+from src import normalize_items
 
 
 def _cfg(tmp_path):
@@ -48,6 +51,11 @@ def test_dedupe_skips_published(tmp_path):
     assert result["skipped"] == 1
     assert len(result["built"]) == 1
     assert result["built"][0]["post_id"].endswith("news_b")
+    # R5: the skip is visible in run history with its reason, not silent.
+    dedupe_rows = [r for r in runs.list_runs(cfg["state_path"]) if r["stage"] == "dedupe"]
+    assert len(dedupe_rows) == 1
+    assert dedupe_rows[0]["status"] == "skipped"
+    assert "reason=url" in (dedupe_rows[0]["error"] or "")
 
 
 def test_bad_item_fails_without_aborting_batch(tmp_path):
@@ -61,3 +69,49 @@ def test_bad_item_fails_without_aborting_batch(tmp_path):
 def test_empty_items(tmp_path):
     result = pipeline.run_pipeline([], _cfg(tmp_path))
     assert result["built"] == [] and result["failed"] == []
+
+
+# --- U1 (R1): exception classification ---------------------------------------
+
+def test_validation_error_tagged_validation(tmp_path):
+    """An empty title (ValidationError) is recorded as error_class=validation."""
+    cfg = _cfg(tmp_path)
+    result = pipeline.run_pipeline([_item("c", ""), _item("d", "好標題")], cfg)
+    assert len(result["built"]) == 1
+    assert len(result["failed"]) == 1
+    f = result["failed"][0]
+    assert f["stage"] == "normalize"
+    assert f["error_class"] == "validation"
+
+
+def test_system_error_tagged_system_without_aborting(tmp_path, monkeypatch):
+    """A non-CliError in normalize is recorded as error_class=system, batch continues."""
+    cfg = _cfg(tmp_path)
+    real = normalize_items._normalize
+
+    def flaky(raw):
+        if raw.get("title") == "炸彈":
+            raise KeyError("boom")  # unexpected, not a CliError
+        return real(raw)
+
+    monkeypatch.setattr(normalize_items, "_normalize", flaky)
+    result = pipeline.run_pipeline([_item("e", "炸彈"), _item("f", "正常")], cfg)
+    assert len(result["built"]) == 1
+    assert len(result["failed"]) == 1
+    assert result["failed"][0]["error_class"] == "system"
+
+
+def test_build_stage_system_error_recorded(tmp_path, monkeypatch):
+    """A non-CliError during build is tagged system and logged to runs."""
+    cfg = _cfg(tmp_path)
+
+    def boom(rec, template_cfg):
+        raise RuntimeError("render exploded")
+
+    monkeypatch.setattr(pipeline.render_caption, "_render", boom)
+    result = pipeline.run_pipeline([_item("g", "標題")], cfg)
+    assert result["built"] == []
+    assert len(result["failed"]) == 1
+    f = result["failed"][0]
+    assert f["stage"] == "build" and f["error_class"] == "system"
+    assert any(r["status"] == "failed" for r in runs.list_runs(cfg["state_path"]))

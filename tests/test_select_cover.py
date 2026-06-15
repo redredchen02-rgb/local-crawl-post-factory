@@ -4,9 +4,9 @@ import json
 import pytest
 
 from core import cli
-from core.errors import ExternalError
+from core.errors import ExternalError, ValidationError
 from src import select_cover
-from src.select_cover import _run_factory, _select
+from src.select_cover import _run_factory, _select, _fetch
 
 
 def _item(**overrides):
@@ -23,7 +23,7 @@ def _item(**overrides):
 def test_happy_path_downloads_and_sets_cover(tmp_path, monkeypatch):
     calls = {}
 
-    def fake_fetch(url, dest, timeout):
+    def fake_fetch(url, dest, timeout, *a, **k):
         calls["url"] = url
         final = dest.with_suffix(".jpg")
         final.parent.mkdir(parents=True, exist_ok=True)
@@ -65,7 +65,7 @@ def test_no_image_url_emits_none(tmp_path):
 
 
 def test_fetch_timeout_exits_4(tmp_path, monkeypatch):
-    def fake_fetch(url, dest, timeout):
+    def fake_fetch(url, dest, timeout, *a, **k):
         raise ExternalError("timed out")
 
     monkeypatch.setattr(select_cover, "_fetch", fake_fetch)
@@ -80,3 +80,63 @@ def test_fetch_timeout_exits_4(tmp_path, monkeypatch):
     assert code == 4
     assert out.getvalue() == ""
     assert err.getvalue().strip() != ""
+
+
+# --- U2 (R2): transient retry on download ------------------------------------
+
+def test_fetch_no_retry_by_default(tmp_path, monkeypatch):
+    """retries=0 (default): _download_once is called exactly once."""
+    calls = {"n": 0}
+
+    def once(url, timeout):
+        calls["n"] += 1
+        return b"img", ".jpg"
+
+    monkeypatch.setattr(select_cover, "_download_once", once)
+    path = _fetch("https://x/c.jpg", tmp_path / "c", 20)
+    assert calls["n"] == 1
+    assert path.endswith(".jpg")
+
+
+def test_fetch_retries_then_succeeds(tmp_path, monkeypatch):
+    """A transient ExternalError is retried and the next attempt succeeds."""
+    calls = {"n": 0}
+
+    def flaky(url, timeout):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise ExternalError("transient")
+        return b"img", ".jpg"
+
+    monkeypatch.setattr(select_cover, "_download_once", flaky)
+    path = _fetch("https://x/c.jpg", tmp_path / "c", 20, retries=2, backoff_sec=0)
+    assert calls["n"] == 2
+    assert path.endswith(".jpg")
+
+
+def test_fetch_retries_exhausted_raises(tmp_path, monkeypatch):
+    """ExternalError that never recovers raises after exhausting retries."""
+    calls = {"n": 0}
+
+    def always_fail(url, timeout):
+        calls["n"] += 1
+        raise ExternalError("down")
+
+    monkeypatch.setattr(select_cover, "_download_once", always_fail)
+    with pytest.raises(ExternalError):
+        _fetch("https://x/c.jpg", tmp_path / "c", 20, retries=2, backoff_sec=0)
+    assert calls["n"] == 3  # 1 initial + 2 retries
+
+
+def test_fetch_validation_error_not_retried(tmp_path, monkeypatch):
+    """A non-image (ValidationError) is never retried."""
+    calls = {"n": 0}
+
+    def not_image(url, timeout):
+        calls["n"] += 1
+        raise ValidationError("not an image")
+
+    monkeypatch.setattr(select_cover, "_download_once", not_image)
+    with pytest.raises(ValidationError):
+        _fetch("https://x/c.jpg", tmp_path / "c", 20, retries=3, backoff_sec=0)
+    assert calls["n"] == 1

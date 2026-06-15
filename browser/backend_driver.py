@@ -70,14 +70,18 @@ def _run_with_retry(stage, steps, page, *, retries, backoff_sec, pkg_dir):
     missing selector) are not retried. Transient PlaywrightTimeout is retried;
     each failure captures a screenshot.
     """
-    _, _, PlaywrightTimeout = _import_playwright()
+    _, PlaywrightError, PlaywrightTimeout = _import_playwright()
     attempts = max(1, int(retries))
     for attempt in range(1, attempts + 1):
         try:
             return steps()
         except SessionExpiredError:
-            raise
-        except PlaywrightTimeout as exc:
+            raise  # re-login needed, not a retryable transient failure
+        except (PlaywrightTimeout, PlaywrightError) as exc:
+            # Treat generic Playwright errors (navigation, transient selector
+            # failures) as transient: capture evidence and retry. ValidationError
+            # (e.g. a missing configured selector) is not a PlaywrightError and
+            # propagates untouched.
             _capture_failure(pkg_dir, stage, page, exc)
             if attempt >= attempts:
                 raise ExternalError(

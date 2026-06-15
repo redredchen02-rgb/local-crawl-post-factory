@@ -10,6 +10,7 @@ from browser import backend_driver
 
 playwright = pytest.importorskip("playwright.sync_api")
 PlaywrightTimeout = playwright.TimeoutError
+PlaywrightError = playwright.Error
 
 
 class FakePage:
@@ -57,6 +58,36 @@ def test_retries_exhausted_raises_external(tmp_path):
         backend_driver._run_with_retry(
             "verify", steps, page, retries=2, backoff_sec=0, pkg_dir=str(tmp_path))
     assert len(page.shots) == 2  # one per attempt
+
+
+def test_general_playwright_error_retried_with_capture(tmp_path):
+    """U3 (R3): a non-timeout PlaywrightError is transient -> capture + retry."""
+    page = FakePage()
+    calls = {"n": 0}
+
+    def steps():
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise PlaywrightError("navigation failed")
+        return {"draft_url": page.url}
+
+    result = backend_driver._run_with_retry(
+        "draft", steps, page, retries=2, backoff_sec=0, pkg_dir=str(tmp_path))
+    assert result["draft_url"]
+    assert len(page.shots) == 1
+
+
+def test_general_playwright_error_exhausted_raises_external(tmp_path):
+    """U3 (R3): unrecovered PlaywrightError raises ExternalError, no bare propagate."""
+    page = FakePage()
+
+    def steps():
+        raise PlaywrightError("dom detached")
+
+    with pytest.raises(ExternalError):
+        backend_driver._run_with_retry(
+            "verify", steps, page, retries=2, backoff_sec=0, pkg_dir=str(tmp_path))
+    assert len(page.shots) == 2  # evidence captured each attempt
 
 
 def test_permanent_error_not_retried(tmp_path):

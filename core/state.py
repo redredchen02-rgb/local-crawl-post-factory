@@ -60,6 +60,25 @@ def is_processed(conn, canonical_url: str, title_hash: str) -> bool:
     return cur.fetchone() is not None
 
 
+def skip_reason(conn, canonical_url: str, title_hash: str):
+    """Why an item would be skipped: 'url', 'title', or None.
+
+    Pure query (no writes). 'url' takes precedence over 'title' so the reason is
+    deterministic when both match. Mirrors :func:`is_processed`'s skip condition
+    (skip iff this returns non-None) but attributes the cause for observability.
+    """
+    cur = conn.execute(
+        "SELECT canonical_url = ? AS url_match FROM items "
+        "WHERE status = ? AND (canonical_url = ? OR title_hash = ?) "
+        "ORDER BY url_match DESC LIMIT 1",
+        (canonical_url, PUBLISHED, canonical_url, title_hash),
+    )
+    row = cur.fetchone()
+    if row is None:
+        return None
+    return "url" if row[0] else "title"
+
+
 def upsert(conn, *, canonical_url, title, title_hash, status, now,
            content_hash=None, post_id=None, draft_url=None,
            published_url=None, last_error=None) -> None:

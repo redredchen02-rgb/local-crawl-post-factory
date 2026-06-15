@@ -18,12 +18,16 @@ per origin §13.1.
 """
 
 import argparse
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
 
 from core import cli, filesystem, io_ndjson, url_utils
 from core.errors import ExternalError, ValidationError
+
+DEFAULT_RETRIES = 0  # backward compatible: one attempt, no retry
+DEFAULT_BACKOFF_SEC = 0.0
 
 _IMAGE_EXTS = (".jpg", ".jpeg", ".png", ".webp", ".gif")
 _CONTENT_TYPE_EXT = {
@@ -44,13 +48,11 @@ def _ext_from_url(url: str) -> str | None:
     return None
 
 
-def _fetch(url: str, dest: Path, timeout: int) -> str:
-    """Download ``url`` into ``dest``; return the chosen extension.
+def _download_once(url: str, timeout: int) -> tuple[bytes, str]:
+    """Single network attempt: return (data, ext) or raise.
 
-    Validates that the response looks like an image. Factored out so tests can
-    monkeypatch it without touching the network. Network/timeout/connection
-    failures raise ExternalError; a non-image content-type raises
-    ValidationError.
+    Network/timeout/connection failures raise ExternalError; a non-image
+    content-type raises ValidationError.
     """
     ext = _ext_from_url(url)
     try:
@@ -68,6 +70,28 @@ def _fetch(url: str, dest: Path, timeout: int) -> str:
         raise
     except (urllib.error.URLError, TimeoutError, OSError) as exc:
         raise ExternalError(f"failed to download image {url}: {exc}")
+    return data, ext
+
+
+def _fetch(url: str, dest: Path, timeout: int,
+           retries: int = DEFAULT_RETRIES, backoff_sec: float = DEFAULT_BACKOFF_SEC) -> str:
+    """Download ``url`` into ``dest``; return the chosen extension.
+
+    Retries transient ``ExternalError`` (network/timeout) up to ``retries``
+    extra attempts with linear backoff; ``ValidationError`` (non-image) is never
+    retried. Factored out so tests can monkeypatch it without touching the
+    network.
+    """
+    attempts = max(1, int(retries) + 1)
+    for attempt in range(1, attempts + 1):
+        try:
+            data, ext = _download_once(url, timeout)
+            break
+        except ExternalError:
+            if attempt >= attempts:
+                raise
+            if backoff_sec:
+                time.sleep(backoff_sec * attempt)
 
     final = dest.with_suffix(ext)
     filesystem.ensure_dir(final.parent)
@@ -82,7 +106,8 @@ def _target_stem(record: dict, image_url: str) -> str:
     return url_utils.slug(basis)
 
 
-def _select(record: dict, download_dir: Path, timeout: int) -> dict:
+def _select(record: dict, download_dir: Path, timeout: int,
+            retries: int = DEFAULT_RETRIES, backoff_sec: float = DEFAULT_BACKOFF_SEC) -> dict:
     """Return a copy of ``record`` with cover_source/cover_path set."""
     out = dict(record)
     image_url = record.get("image_url")
@@ -111,15 +136,16 @@ def _select(record: dict, download_dir: Path, timeout: int) -> dict:
         return out
 
     out["cover_source"] = image_url
-    out["cover_path"] = _fetch(image_url, dest, timeout)
+    out["cover_path"] = _fetch(image_url, dest, timeout, retries, backoff_sec)
     return out
 
 
-def _run_factory(download_dir: Path, timeout: int):
+def _run_factory(download_dir: Path, timeout: int,
+                 retries: int = DEFAULT_RETRIES, backoff_sec: float = DEFAULT_BACKOFF_SEC):
     def _run():
         filesystem.ensure_dir(download_dir)
         for obj in io_ndjson.read_lines():
-            io_ndjson.write_line(_select(obj, download_dir, timeout))
+            io_ndjson.write_line(_select(obj, download_dir, timeout, retries, backoff_sec))
 
     return _run
 
@@ -131,8 +157,13 @@ def main():
     )
     parser.add_argument("--download-dir", required=True, help="directory to store downloaded covers")
     parser.add_argument("--timeout-sec", type=int, default=20, help="download timeout in seconds")
+    parser.add_argument("--retries", type=int, default=DEFAULT_RETRIES,
+                        help="extra retry attempts on transient download failure")
+    parser.add_argument("--backoff-sec", type=float, default=DEFAULT_BACKOFF_SEC,
+                        help="linear backoff seconds between retries")
     args = parser.parse_args()
-    cli.main_wrapper(_run_factory(Path(args.download_dir), args.timeout_sec))
+    cli.main_wrapper(_run_factory(Path(args.download_dir), args.timeout_sec,
+                                  args.retries, args.backoff_sec))
 
 
 if __name__ == "__main__":
