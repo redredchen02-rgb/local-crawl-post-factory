@@ -305,7 +305,7 @@ graph TB
 
 **Approach（方向，待獨立規劃）:** 若要消除，正確做法**不是**接口化，而是把 per-item 那段抽成 `pipeline.process_one(rec, ctx)`，讓 CLI 與 WebUI 都走它——但這會改 CLI 的錯誤語意，超出 U5「不改行為」硬約束，故**明確排除在本三階段之外**，列為獨立後續項以免被 U5 的「解耦」措辭掩蓋。
 
-- [ ] **U6: 配置可移植（R7）**
+- [x] **U6: 配置可移植（R7）**
 
 **Goal:** `webui_config` 相對路徑相對設定檔解析，並支援 env var 覆蓋，跨啟動目錄/CI/容器可用。
 
@@ -318,7 +318,8 @@ graph TB
 - Test: `tests/test_webui_config.py`（擴充）
 
 **Approach:**
-- `load`：對所有路徑類欄位（state_path/out_dir/download_dir/audit_log/template_path/watermark_config/backend_config/storage_state），相對路徑解析為相對設定檔 parent 的絕對路徑——**這是達成「跨啟動目錄可移植」的承載部分**。
+- `load`：對**輸出/運行路徑欄位**（state_path/out_dir/download_dir/audit_log/storage_state）相對路徑解析為相對設定檔 parent 的絕對路徑——**這是達成「跨啟動目錄可移植」的承載部分**。
+  - **實作期修正**：`template_path`/`watermark_config`/`backend_config` **不**做此解析——其預設值指向 repo 隨附資產（相對 run dir），改為相對設定檔目錄會讓隨附預設失效（U6 實作時被 `test_webui_crawl` 抓到）。
 - env 覆蓋**收斂到 origin 點名的三項**：`CPOST_STATE_PATH`/`CPOST_OUT_DIR`/`CPOST_DOWNLOAD_DIR`（優先級 env > yaml > default）。其餘路徑欄位（template/watermark/backend/storage_state）暫不加 env 覆蓋——無當前消費者，避免投機性配置面（審查 scope P3）。
 - env 路徑做 `expanduser`/`resolve` 正規化；非可解析路徑回 `ValidationError`（審查 security）。
 - **storage_state 為憑證級資料（審查 security P2）**：解析後**不得**落入 `out_dir`/`download_dir` 或任何被 WebUI 服務/VCS 追蹤的路徑；任何情況下**不得**寫入 `audit.jsonl`/`runs`/logs；建議保持 0600 權限。`load` 若偵測 storage_state 解析進 out_dir/download_dir 應拒絕或告警。

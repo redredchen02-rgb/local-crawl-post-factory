@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 
 from core import webui_config
@@ -50,3 +52,52 @@ def test_bad_limit_rejected(tmp_path):
     with pytest.raises(ValidationError):
         webui_config.save(str(tmp_path / "webui.yaml"),
                           {"start_url": "https://x.com", "limit": "abc"})
+
+
+# --- U6 (R7): path portability + env overrides + credential safety -----------
+
+def _write(tmp_path, body=""):
+    p = tmp_path / "webui.yaml"
+    p.write_text(body, encoding="utf-8")
+    return p
+
+
+def test_relative_paths_resolved_against_config_dir(tmp_path):
+    """A relative state_path resolves under the config file's directory, not cwd."""
+    p = _write(tmp_path, "state_path: ./state/db.sqlite\n")
+    cfg = webui_config.load(str(p))
+    assert cfg["state_path"] == str((tmp_path / "state" / "db.sqlite").resolve())
+
+
+def test_absolute_paths_preserved(tmp_path):
+    abs_state = str((tmp_path / "elsewhere" / "db.sqlite"))
+    p = _write(tmp_path, f"state_path: {abs_state}\n")
+    cfg = webui_config.load(str(p))
+    assert cfg["state_path"] == str(Path(abs_state).resolve())
+
+
+def test_env_override_takes_precedence(tmp_path, monkeypatch):
+    p = _write(tmp_path, "state_path: ./state/db.sqlite\n")
+    target = tmp_path / "env" / "custom.sqlite"
+    monkeypatch.setenv("CPOST_STATE_PATH", str(target))
+    cfg = webui_config.load(str(p))
+    assert cfg["state_path"] == str(target.resolve())
+
+
+def test_default_resolves_when_no_env_no_yaml(tmp_path):
+    p = _write(tmp_path)  # empty file -> defaults
+    cfg = webui_config.load(str(p))
+    assert cfg["out_dir"] == str((tmp_path / "out").resolve())
+
+
+def test_empty_env_override_rejected(tmp_path, monkeypatch):
+    p = _write(tmp_path)
+    monkeypatch.setenv("CPOST_STATE_PATH", "   ")
+    with pytest.raises(ValidationError):
+        webui_config.load(str(p))
+
+
+def test_storage_state_inside_out_dir_rejected(tmp_path):
+    p = _write(tmp_path, "out_dir: ./out\nstorage_state: ./out/ss.json\n")
+    with pytest.raises(ValidationError):
+        webui_config.load(str(p))
