@@ -183,18 +183,70 @@ def create_app(config_path: str = WEBUI_CONFIG_PATH) -> FastAPI:
         runner = {"draft": draft_post._run, "verify": verify_draft._run}[stage]
         return _submit_job(request, stage, post_id, cfg, lambda: runner(ns))
 
+    @app.post("/batch/{stage}", response_class=HTMLResponse)
+    def batch_action(request: Request, stage: str, post_ids: list[str] = Form(default=[])):
+        """Batch draft/verify over selected packages (R8).
+
+        Publish is intentionally NOT batchable — its review/title gates are
+        per-item by design (see plan U8). Each item reuses the single-item
+        backend command; one failure never aborts the rest; all share one run_id.
+        """
+        if stage not in ("draft", "verify"):
+            return HTMLResponse('<p class="error">不支援的批量動作</p>', status_code=400)
+        if not post_ids:
+            return HTMLResponse('<p class="hint">未選取任何貼文。</p>')
+        cfg = _cfg()
+        run_id = runs.new_run_id()
+        runner = {"draft": draft_post._run, "verify": verify_draft._run}[stage]
+
+        def _work(job):
+            ok, failed = [], []
+            for pid in post_ids:
+                prepared = _action_ns(pid, stage)
+                if prepared is None:  # invalid / traversal post_id -> skip, isolate
+                    failed.append({"post_id": pid, "error": "找不到此貼文包"})
+                    runs.record_run(cfg["state_path"], stage=stage, post_id=pid,
+                                    status="failed", error="invalid post_id",
+                                    run_id=run_id, severity="error")
+                    continue
+                _, ns = prepared
+                try:
+                    runner(ns)
+                    ok.append(pid)
+                    runs.record_run(cfg["state_path"], stage=stage, post_id=pid,
+                                    status="ok", run_id=run_id, severity="info")
+                except Exception as exc:  # noqa: BLE001 - isolate per item
+                    if isinstance(exc, SessionExpiredError):
+                        _note_session_expiry(cfg)
+                    failed.append({"post_id": pid, "error": str(exc)})
+                    runs.record_run(cfg["state_path"], stage=stage, post_id=pid,
+                                    status="failed", error=str(exc), run_id=run_id,
+                                    severity="warning" if isinstance(exc, SessionExpiredError)
+                                    else "error")
+            return {"stage": stage, "batch": True, "run_id": run_id,
+                    "ok": ok, "failed": failed}
+
+        job_id = jobs.submit(_work)
+        return templates.TemplateResponse(
+            request, "_job_status.html", {"job": jobs.get(job_id), "job_id": job_id})
+
     def _submit_job(request, stage, post_id, cfg, call):
         """Run a backend command in a job: record the run, flag session expiry."""
+        run_id = runs.new_run_id()
+
         def _work(job):
             try:
                 call()
-                runs.record_run(cfg["state_path"], stage=stage, post_id=post_id, status="ok")
+                runs.record_run(cfg["state_path"], stage=stage, post_id=post_id,
+                                status="ok", run_id=run_id, severity="info")
                 return {"stage": stage, "post_id": post_id}
             except Exception as exc:  # noqa: BLE001 - reported via job
-                if isinstance(exc, SessionExpiredError):
+                expired = isinstance(exc, SessionExpiredError)
+                if expired:
                     _note_session_expiry(cfg)
                 runs.record_run(cfg["state_path"], stage=stage, post_id=post_id,
-                                status="failed", error=str(exc))
+                                status="failed", error=str(exc), run_id=run_id,
+                                severity="warning" if expired else "error")
                 raise
 
         job_id = jobs.submit(_work)
@@ -234,21 +286,29 @@ def create_app(config_path: str = WEBUI_CONFIG_PATH) -> FastAPI:
                                           {"light": _auth_light(cfg)})
 
     def _auth_light(cfg):
+        # Metadata-only: never reads storage_state contents (credential-grade).
         ss = Path(cfg["storage_state"])
+        cmd = ("auth-login --login-url <你的後台登入頁> "
+               "--until-url-contains <登入後URL片段> "
+               f"--storage-state {cfg['storage_state']}")
         if not ss.exists():
-            return {"state": "none", "label": "登入態：未設定"}
+            return {"state": "none", "label": "登入態：未設定",
+                    "guidance": "尚未建立登入態。請在終端機執行：", "cmd": cmd}
         expired_at = app.state.session_expired_mtime
         if expired_at is not None and ss.stat().st_mtime <= expired_at:
-            return {"state": "expired", "label": "登入態：已過期，請重跑 auth-login"}
+            return {"state": "expired", "label": "登入態：已過期，請重跑 auth-login",
+                    "guidance": "登入態已過期。請在終端機重新登入：", "cmd": cmd}
         app.state.session_expired_mtime = None  # storage-state refreshed
         return {"state": "ok", "label": "登入態：有效"}
 
     @app.get("/history", response_class=HTMLResponse)
-    def history(request: Request):
+    def history(request: Request, post_id: str = "", severity: str = ""):
         cfg = _cfg()
-        rows = runs.list_runs(cfg["state_path"], limit=200)
+        rows = runs.list_runs(cfg["state_path"], limit=200,
+                              post_id=post_id or None, severity=severity or None)
         template = "_history_table.html" if request.headers.get("HX-Request") else "history.html"
-        return templates.TemplateResponse(request, template, {"runs": rows})
+        return templates.TemplateResponse(request, template,
+                                          {"runs": rows, "post_id": post_id, "severity": severity})
 
     @app.get("/audit", response_class=HTMLResponse)
     def audit(request: Request):

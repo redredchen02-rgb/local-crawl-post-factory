@@ -1,7 +1,5 @@
 """core/pipeline orchestrator: in-process build without shell/network."""
 
-import pytest
-
 from core import pipeline, state, url_utils, runs
 from src import normalize_items
 

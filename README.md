@@ -100,10 +100,12 @@ make webui              # 啟動 → http://127.0.0.1:8000
 ## 日常營運（硬化）
 
 - **瀏覽器韌性**：`draft/verify/publish` 對暫時性失敗自動重試（`backend.yaml` 的 `retry` 或 `--retries`）；失敗時於該包目錄存 `failure_<stage>_<ts>.png` + `failure.json`。
-- **登入態**：偵測到被導回登入頁（`backend.yaml` 的 `login_required_url_contains`）會回 `SessionExpiredError`（exit 4，訊息提示重跑 `auth-login`）；WebUI 導覽列有登入態狀態燈（綠有效／紅過期／灰未設定）。
-- **全控制台**：WebUI 審核頁可直接「建草稿 / 驗證 / 發布」。**發布三重閘門**：① 必須先開啟審核頁 ② 狀態須 `draft_verified` ③ 輸入正確標題；皆過才以 `--approve` 語意發布。
-- **運行歷史**：`/history` 查 `runs` 表、`/audit` 查 `audit.jsonl`，跨重啟保留。
+- **登入態**：偵測到被導回登入頁（`backend.yaml` 的 `login_required_url_contains`）會回 `SessionExpiredError`（exit 4，訊息提示重跑 `auth-login`）；WebUI 導覽列有登入態狀態燈（綠有效／紅過期／灰未設定），過期/未設定時直接顯示重登的 `auth-login` 指令（狀態判斷只讀檔案 metadata，不讀登入態內容）。
+- **全控制台**：WebUI 審核頁可直接「建草稿 / 驗證 / 發布」。**發布三重閘門**：① 必須先開啟審核頁 ② 狀態須 `draft_verified` ③ 輸入正確標題；皆過才以 `--approve` 語意發布。上膛清單支援多選後「批量建草稿 / 批量驗證」（逐項隔離、共用一個 `run_id`）；**發布不批量化**（閘門逐篇人工）。
+- **運行歷史**：`/history` 查 `runs` 表、`/audit` 查 `audit.jsonl`，跨重啟保留；`runs` 帶 `run_id`（同一次運行的關聯）與 `severity`，`/history` 可按 `post_id`/`severity` 篩選，便於回查整條生命週期。
 - **爬取禮貌**：設定頁可調 `download_delay` 與 `concurrency`。
+- **配置可移植**：輸出路徑（state/out/download/audit/storage_state）相對設定檔目錄解析；可用 `CPOST_STATE_PATH`/`CPOST_OUT_DIR`/`CPOST_DOWNLOAD_DIR` 環境變數覆蓋。
+- **封面下載重試**：`select-cover --retries/--backoff-sec`，或 WebUI 設定 `cover_retries`/`cover_backoff_sec`。
 
 ## 排程 / Agent 自動化
 

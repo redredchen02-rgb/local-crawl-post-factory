@@ -1,7 +1,7 @@
 ---
 title: "refactor: 全面優化（穩健性 → 可維護性 → 運維體驗，分三階段）"
 type: refactor
-status: active
+status: completed
 deepened: 2026-06-15
 date: 2026-06-15
 origin: docs/brainstorms/2026-06-15-project-optimization-requirements.md
@@ -340,7 +340,7 @@ graph TB
 
 ### 階段三 — 運維體驗
 
-- [ ] **U7: 關聯 ID + severity（R9）**
+- [x] **U7: 關聯 ID + severity（R9）**
 
 **Goal:** `runs` 加 `run_id`/`severity`、`audit.record` 加 `severity`/可選 `run_id`，能用 post_id/run_id 撈整條生命週期。
 
@@ -375,7 +375,7 @@ graph TB
 
 **Verification:** 用 post_id/run_id 能撈出整條生命週期；舊 sqlite 平滑升級；既有 history/audit 測試綠。
 
-- [ ] **U8: WebUI 批量操作（R8）**
+- [x] **U8: WebUI 批量操作（R8）**
 
 **Goal:** 上膛清單多選 + 批量建草稿/驗證/發布，發布逐項走既有三重閘門，任一失敗不影響其餘。
 
@@ -404,7 +404,7 @@ graph TB
 
 **Verification:** 批量 draft/verify 部分失敗隔離、run_id 聚合；發布路徑與閘門零變更。
 
-- [ ] **U9: session 重登引導（R10）**
+- [x] **U9: session 重登引導（R10）**
 
 **Goal:** UI 偵測 session 過期時給明確重登引導（文案 + `auth-login` 指令/連結），取代空泛報錯。
 

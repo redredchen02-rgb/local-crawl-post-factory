@@ -60,6 +60,7 @@ def run_pipeline(items, webui_cfg: dict, progress_cb=None) -> dict:
     cover_retries = int(webui_cfg.get("cover_retries", 0))
     cover_backoff = float(webui_cfg.get("cover_backoff_sec", 0.0))
 
+    run_id = runs.new_run_id()  # correlates every record of this run (R9)
     built, failed = [], []
 
     # Stage 1: normalize (per-item, so one bad record doesn't kill the batch).
@@ -86,7 +87,7 @@ def run_pipeline(items, webui_cfg: dict, progress_cb=None) -> dict:
     for record, reason in skips:
         runs.record_run(webui_cfg["state_path"], stage="dedupe", post_id=None,
                         status="skipped", detail=str(record.get("canonical_url", "")),
-                        error=f"reason={reason}")
+                        error=f"reason={reason}", run_id=run_id, severity="info")
     skipped = before - len(deduped)
     _report(f"deduped: {len(deduped)} new, {skipped} skipped")
 
@@ -106,13 +107,16 @@ def run_pipeline(items, webui_cfg: dict, progress_cb=None) -> dict:
             built.append({"post_id": post_id, "title": title,
                           "manifest_path": manifest_path})
             runs.record_run(webui_cfg["state_path"], stage="build", post_id=post_id,
-                            status="ok", detail=title)
+                            status="ok", detail=title, run_id=run_id, severity="info")
             _report(f"built {post_id}")
         except Exception as exc:  # noqa: BLE001 - classify, record, keep batch alive
+            error_class = _error_class(exc)
             failed.append({"title": title, "stage": "build",
-                           "error": str(exc), "error_class": _error_class(exc)})
+                           "error": str(exc), "error_class": error_class})
             runs.record_run(webui_cfg["state_path"], stage="build", post_id=None,
-                            status="failed", detail=title, error=str(exc))
+                            status="failed", detail=title, error=str(exc),
+                            run_id=run_id,
+                            severity="warning" if error_class == "validation" else "error")
             _report(f"failed: {title}: {exc}")
 
     return {"built": built, "failed": failed, "skipped": skipped}
