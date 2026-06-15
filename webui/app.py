@@ -81,10 +81,24 @@ def create_app(config_path: str = WEBUI_CONFIG_PATH) -> FastAPI:
             request, "_job_status.html", {"job": job, "job_id": job_id})
 
     @app.get("/packages", response_class=HTMLResponse)
-    def packages(request: Request):
+    def packages(request: Request, q: str = "", status: str = ""):
         cfg = webui_config.load(app.state.config_path)
+        rows = _filter_packages(_scan_packages(cfg["out_dir"]), q, status)
+        # HTMX requests (live filtering) get just the table fragment; full nav otherwise.
+        template = "_packages_table.html" if request.headers.get("HX-Request") else "packages.html"
         return templates.TemplateResponse(
-            request, "packages.html", {"packages": _scan_packages(cfg["out_dir"])})
+            request, template, {"packages": rows, "q": q, "status": status})
+
+    @app.post("/packages/{post_id}/delete", response_class=HTMLResponse)
+    def delete_package(request: Request, post_id: str):
+        cfg = webui_config.load(app.state.config_path)
+        pkg = _safe_pkg_dir(cfg["out_dir"], post_id)
+        if pkg is None:
+            return HTMLResponse('<p class="error">找不到此貼文包</p>', status_code=404)
+        _move_to_trash(cfg["out_dir"], pkg)
+        rows = _filter_packages(_scan_packages(cfg["out_dir"]), "", "")
+        return templates.TemplateResponse(
+            request, "_packages_table.html", {"packages": rows, "q": "", "status": ""})
 
     @app.get("/packages/{post_id}", response_class=HTMLResponse)
     def package_detail(request: Request, post_id: str):
@@ -229,13 +243,15 @@ def create_app(config_path: str = WEBUI_CONFIG_PATH) -> FastAPI:
     def history(request: Request):
         cfg = webui_config.load(app.state.config_path)
         rows = runs.list_runs(cfg["state_path"], limit=200)
-        return templates.TemplateResponse(request, "history.html", {"runs": rows})
+        template = "_history_table.html" if request.headers.get("HX-Request") else "history.html"
+        return templates.TemplateResponse(request, template, {"runs": rows})
 
     @app.get("/audit", response_class=HTMLResponse)
     def audit(request: Request):
         cfg = webui_config.load(app.state.config_path)
-        return templates.TemplateResponse(
-            request, "audit.html", {"lines": _tail_audit(cfg["audit_log"], 200)})
+        lines = _tail_audit(cfg["audit_log"], 200)
+        template = "_audit_table.html" if request.headers.get("HX-Request") else "audit.html"
+        return templates.TemplateResponse(request, template, {"lines": lines})
 
     return app
 
@@ -268,6 +284,31 @@ def _tail_audit(audit_log: str, limit: int):
     return list(reversed(parsed))[:limit]
 
 
+def _filter_packages(rows, q: str, status: str):
+    """Filter scanned packages by case-insensitive query (title or post_id) and status."""
+    q = (q or "").strip().lower()
+    status = (status or "").strip()
+    out = rows
+    if status:
+        out = [r for r in out if r.get("status") == status]
+    if q:
+        out = [r for r in out
+               if q in str(r.get("title", "")).lower() or q in str(r.get("post_id", "")).lower()]
+    return out
+
+
+def _move_to_trash(out_dir: str, pkg):
+    """Move a package dir into out_dir/.trash/ — reversible delete (never hard-remove)."""
+    import shutil
+
+    trash = Path(out_dir) / ".trash"
+    trash.mkdir(parents=True, exist_ok=True)
+    dest = trash / pkg.name
+    if dest.exists():
+        shutil.rmtree(dest)  # replace a previously trashed package of the same id
+    shutil.move(str(pkg), str(dest))
+
+
 def _safe_pkg_dir(out_dir: str, post_id: str):
     """Resolve out_dir/post_id, rejecting path traversal."""
     if not post_id or "/" in post_id or "\\" in post_id or ".." in post_id:
@@ -286,6 +327,8 @@ def _scan_packages(out_dir: str):
     if not base.exists():
         return rows
     for manifest_path in sorted(base.glob("*/manifest.json")):
+        if manifest_path.parent.name.startswith("."):
+            continue  # skip .trash and other dot dirs
         try:
             m = json.loads(manifest_path.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError):

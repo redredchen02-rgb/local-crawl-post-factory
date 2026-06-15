@@ -59,3 +59,21 @@ def test_audit_empty(tmp_path):
     r = client.get("/audit")
     assert r.status_code == 200
     assert "尚無 audit" in r.text
+
+
+def test_history_hx_request_returns_fragment(tmp_path):
+    """Auto-refresh poll (HX-Request) returns the table fragment, not the full page."""
+    client, tp = _client(tmp_path)
+    runs.record_run(str(tp / "state.sqlite"), stage="publish", post_id="p1", status="ok")
+    full = client.get("/history")
+    frag = client.get("/history", headers={"HX-Request": "true"})
+    assert "<nav>" in full.text
+    assert "<nav>" not in frag.text and "publish" in frag.text
+
+
+def test_audit_hx_request_returns_fragment(tmp_path):
+    client, tp = _client(tmp_path)
+    (tp / "audit.jsonl").write_text(
+        '{"ts":"t","stage":"draft-post","status":"ok","post_id":"p1"}\n', encoding="utf-8")
+    frag = client.get("/audit", headers={"HX-Request": "true"})
+    assert "<nav>" not in frag.text and "draft-post" in frag.text
