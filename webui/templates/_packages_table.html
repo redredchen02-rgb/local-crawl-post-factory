@@ -1,0 +1,21 @@
+{% if not packages %}
+  <p class="hint">尚無上膛貼文。到<a href="/settings">設定</a>輸入 URL 並爬取。</p>
+{% else %}
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>post_id</th><th>標題</th><th>狀態</th><th></th></tr></thead>
+    <tbody>
+    {% for p in packages %}
+      <tr{% if p.broken %} class="error"{% endif %}>
+        <td>{% if not p.broken %}<a href="/packages/{{ p.post_id }}">{{ p.post_id }}</a>{% else %}{{ p.post_id }}{% endif %}</td>
+        <td>{{ p.title }}</td>
+        <td><span class="pill {{ p.status }}">{{ p.status }}</span></td>
+        <td><button class="danger" hx-post="/packages/{{ p.post_id }}/delete"
+                    hx-target="#pkg-list" hx-swap="innerHTML"
+                    hx-confirm="確定刪除 {{ p.post_id }}？將移到 out/.trash/（可復原）">刪除</button></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+{% endif %}

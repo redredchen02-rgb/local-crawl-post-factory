@@ -1,20 +1,22 @@
 {% extends "base.html" %}
 {% block heading %}上膛清單 / Staged Packages{% endblock %}
 {% block content %}
-{% if not packages %}
-  <p class="hint">尚無上膛貼文。到<a href="/settings">設定</a>輸入 URL 並爬取。</p>
-{% else %}
-  <table>
-    <thead><tr><th>post_id</th><th>標題</th><th>狀態</th></tr></thead>
-    <tbody>
-    {% for p in packages %}
-      <tr{% if p.broken %} class="error"{% endif %}>
-        <td>{% if not p.broken %}<a href="/packages/{{ p.post_id }}">{{ p.post_id }}</a>{% else %}{{ p.post_id }}{% endif %}</td>
-        <td>{{ p.title }}</td><td>{{ p.status }}</td>
-      </tr>
-    {% endfor %}
-    </tbody>
-  </table>
-  <p class="hint">發布為人工動作：<code>publish-post --manifest out/&lt;post_id&gt;/manifest.json --backend configs/backend.yaml --approve</code></p>
-{% endif %}
+<div class="toolbar">
+  <input type="text" name="q" value="{{ q }}" placeholder="搜尋標題或 post_id…"
+         hx-get="/packages" hx-target="#pkg-list" hx-swap="innerHTML"
+         hx-trigger="keyup changed delay:300ms" hx-include="[name='status']">
+  <select name="status" hx-get="/packages" hx-target="#pkg-list" hx-swap="innerHTML"
+          hx-trigger="change" hx-include="[name='q']">
+    <option value="">全部狀態</option>
+    <option value="package_built"{% if status == 'package_built' %} selected{% endif %}>package_built</option>
+    <option value="draft_verified"{% if status == 'draft_verified' %} selected{% endif %}>draft_verified</option>
+    <option value="error"{% if status == 'error' %} selected{% endif %}>error</option>
+  </select>
+</div>
+
+<div id="pkg-list">
+{% include "_packages_table.html" %}
+</div>
+
+<p class="hint">發布為人工動作：<code>publish-post --manifest out/&lt;post_id&gt;/manifest.json --backend configs/backend.yaml --approve</code></p>
 {% endblock %}

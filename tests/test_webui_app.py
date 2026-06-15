@@ -54,3 +54,29 @@ def test_run_binds_localhost(monkeypatch):
     monkeypatch.setitem(sys.modules, "uvicorn", fake)
     run()
     assert captured["host"] == "127.0.0.1"
+
+
+def test_htmx_asset_served_nonempty(tmp_path):
+    """HTMX must be a real vendored file — an empty file silently breaks all hx-* UI."""
+    client, _ = _client(tmp_path)
+    r = client.get("/static/htmx.min.js")
+    assert r.status_code == 200
+    assert len(r.content) > 1000
+    assert b"htmx" in r.content
+
+
+def test_base_references_htmx(tmp_path):
+    client, _ = _client(tmp_path)
+    r = client.get("/settings")
+    assert '<script src="/static/htmx.min.js">' in r.text
+
+
+def test_stylesheet_served_and_linked(tmp_path):
+    client, _ = _client(tmp_path)
+    css = client.get("/static/app.css")
+    assert css.status_code == 200
+    assert len(css.content) > 100
+    page = client.get("/settings")
+    assert '<link rel="stylesheet" href="/static/app.css">' in page.text
+    # inline <style> block was removed in favour of the external sheet
+    assert "<style>" not in page.text

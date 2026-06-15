@@ -30,10 +30,14 @@ def create_app(config_path: str = WEBUI_CONFIG_PATH) -> FastAPI:
     app.state.reviewed = set()          # post_ids whose review page was opened (R6 gate 1)
     app.state.session_expired_mtime = None  # storage-state mtime when expiry last seen
 
+    def _cfg():
+        """Load the current webui config (re-read each request: config is editable live)."""
+        return webui_config.load(app.state.config_path)
+
     @app.get("/", response_class=HTMLResponse)
     @app.get("/settings", response_class=HTMLResponse)
     def settings_page(request: Request):
-        cfg = webui_config.load(app.state.config_path)
+        cfg = _cfg()
         return templates.TemplateResponse(
             request, "settings.html", {"cfg": cfg, "saved": False})
 
@@ -50,7 +54,7 @@ def create_app(config_path: str = WEBUI_CONFIG_PATH) -> FastAPI:
                     "deny_regex": deny_regex, "limit": limit, "source_id": source_id,
                     "download_delay": download_delay, "concurrency": concurrency}
         try:
-            cfg = webui_config.save(app.state.config_path, {**webui_config.load(app.state.config_path), **incoming})
+            cfg = webui_config.save(app.state.config_path, {**_cfg(), **incoming})
         except CliError as exc:
             return HTMLResponse(f'<p class="error">{exc.message}</p>', status_code=400)
         return templates.TemplateResponse(
@@ -58,7 +62,7 @@ def create_app(config_path: str = WEBUI_CONFIG_PATH) -> FastAPI:
 
     @app.post("/crawl", response_class=HTMLResponse)
     def start_crawl(request: Request):
-        cfg = webui_config.load(app.state.config_path)
+        cfg = _cfg()
         if not cfg.get("start_url"):
             return HTMLResponse('<p class="error">請先在設定填入 start_url</p>', status_code=400)
 
@@ -81,14 +85,28 @@ def create_app(config_path: str = WEBUI_CONFIG_PATH) -> FastAPI:
             request, "_job_status.html", {"job": job, "job_id": job_id})
 
     @app.get("/packages", response_class=HTMLResponse)
-    def packages(request: Request):
-        cfg = webui_config.load(app.state.config_path)
+    def packages(request: Request, q: str = "", status: str = ""):
+        cfg = _cfg()
+        rows = _filter_packages(_scan_packages(cfg["out_dir"]), q, status)
+        # HTMX requests (live filtering) get just the table fragment; full nav otherwise.
+        template = "_packages_table.html" if request.headers.get("HX-Request") else "packages.html"
         return templates.TemplateResponse(
-            request, "packages.html", {"packages": _scan_packages(cfg["out_dir"])})
+            request, template, {"packages": rows, "q": q, "status": status})
+
+    @app.post("/packages/{post_id}/delete", response_class=HTMLResponse)
+    def delete_package(request: Request, post_id: str):
+        cfg = _cfg()
+        pkg = _safe_pkg_dir(cfg["out_dir"], post_id)
+        if pkg is None:
+            return HTMLResponse('<p class="error">找不到此貼文包</p>', status_code=404)
+        _move_to_trash(cfg["out_dir"], pkg)
+        rows = _filter_packages(_scan_packages(cfg["out_dir"]), "", "")
+        return templates.TemplateResponse(
+            request, "_packages_table.html", {"packages": rows, "q": "", "status": ""})
 
     @app.get("/packages/{post_id}", response_class=HTMLResponse)
     def package_detail(request: Request, post_id: str):
-        cfg = webui_config.load(app.state.config_path)
+        cfg = _cfg()
         pkg = _safe_pkg_dir(cfg["out_dir"], post_id)
         if pkg is None or not (pkg / "manifest.json").exists():
             return HTMLResponse('<p class="error">找不到此貼文包</p>', status_code=404)
@@ -110,7 +128,7 @@ def create_app(config_path: str = WEBUI_CONFIG_PATH) -> FastAPI:
 
     @app.get("/packages/{post_id}/failure-image")
     def package_failure_image(post_id: str):
-        cfg = webui_config.load(app.state.config_path)
+        cfg = _cfg()
         pkg = _safe_pkg_dir(cfg["out_dir"], post_id)
         if pkg is None:
             return PlainTextResponse("not found", status_code=404)
@@ -123,7 +141,7 @@ def create_app(config_path: str = WEBUI_CONFIG_PATH) -> FastAPI:
 
     @app.get("/packages/{post_id}/cover")
     def package_cover(post_id: str):
-        cfg = webui_config.load(app.state.config_path)
+        cfg = _cfg()
         pkg = _safe_pkg_dir(cfg["out_dir"], post_id)
         if pkg is None:
             return PlainTextResponse("not found", status_code=404)
@@ -143,7 +161,7 @@ def create_app(config_path: str = WEBUI_CONFIG_PATH) -> FastAPI:
 
     def _action_ns(post_id, stage):
         """Build the argparse-style namespace for a backend command from webui cfg."""
-        cfg = webui_config.load(app.state.config_path)
+        cfg = _cfg()
         pkg = _safe_pkg_dir(cfg["out_dir"], post_id)
         if pkg is None:
             return None
@@ -185,7 +203,7 @@ def create_app(config_path: str = WEBUI_CONFIG_PATH) -> FastAPI:
 
     @app.post("/packages/{post_id}/publish", response_class=HTMLResponse)
     def action_publish(request: Request, post_id: str, title: str = Form("")):
-        cfg = webui_config.load(app.state.config_path)
+        cfg = _cfg()
         pkg = _safe_pkg_dir(cfg["out_dir"], post_id)
         if pkg is None or not (pkg / "manifest.json").exists():
             return HTMLResponse('<p class="error">找不到此貼文包</p>', status_code=404)
@@ -211,7 +229,7 @@ def create_app(config_path: str = WEBUI_CONFIG_PATH) -> FastAPI:
 
     @app.get("/auth-status", response_class=HTMLResponse)
     def auth_status(request: Request):
-        cfg = webui_config.load(app.state.config_path)
+        cfg = _cfg()
         return templates.TemplateResponse(request, "_auth_status.html",
                                           {"light": _auth_light(cfg)})
 
@@ -227,15 +245,17 @@ def create_app(config_path: str = WEBUI_CONFIG_PATH) -> FastAPI:
 
     @app.get("/history", response_class=HTMLResponse)
     def history(request: Request):
-        cfg = webui_config.load(app.state.config_path)
+        cfg = _cfg()
         rows = runs.list_runs(cfg["state_path"], limit=200)
-        return templates.TemplateResponse(request, "history.html", {"runs": rows})
+        template = "_history_table.html" if request.headers.get("HX-Request") else "history.html"
+        return templates.TemplateResponse(request, template, {"runs": rows})
 
     @app.get("/audit", response_class=HTMLResponse)
     def audit(request: Request):
-        cfg = webui_config.load(app.state.config_path)
-        return templates.TemplateResponse(
-            request, "audit.html", {"lines": _tail_audit(cfg["audit_log"], 200)})
+        cfg = _cfg()
+        lines = _tail_audit(cfg["audit_log"], 200)
+        template = "_audit_table.html" if request.headers.get("HX-Request") else "audit.html"
+        return templates.TemplateResponse(request, template, {"lines": lines})
 
     return app
 
@@ -268,9 +288,34 @@ def _tail_audit(audit_log: str, limit: int):
     return list(reversed(parsed))[:limit]
 
 
+def _filter_packages(rows, q: str, status: str):
+    """Filter scanned packages by case-insensitive query (title or post_id) and status."""
+    q = (q or "").strip().lower()
+    status = (status or "").strip()
+    out = rows
+    if status:
+        out = [r for r in out if r.get("status") == status]
+    if q:
+        out = [r for r in out
+               if q in str(r.get("title", "")).lower() or q in str(r.get("post_id", "")).lower()]
+    return out
+
+
+def _move_to_trash(out_dir: str, pkg):
+    """Move a package dir into out_dir/.trash/ — reversible delete (never hard-remove)."""
+    import shutil
+
+    trash = Path(out_dir) / ".trash"
+    trash.mkdir(parents=True, exist_ok=True)
+    dest = trash / pkg.name
+    if dest.exists():
+        shutil.rmtree(dest)  # replace a previously trashed package of the same id
+    shutil.move(str(pkg), str(dest))
+
+
 def _safe_pkg_dir(out_dir: str, post_id: str):
-    """Resolve out_dir/post_id, rejecting path traversal."""
-    if not post_id or "/" in post_id or "\\" in post_id or ".." in post_id:
+    """Resolve out_dir/post_id, rejecting path traversal and dot-dirs (e.g. .trash)."""
+    if not post_id or post_id.startswith(".") or "/" in post_id or "\\" in post_id or ".." in post_id:
         return None
     base = Path(out_dir).resolve()
     target = (base / post_id).resolve()
@@ -286,6 +331,8 @@ def _scan_packages(out_dir: str):
     if not base.exists():
         return rows
     for manifest_path in sorted(base.glob("*/manifest.json")):
+        if manifest_path.parent.name.startswith("."):
+            continue  # skip .trash and other dot dirs
         try:
             m = json.loads(manifest_path.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError):

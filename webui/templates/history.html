@@ -1,19 +1,7 @@
 {% extends "base.html" %}
 {% block heading %}運行歷史 / Run History{% endblock %}
 {% block content %}
-{% if not runs %}
-  <p class="hint">尚無運行紀錄。</p>
-{% else %}
-  <table>
-    <thead><tr><th>時間</th><th>階段</th><th>post_id</th><th>結果</th><th>細節</th></tr></thead>
-    <tbody>
-    {% for r in runs %}
-      <tr{% if r.status == 'failed' %} class="error"{% endif %}>
-        <td>{{ r.ts }}</td><td>{{ r.stage }}</td><td>{{ r.post_id or '' }}</td>
-        <td>{{ r.status }}</td><td>{{ r.error or r.detail or '' }}</td>
-      </tr>
-    {% endfor %}
-    </tbody>
-  </table>
-{% endif %}
+<div hx-get="/history" hx-trigger="every 5s" hx-swap="innerHTML">
+{% include "_history_table.html" %}
+</div>
 {% endblock %}

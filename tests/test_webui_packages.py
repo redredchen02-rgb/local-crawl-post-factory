@@ -123,6 +123,84 @@ def test_failure_image_traversal_blocked(tmp_path):
     assert client.get("/packages/20260615_f/failure-image").status_code == 404
 
 
+def test_filter_by_status(tmp_path):
+    out = tmp_path / "out"
+    _pkg(out, "20260615_a", "甲文", status="package_built")
+    _pkg(out, "20260615_b", "乙文", status="draft_verified")
+    client = _client(tmp_path, out)
+    r = client.get("/packages?status=draft_verified")
+    assert r.status_code == 200
+    assert "乙文" in r.text and "甲文" not in r.text
+
+
+def test_filter_by_query_matches_title_and_id(tmp_path):
+    out = tmp_path / "out"
+    _pkg(out, "20260615_a", "貓咪日報")
+    _pkg(out, "20260615_b", "狗狗新聞")
+    client = _client(tmp_path, out)
+    assert "貓咪日報" in client.get("/packages?q=貓").text
+    assert "狗狗新聞" not in client.get("/packages?q=貓").text
+    # query also matches post_id
+    assert "貓咪日報" in client.get("/packages?q=615_a").text
+
+
+def test_empty_query_returns_all(tmp_path):
+    out = tmp_path / "out"
+    _pkg(out, "20260615_a", "甲文")
+    _pkg(out, "20260615_b", "乙文")
+    client = _client(tmp_path, out)
+    r = client.get("/packages?q=")
+    assert "甲文" in r.text and "乙文" in r.text
+
+
+def test_delete_moves_package_to_trash(tmp_path):
+    out = tmp_path / "out"
+    _pkg(out, "20260615_a", "甲文")
+    client = _client(tmp_path, out)
+    r = client.post("/packages/20260615_a/delete")
+    assert r.status_code == 200
+    # original gone, archived under .trash (reversible)
+    assert not (out / "20260615_a").exists()
+    assert (out / ".trash" / "20260615_a" / "manifest.json").exists()
+    # list no longer shows it
+    assert "甲文" not in client.get("/packages").text
+
+
+def test_delete_path_traversal_blocked(tmp_path):
+    out = tmp_path / "out"
+    _pkg(out, "20260615_a", "甲文")
+    client = _client(tmp_path, out)
+    assert client.post("/packages/..%2f..%2fetc/delete").status_code == 404
+    # nothing moved
+    assert (out / "20260615_a").exists()
+    assert not (out / ".trash").exists()
+
+
+def test_delete_unknown_404(tmp_path):
+    client = _client(tmp_path, tmp_path / "out")
+    assert client.post("/packages/nope/delete").status_code == 404
+
+
+def test_delete_trash_dir_itself_blocked(tmp_path):
+    """Crafted POST for a dot-dir (e.g. .trash) must be rejected, not nested into itself."""
+    out = tmp_path / "out"
+    _pkg(out, "20260615_a", "甲文")
+    client = _client(tmp_path, out)
+    client.post("/packages/20260615_a/delete")  # creates out/.trash
+    assert client.post("/packages/.trash/delete").status_code == 404
+    assert not (out / ".trash" / ".trash").exists()
+
+
+def test_trash_dir_not_listed_as_package(tmp_path):
+    out = tmp_path / "out"
+    _pkg(out, "20260615_a", "甲文")
+    client = _client(tmp_path, out)
+    client.post("/packages/20260615_a/delete")
+    # .trash holds a manifest.json but must never appear in the staged list
+    r = client.get("/packages")
+    assert "尚無上膛貼文" in r.text
+
+
 def test_publish_endpoint_is_gated_not_absent(tmp_path):
     """Control-center model: a publish route exists but is gated (see
     test_webui_publish_gate). It must never publish without the triple gate."""
