@@ -53,6 +53,7 @@ def _run(args) -> int:
         raise ValidationError("refusing: content changed since review")
 
     post_id = manifest.get("post_id")
+    assert isinstance(post_id, str)
     draft_url = manifest.get("backend", {}).get("draft_url")
     run_id = manifest.get("backend", {}).get("run_id")  # Q7: None for CLI-built manifests (not self-generated)
 

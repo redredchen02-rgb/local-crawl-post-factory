@@ -137,9 +137,9 @@ def test_download_all_covers_downloads_in_parallel(tmp_path, monkeypatch):
     download_dir.mkdir(parents=True)
 
     records = [
-        _cover_item("a", "標題一", f"https://example.com/img/a.jpg"),
-        _cover_item("b", "標題二", f"https://example.com/img/b.jpg"),
-        _cover_item("c", "標題三", f"https://example.com/img/c.jpg"),
+        _cover_item("a", "標題一", "https://example.com/img/a.jpg"),
+        _cover_item("b", "標題二", "https://example.com/img/b.jpg"),
+        _cover_item("c", "標題三", "https://example.com/img/c.jpg"),
     ]
 
     dl_log = {}

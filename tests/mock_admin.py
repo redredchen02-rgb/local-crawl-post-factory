@@ -38,7 +38,7 @@ def _parse_multipart_fields(content_type, body):
             fields[name] = value.rsplit(b"\r\n", 1)[0].decode("utf-8", "replace")
     return fields
 
-_POSTS = {}  # id -> {"title", "content", "published"}
+_POSTS: dict[str, dict] = {}  # id -> {"title", "content", "published"}
 _NEXT = {"id": 1}
 
 _CREATE_FORM = """

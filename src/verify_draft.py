@@ -28,6 +28,7 @@ def _run(args) -> int:
     cfg = load_backend(args.backend)
     mf.require_status(manifest, "drafted")
     post_id = manifest.get("post_id")
+    assert isinstance(post_id, str)
     title = manifest.get("content", {}).get("title") or ""
 
     with backend_driver.session(args.storage_state, args.headless, args.timeout_ms) as page:
