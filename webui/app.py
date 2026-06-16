@@ -477,6 +477,21 @@ def create_app(config_path: str = WEBUI_CONFIG_PATH) -> FastAPI:
         ss = Path(cfg["storage_state"])
         app.state.session_expired_mtime = ss.stat().st_mtime if ss.exists() else 0.0
 
+    @app.get("/trash", response_class=HTMLResponse)
+    def trash_list(request: Request):
+        cfg = _cfg()
+        rows = _scan_trash(cfg["out_dir"])
+        return templates.TemplateResponse(request, "trash.html", {"items": rows})
+
+    @app.post("/trash/{post_id}/restore", response_class=HTMLResponse)
+    def restore_package(request: Request, post_id: str):
+        cfg = _cfg()
+        restored = _restore_from_trash(cfg["out_dir"], post_id)
+        if not restored:
+            return HTMLResponse('<p class="error">找不到此垃圾桶項目</p>', status_code=404)
+        rows = _scan_trash(cfg["out_dir"])
+        return templates.TemplateResponse(request, "_trash_table.html", {"items": rows})
+
     @app.get("/auth-status", response_class=HTMLResponse)
     def auth_status(request: Request):
         cfg = _cfg()
@@ -595,6 +610,44 @@ def _move_to_trash(out_dir: str, pkg):
     if dest.exists():
         shutil.rmtree(dest)  # replace a previously trashed package of the same id
     shutil.move(str(pkg), str(dest))
+
+
+def _scan_trash(out_dir: str) -> list[dict]:
+    """List packages in out_dir/.trash/; return [{post_id, title}]."""
+    trash = Path(out_dir) / ".trash"
+    if not trash.exists():
+        return []
+    rows = []
+    for d in sorted(trash.iterdir()):
+        if not d.is_dir() or d.name.startswith("."):
+            continue
+        title = d.name
+        mp = d / "manifest.json"
+        if mp.exists():
+            try:
+                m = json.loads(mp.read_text(encoding="utf-8"))
+                title = m.get("content", {}).get("title", d.name) or d.name
+            except (json.JSONDecodeError, OSError):
+                pass
+        rows.append({"post_id": d.name, "title": title})
+    return rows
+
+
+def _restore_from_trash(out_dir: str, post_id: str) -> bool:
+    """Move post_id from .trash/ back to out_dir/. Returns True on success."""
+    import shutil
+
+    if not post_id or post_id.startswith(".") or "/" in post_id or "\\" in post_id:
+        return False
+    trash = Path(out_dir) / ".trash"
+    src = (trash / post_id).resolve()
+    if src.parent != trash.resolve() or not src.is_dir():
+        return False
+    dest = Path(out_dir) / post_id
+    if dest.exists():
+        return False  # would overwrite live package
+    shutil.move(str(src), str(dest))
+    return True
 
 
 def _safe_pkg_dir(out_dir: str, post_id: str):

@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block heading %}垃圾桶 / Trash{% endblock %}
+{% block content %}
+<p class="hint">已移入垃圾桶的貼文放在 <code>out/.trash/</code>，按「復原」可搬回上膛清單。</p>
+
+<div id="trash-list">
+{% include "_trash_table.html" %}
+</div>
+{% endblock %}

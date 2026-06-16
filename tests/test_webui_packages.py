@@ -242,3 +242,31 @@ def test_batch_delete_moves_selected_to_trash(tmp_path):
     assert not (out / "20260615_a").exists()
     assert (out / ".trash" / "20260615_a").exists()
     assert (out / "20260615_b").exists()  # untouched
+
+
+def test_trash_list_shows_trashed_items(tmp_path):
+    """/trash lists packages moved to .trash with their titles."""
+    out = tmp_path / "out"
+    _pkg(out, "20260615_a", "甲文")
+    client = _client(tmp_path, out)
+    client.post("/packages/20260615_a/delete")
+    r = client.get("/trash")
+    assert r.status_code == 200
+    assert "甲文" in r.text
+
+
+def test_trash_restore_moves_back_to_out(tmp_path):
+    """/trash/{id}/restore moves the package back; no longer in .trash."""
+    out = tmp_path / "out"
+    _pkg(out, "20260615_a", "甲文")
+    client = _client(tmp_path, out)
+    client.post("/packages/20260615_a/delete")
+    r = client.post("/trash/20260615_a/restore")
+    assert r.status_code == 200
+    assert (out / "20260615_a" / "manifest.json").exists()
+    assert not (out / ".trash" / "20260615_a").exists()
+
+
+def test_trash_restore_unknown_404(tmp_path):
+    client = _client(tmp_path, tmp_path / "out")
+    assert client.post("/trash/nope/restore").status_code == 404
