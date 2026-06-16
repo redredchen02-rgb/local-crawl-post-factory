@@ -5,18 +5,25 @@ WebUI and the CLI share one implementation. crawl stays in its own subprocess
 (Scrapy reactor cannot restart in-process) via crawl_posts.crawl_items.
 """
 
+import json
+import time
 from pathlib import Path
+from types import SimpleNamespace
+from typing import Any
 
-from core import state, runs
-from core.errors import ExternalError, ValidationError
+from core import reviewed, runs, state
+from core.errors import ExternalError, SessionExpiredError, ValidationError
 from src import (
-    normalize_items,
-    dedupe_posts,
-    render_caption,
-    select_cover,
-    watermark_cover,
     build_manifest,
     crawl_posts,
+    dedupe_posts,
+    draft_post,
+    normalize_items,
+    publish_post,
+    render_caption,
+    select_cover,
+    verify_draft,
+    watermark_cover,
 )
 
 COVER_TIMEOUT_SEC = 20
@@ -139,3 +146,174 @@ def run_pipeline(items, webui_cfg: dict, progress_cb=None) -> dict:
                 _report(f"failed: {title}: {exc}")
 
     return {"built": built, "failed": failed, "skipped": skipped}
+
+
+# ---------------------------------------------------------------------------
+# Auto-pipeline: draft → verify → publish (public unified entry point, P7)
+# ---------------------------------------------------------------------------
+
+def _retry(fn, times: int = 3, delay: float = 1.0) -> tuple[Any, Exception | None]:
+    """Call fn() up to *times* attempts, sleeping *delay* seconds between retries."""
+    last_exc: Exception | None = None
+    for attempt in range(times):
+        try:
+            return fn(), None
+        except Exception as exc:  # noqa: BLE001
+            last_exc = exc
+            if attempt < times - 1:
+                time.sleep(delay)
+    return None, last_exc
+
+
+def run_auto_pipeline(
+    built: list[dict],
+    cfg: dict,
+    *,
+    timeout_ms: int = 30_000,
+    on_progress=None,
+    on_status=None,
+    on_session_expired=None,
+) -> dict:
+    """Draft→verify→publish for each item in *built*.
+
+    *built* is the list from run_pipeline()["built"]:
+    [{"post_id": str, "title": str, "manifest_path": str}, ...]
+
+    Callbacks (all optional):
+    - on_progress(msg: str)  — milestone log line (replaces jobs.report)
+    - on_status(msg: str)    — current-task label (replaces jobs.set_current)
+    - on_session_expired(cfg) — called on SessionExpiredError
+
+    Returns {"ok": int, "failed": list[dict], "verify_fail_count": int}.
+    """
+
+    def _report(msg: str) -> None:
+        if on_progress:
+            on_progress(msg)
+
+    def _setstatus(msg: str) -> None:
+        if on_status:
+            on_status(msg)
+
+    def _note_expiry(exc: Exception) -> None:
+        if on_session_expired is not None and isinstance(exc, SessionExpiredError):
+            on_session_expired(cfg)
+
+    if not built:
+        _report("無新稿件，跳過自動發布")
+        return {"ok": 0, "failed": [], "verify_fail_count": 0}
+
+    total = len(built)
+    run_id = runs.new_run_id()
+    drafted_ok: list[dict] = []
+    verify_ok: list[dict] = []
+    failed: list[dict] = []
+
+    # --- DRAFT LOOP ---
+    _report(f"自動建草稿（共 {total} 篇）…")
+    for i, item in enumerate(built):
+        pid = item["post_id"]
+        _setstatus(f"建草稿 {i + 1}/{total}：{item.get('title', pid)}")
+        manifest_path = Path(item["manifest_path"])
+        if not manifest_path.exists():
+            failed.append({"post_id": pid, "stage": "draft", "error": "找不到此貼文包"})
+            continue
+        ns = SimpleNamespace(
+            manifest=str(manifest_path),
+            backend=cfg["backend_config"],
+            storage_state=cfg["storage_state"],
+            headless=True,
+            timeout_ms=timeout_ms,
+            retries=None,
+            state=cfg["state_path"],
+            dry_run=False,
+        )
+        _rv, err = _retry(lambda ns=ns: draft_post._run(ns))
+        if err is None:
+            drafted_ok.append(item)
+            runs.record_run(cfg["state_path"], stage="draft", post_id=pid,
+                            status="ok", run_id=run_id, severity="info")
+        else:
+            _note_expiry(err)
+            failed.append({"post_id": pid, "stage": "draft", "error": str(err)})
+            runs.record_run(cfg["state_path"], stage="draft", post_id=pid,
+                            status="failed", error=str(err), run_id=run_id, severity="error")
+
+    _report(f"建草稿完成：{len(drafted_ok)}/{total} 成功")
+
+    # --- VERIFY LOOP ---
+    _report(f"自動驗證（共 {len(drafted_ok)} 篇）…")
+    for i, item in enumerate(drafted_ok):
+        pid = item["post_id"]
+        _setstatus(f"驗證 {i + 1}/{len(drafted_ok)}：{item.get('title', pid)}")
+        manifest_path = Path(item["manifest_path"])
+        if not manifest_path.exists():
+            failed.append({"post_id": pid, "stage": "verify", "error": "找不到此貼文包"})
+            continue
+        ns = SimpleNamespace(
+            manifest=str(manifest_path),
+            backend=cfg["backend_config"],
+            storage_state=cfg["storage_state"],
+            headless=True,
+            timeout_ms=timeout_ms,
+            retries=None,
+            state=cfg["state_path"],
+            dry_run=False,
+        )
+        _rv, err = _retry(lambda ns=ns: verify_draft._run(ns))
+        if err is None:
+            verify_ok.append(item)
+            runs.record_run(cfg["state_path"], stage="verify", post_id=pid,
+                            status="ok", run_id=run_id, severity="info")
+        else:
+            _note_expiry(err)
+            failed.append({"post_id": pid, "stage": "verify", "error": str(err)})
+            runs.record_run(cfg["state_path"], stage="verify", post_id=pid,
+                            status="failed", error=str(err), run_id=run_id, severity="error")
+
+    verify_fail_count = len(drafted_ok) - len(verify_ok)
+    _report(f"驗證完成：{len(verify_ok)}/{len(drafted_ok)} 成功")
+
+    # --- PUBLISH LOOP ---
+    _report(f"自動發布（共 {len(verify_ok)} 篇）…")
+    publish_ok = 0
+    for i, item in enumerate(verify_ok):
+        pid = item["post_id"]
+        _setstatus(f"發布 {i + 1}/{len(verify_ok)}：{item.get('title', pid)}")
+        manifest_path = Path(item["manifest_path"])
+        if not manifest_path.exists():
+            failed.append({"post_id": pid, "stage": "publish", "error": "找不到 manifest"})
+            continue
+        m = json.loads(manifest_path.read_text(encoding="utf-8"))
+        cid = reviewed.content_id(m)
+        try:
+            reviewed.mark(cfg["state_path"], pid, cid)
+        except Exception as exc:  # noqa: BLE001
+            failed.append({"post_id": pid, "stage": "publish",
+                           "error": f"reviewed.mark 失敗：{exc}"})
+            continue
+        ns = SimpleNamespace(
+            manifest=str(manifest_path),
+            backend=cfg["backend_config"],
+            storage_state=cfg["storage_state"],
+            headless=True,
+            timeout_ms=timeout_ms,
+            retries=None,
+            state=cfg["state_path"],
+            approve=True,
+            expected_content_id=cid,
+        )
+        _rv, err = _retry(lambda ns=ns: publish_post._run(ns))
+        if err is None:
+            publish_ok += 1
+        else:
+            _note_expiry(err)
+            failed.append({"post_id": pid, "stage": "publish", "error": str(err)})
+            runs.record_run(cfg["state_path"], stage="publish", post_id=pid,
+                            status="failed", error=str(err), run_id=run_id, severity="error")
+
+    _report(
+        f"自動發布完成：成功 {publish_ok} / 失敗 {len(failed)} / "
+        f"跳過 {verify_fail_count}（驗證失敗 {verify_fail_count}）"
+    )
+    return {"ok": publish_ok, "failed": failed, "verify_fail_count": verify_fail_count}

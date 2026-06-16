@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.1.1] - 2026-06-16
+
+### Changed
+- **公共 pipeline API（P7）**：`core/pipeline.py` 新增 `run_auto_pipeline()` 作為 draft→verify→publish 的統一入口；`webui/_auto_pipeline.py` 縮減為 20 行 adapter，透過 `on_progress` / `on_status` / `on_session_expired` callback 橋接 WebUI job 系統，消除兩套邏輯偏離風險。
+- **`_action_ns` 遷移**：從 `webui/_auto_pipeline` 移至 `webui/_helpers`，手動單項操作（draft/verify/publish）繼續可用。
+- **測試層級調整**：`tests/test_auto_pipeline.py` 的邏輯單元測試改為直接測 `core.pipeline.run_auto_pipeline`，`_retry` 由 `core.pipeline` 提供。
+
 ## [0.2.1.0] - 2026-06-16
 
 ### Changed

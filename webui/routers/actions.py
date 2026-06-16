@@ -9,8 +9,8 @@ from browser import backend_driver
 from core import jobs as _jobs, reviewed, runs
 from core.errors import SessionExpiredError
 from src import draft_post, publish_post, verify_draft
-from webui._auto_pipeline import _action_ns
 from webui._helpers import (
+    _action_ns,
     _filter_packages,
     _move_to_trash,
     _safe_pkg_dir,
@@ -84,9 +84,9 @@ def batch_delete(request: Request, post_ids: list[str] = Form(default=[])):
     if skipped:
         escaped = ", ".join(html.escape(p) for p in skipped)
         msg += f'<p class="error">找不到（已略過）：{escaped}</p>'
-    return msg + templates.TemplateResponse(
+    return msg + bytes(templates.TemplateResponse(
         request, "_packages_table.html", {"packages": rows, "q": "", "status": ""}
-    ).body.decode()
+    ).body).decode()
 
 
 @router.post("/batch/{stage}", response_class=HTMLResponse)

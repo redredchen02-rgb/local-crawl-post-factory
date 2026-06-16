@@ -1,10 +1,10 @@
-"""Unit tests for _retry(), _run_auto_pipeline(), and auto-pipeline wiring."""
+"""Unit tests for core.pipeline._retry, run_auto_pipeline, and WebUI wiring."""
 
 import json
 from unittest.mock import MagicMock, patch
 
-
-from webui._auto_pipeline import _retry, _run_auto_pipeline
+from core.pipeline import _retry, run_auto_pipeline
+from webui._auto_pipeline import _run_auto_pipeline
 
 
 # ---------------------------------------------------------------------------
@@ -46,7 +46,7 @@ def test_retry_single_attempt():
 
 
 # ---------------------------------------------------------------------------
-# _run_auto_pipeline()
+# run_auto_pipeline() — unit tests via core.pipeline directly
 # ---------------------------------------------------------------------------
 
 def _make_cfg(tmp_path):
@@ -80,169 +80,228 @@ def _make_built(post_id: str, tmp_path, title: str = "Test Title") -> dict:
     }
 
 
-class _FakeJob:
-    """Minimal job stub that captures report/set_current calls."""
-    def __init__(self):
-        self.progress: list[str] = []
-        self.current: str = ""
-
-    @property
-    def report_msgs(self):
-        return self.progress
-
-
-def _make_job():
-    return _FakeJob()
-
-
-@patch("webui._auto_pipeline.runs.record_run")
-@patch("webui._auto_pipeline.reviewed.mark")
-@patch("webui._auto_pipeline.publish_post._run")
-@patch("webui._auto_pipeline.verify_draft._run")
-@patch("webui._auto_pipeline.draft_post._run")
+@patch("core.pipeline.runs.record_run")
+@patch("core.pipeline.reviewed.mark")
+@patch("core.pipeline.publish_post._run")
+@patch("core.pipeline.verify_draft._run")
+@patch("core.pipeline.draft_post._run")
 def test_happy_path_all_succeed(mock_draft, mock_verify, mock_publish,
                                 mock_mark, mock_record, tmp_path):
     cfg = _make_cfg(tmp_path)
     built = [_make_built("p1", tmp_path), _make_built("p2", tmp_path)]
-    job = _make_job()
+    progress = []
 
-    _run_auto_pipeline(job, cfg, built)
+    run_auto_pipeline(built, cfg, on_progress=progress.append)
 
     assert mock_draft.call_count == 2
     assert mock_verify.call_count == 2
     assert mock_publish.call_count == 2
     assert mock_mark.call_count == 2
-    # Summary message should mention 成功 2
-    summary = job.progress[-1]
+    summary = progress[-1]
     assert "成功 2" in summary
     assert "失敗 0" in summary
 
 
-@patch("webui._auto_pipeline.runs.record_run")
-@patch("webui._auto_pipeline.reviewed.mark")
-@patch("webui._auto_pipeline.publish_post._run")
-@patch("webui._auto_pipeline.verify_draft._run")
-@patch("webui._auto_pipeline.draft_post._run")
+@patch("core.pipeline.runs.record_run")
+@patch("core.pipeline.reviewed.mark")
+@patch("core.pipeline.publish_post._run")
+@patch("core.pipeline.verify_draft._run")
+@patch("core.pipeline.draft_post._run")
 def test_empty_built_early_return(mock_draft, mock_verify, mock_publish,
                                   mock_mark, mock_record, tmp_path):
     cfg = _make_cfg(tmp_path)
-    job = _make_job()
+    progress = []
 
-    _run_auto_pipeline(job, cfg, [])
+    run_auto_pipeline([], cfg, on_progress=progress.append)
 
     mock_draft.assert_not_called()
     mock_verify.assert_not_called()
     mock_publish.assert_not_called()
-    # Should report the early-return message
-    assert any("無新稿件" in m for m in job.progress)
+    assert any("無新稿件" in m for m in progress)
 
 
-@patch("webui._auto_pipeline.time.sleep")
-@patch("webui._auto_pipeline.runs.record_run")
-@patch("webui._auto_pipeline.reviewed.mark")
-@patch("webui._auto_pipeline.publish_post._run")
-@patch("webui._auto_pipeline.verify_draft._run")
-@patch("webui._auto_pipeline.draft_post._run")
+@patch("core.pipeline.time.sleep")
+@patch("core.pipeline.runs.record_run")
+@patch("core.pipeline.reviewed.mark")
+@patch("core.pipeline.publish_post._run")
+@patch("core.pipeline.verify_draft._run")
+@patch("core.pipeline.draft_post._run")
 def test_draft_fail_all_retries_skips_verify_and_publish(
         mock_draft, mock_verify, mock_publish, mock_mark, mock_record, mock_sleep, tmp_path):
     cfg = _make_cfg(tmp_path)
     built = [_make_built("p1", tmp_path)]
-    job = _make_job()
+    progress = []
     mock_draft.side_effect = RuntimeError("draft error")
 
-    _run_auto_pipeline(job, cfg, built)
+    run_auto_pipeline(built, cfg, on_progress=progress.append)
 
-    assert mock_draft.call_count == 3  # 3 retry attempts
+    assert mock_draft.call_count == 3
     mock_verify.assert_not_called()
     mock_publish.assert_not_called()
-    summary = job.progress[-1]
-    assert "失敗 1" in summary
+    assert "失敗 1" in progress[-1]
 
 
-@patch("webui._auto_pipeline.time.sleep")
-@patch("webui._auto_pipeline.runs.record_run")
-@patch("webui._auto_pipeline.reviewed.mark")
-@patch("webui._auto_pipeline.publish_post._run")
-@patch("webui._auto_pipeline.verify_draft._run")
-@patch("webui._auto_pipeline.draft_post._run")
+@patch("core.pipeline.time.sleep")
+@patch("core.pipeline.runs.record_run")
+@patch("core.pipeline.reviewed.mark")
+@patch("core.pipeline.publish_post._run")
+@patch("core.pipeline.verify_draft._run")
+@patch("core.pipeline.draft_post._run")
 def test_verify_fail_skips_publish_counted_as_verify_fail(
         mock_draft, mock_verify, mock_publish, mock_mark, mock_record, mock_sleep, tmp_path):
     cfg = _make_cfg(tmp_path)
     built = [_make_built("p1", tmp_path)]
-    job = _make_job()
+    progress = []
     mock_verify.side_effect = RuntimeError("verify error")
 
-    _run_auto_pipeline(job, cfg, built)
+    run_auto_pipeline(built, cfg, on_progress=progress.append)
 
     mock_draft.assert_called_once()
     assert mock_verify.call_count == 3
     mock_publish.assert_not_called()
-    summary = job.progress[-1]
-    assert "驗證失敗 1" in summary
+    assert "驗證失敗 1" in progress[-1]
 
 
-@patch("webui._auto_pipeline.time.sleep")
-@patch("webui._auto_pipeline.runs.record_run")
-@patch("webui._auto_pipeline.reviewed.mark")
-@patch("webui._auto_pipeline.publish_post._run")
-@patch("webui._auto_pipeline.verify_draft._run")
-@patch("webui._auto_pipeline.draft_post._run")
+@patch("core.pipeline.time.sleep")
+@patch("core.pipeline.runs.record_run")
+@patch("core.pipeline.reviewed.mark")
+@patch("core.pipeline.publish_post._run")
+@patch("core.pipeline.verify_draft._run")
+@patch("core.pipeline.draft_post._run")
 def test_one_draft_fails_others_continue(
         mock_draft, mock_verify, mock_publish, mock_mark, mock_record, mock_sleep, tmp_path):
     cfg = _make_cfg(tmp_path)
     built = [_make_built("p1", tmp_path), _make_built("p2", tmp_path)]
-    job = _make_job()
-    # p1 fails draft, p2 succeeds
+    progress = []
     mock_draft.side_effect = [RuntimeError("p1 fail"), RuntimeError("p1 fail"),
                               RuntimeError("p1 fail"), None]
 
-    _run_auto_pipeline(job, cfg, built)
+    run_auto_pipeline(built, cfg, on_progress=progress.append)
 
-    # p2 should still be verified and published
     assert mock_verify.call_count == 1
     assert mock_publish.call_count == 1
-    summary = job.progress[-1]
+    summary = progress[-1]
     assert "成功 1" in summary
     assert "失敗 1" in summary
 
 
-@patch("webui._auto_pipeline.runs.record_run")
-@patch("webui._auto_pipeline.reviewed.mark")
-@patch("webui._auto_pipeline.publish_post._run")
-@patch("webui._auto_pipeline.verify_draft._run")
-@patch("webui._auto_pipeline.draft_post._run")
+@patch("core.pipeline.runs.record_run")
+@patch("core.pipeline.reviewed.mark")
+@patch("core.pipeline.publish_post._run")
+@patch("core.pipeline.verify_draft._run")
+@patch("core.pipeline.draft_post._run")
 def test_reviewed_mark_called_before_publish(
         mock_draft, mock_verify, mock_publish, mock_mark, mock_record, tmp_path):
     cfg = _make_cfg(tmp_path)
     built = [_make_built("p1", tmp_path)]
-    job = _make_job()
     call_order = []
     mock_mark.side_effect = lambda *a, **kw: call_order.append("mark")
     mock_publish.side_effect = lambda ns: call_order.append("publish")
 
-    _run_auto_pipeline(job, cfg, built)
+    run_auto_pipeline(built, cfg)
 
     assert call_order == ["mark", "publish"]
     mock_mark.assert_called_once()
 
 
-@patch("webui._auto_pipeline.runs.record_run")
-@patch("webui._auto_pipeline.reviewed.mark")
-@patch("webui._auto_pipeline.publish_post._run")
-@patch("webui._auto_pipeline.verify_draft._run")
-@patch("webui._auto_pipeline.draft_post._run")
+@patch("core.pipeline.runs.record_run")
+@patch("core.pipeline.reviewed.mark")
+@patch("core.pipeline.publish_post._run")
+@patch("core.pipeline.verify_draft._run")
+@patch("core.pipeline.draft_post._run")
 def test_reviewed_mark_failure_skips_publish(
         mock_draft, mock_verify, mock_publish, mock_mark, mock_record, tmp_path):
     cfg = _make_cfg(tmp_path)
     built = [_make_built("p1", tmp_path)]
-    job = _make_job()
+    progress = []
     mock_mark.side_effect = RuntimeError("db error")
 
-    _run_auto_pipeline(job, cfg, built)
+    run_auto_pipeline(built, cfg, on_progress=progress.append)
 
     mock_publish.assert_not_called()
-    summary = job.progress[-1]
-    assert "失敗 1" in summary
+    assert "失敗 1" in progress[-1]
+
+
+# ---------------------------------------------------------------------------
+# Defensive branches
+# ---------------------------------------------------------------------------
+
+@patch("core.pipeline.runs.record_run")
+@patch("core.pipeline.reviewed.mark")
+@patch("core.pipeline.publish_post._run")
+@patch("core.pipeline.verify_draft._run")
+@patch("core.pipeline.draft_post._run")
+def test_action_ns_none_skips_item(mock_draft, mock_verify, mock_publish,
+                                   mock_mark, mock_record, tmp_path):
+    """If manifest path does not exist, item is counted as failed."""
+    cfg = _make_cfg(tmp_path)
+    built = [{"post_id": "ghost", "title": "X",
+              "manifest_path": str(tmp_path / "out" / "ghost" / "manifest.json")}]
+    progress = []
+
+    run_auto_pipeline(built, cfg, on_progress=progress.append)
+
+    mock_draft.assert_not_called()
+    assert "失敗 1" in progress[-1]
+
+
+@patch("core.pipeline.runs.record_run")
+@patch("core.pipeline.reviewed.mark")
+@patch("core.pipeline.publish_post._run")
+@patch("core.pipeline.verify_draft._run")
+@patch("core.pipeline.draft_post._run")
+def test_manifest_missing_at_publish_skips(mock_draft, mock_verify, mock_publish,
+                                           mock_mark, mock_record, tmp_path):
+    """If manifest.json disappears after verify, publish is skipped as failure."""
+    cfg = _make_cfg(tmp_path)
+    pkg = tmp_path / "out" / "p1"
+    pkg.mkdir(parents=True, exist_ok=True)
+    manifest_path = pkg / "manifest.json"
+    manifest_path.write_text(json.dumps({
+        "content": {"title": "T", "body": "b"},
+        "source": {"canonical_url": "https://x.com/p1"},
+        "backend": {"status": "draft_verified"},
+        "audit": {},
+    }), encoding="utf-8")
+    built = [{"post_id": "p1", "title": "T", "manifest_path": str(manifest_path)}]
+    progress = []
+
+    def remove_manifest(ns):
+        manifest_path.unlink(missing_ok=True)
+
+    mock_verify.side_effect = remove_manifest
+
+    run_auto_pipeline(built, cfg, on_progress=progress.append)
+
+    mock_publish.assert_not_called()
+    assert "失敗 1" in progress[-1]
+
+
+# ---------------------------------------------------------------------------
+# WebUI adapter: _run_auto_pipeline bridges to core
+# ---------------------------------------------------------------------------
+
+def test_webui_adapter_delegates_to_core(tmp_path):
+    """_run_auto_pipeline calls pipeline.run_auto_pipeline with correct callbacks."""
+    built = [{"post_id": "p1", "title": "T", "manifest_path": "/x/manifest.json"}]
+    cfg = _make_cfg(tmp_path)
+
+    class _FakeJob:
+        progress: list[str] = []
+        current: str = ""
+
+    job = _FakeJob()
+
+    with patch("webui._auto_pipeline.pipeline.run_auto_pipeline") as mock_core:
+        _run_auto_pipeline(job, cfg, built)
+        mock_core.assert_called_once()
+        call_kwargs = mock_core.call_args[1]
+        assert call_kwargs["on_progress"] is not None
+        assert call_kwargs["on_status"] is not None
+        # callbacks should bridge to jobs
+        with patch("webui._auto_pipeline.jobs.report") as mock_report:
+            call_kwargs["on_progress"]("hello")
+            mock_report.assert_called_once_with(job, "hello")
 
 
 # ---------------------------------------------------------------------------
@@ -275,7 +334,6 @@ def test_auto_pipeline_wired_into_crawl(tmp_path):
           _patch("webui.routers.crawl._run_auto_pipeline") as mock_auto):
         response = client.post("/crawl")
         assert response.status_code == 200
-        # Give the background thread time to run
         import time
         time.sleep(0.3)
         mock_auto.assert_called_once()
@@ -310,65 +368,6 @@ def test_auto_pipeline_not_called_when_disabled(tmp_path):
         import time
         time.sleep(0.3)
         mock_auto.assert_not_called()
-
-
-# ---------------------------------------------------------------------------
-# Gap-fill: defensive branches
-# ---------------------------------------------------------------------------
-
-@patch("webui._auto_pipeline.runs.record_run")
-@patch("webui._auto_pipeline.reviewed.mark")
-@patch("webui._auto_pipeline.publish_post._run")
-@patch("webui._auto_pipeline.verify_draft._run")
-@patch("webui._auto_pipeline.draft_post._run")
-def test_action_ns_none_skips_item(mock_draft, mock_verify, mock_publish,
-                                   mock_mark, mock_record, tmp_path):
-    """If _action_ns returns None (missing pkg dir), item is counted as failed."""
-    cfg = _make_cfg(tmp_path)
-    # built entry points to a non-existent package directory
-    built = [{"post_id": "ghost", "title": "X",
-              "manifest_path": str(tmp_path / "out" / "ghost" / "manifest.json")}]
-    job = _make_job()
-
-    _run_auto_pipeline(job, cfg, built)
-
-    mock_draft.assert_not_called()
-    summary = job.progress[-1]
-    assert "失敗 1" in summary
-
-
-@patch("webui._auto_pipeline.runs.record_run")
-@patch("webui._auto_pipeline.reviewed.mark")
-@patch("webui._auto_pipeline.publish_post._run")
-@patch("webui._auto_pipeline.verify_draft._run")
-@patch("webui._auto_pipeline.draft_post._run")
-def test_manifest_missing_at_publish_skips(mock_draft, mock_verify, mock_publish,
-                                           mock_mark, mock_record, tmp_path):
-    """If manifest.json disappears after verify, publish is skipped as failure."""
-    cfg = _make_cfg(tmp_path)
-    pkg = tmp_path / "out" / "p1"
-    pkg.mkdir(parents=True, exist_ok=True)
-    import json
-    manifest_path = pkg / "manifest.json"
-    manifest_path.write_text(json.dumps({
-        "content": {"title": "T", "body": "b"},
-        "source": {"canonical_url": "https://x.com/p1"},
-        "backend": {"status": "draft_verified"},
-        "audit": {},
-    }), encoding="utf-8")
-    built = [{"post_id": "p1", "title": "T", "manifest_path": str(manifest_path)}]
-    job = _make_job()
-
-    def remove_manifest(ns):
-        manifest_path.unlink(missing_ok=True)
-
-    mock_verify.side_effect = remove_manifest
-
-    _run_auto_pipeline(job, cfg, built)
-
-    mock_publish.assert_not_called()
-    summary = job.progress[-1]
-    assert "失敗 1" in summary
 
 
 def test_auto_pipeline_wired_empty_built(tmp_path):
