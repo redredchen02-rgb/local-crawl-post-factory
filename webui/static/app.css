@@ -127,6 +127,7 @@ tbody tr:hover { background: var(--accent-weak); }
 .pill { display: inline-block; padding: .15rem .55rem; border-radius: 999px;
         font-size: .8rem; font-weight: 600; background: var(--bg); color: var(--muted); }
 .pill.draft_verified, .pill.ok { background: var(--ok-weak); color: var(--ok); }
+.pill.published { background: var(--accent-weak); color: var(--accent); }
 .pill.error, .pill.failed { background: var(--error-weak); color: var(--error); }
 .pill.draft, .pill.pending { background: var(--pending-weak); color: var(--pending); }
 
