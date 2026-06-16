@@ -40,7 +40,6 @@ def create_app(config_path: str = WEBUI_CONFIG_PATH) -> FastAPI:
     return app
 
 
-
 def run():  # console-script entry point
     import uvicorn
 

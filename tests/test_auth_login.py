@@ -4,6 +4,8 @@ import json
 
 import pytest
 
+pytestmark = pytest.mark.slow  # Playwright subprocess; excluded from fast-run
+
 from core import cli
 from tests.mock_admin import MockAdmin
 
