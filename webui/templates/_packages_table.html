@@ -11,7 +11,8 @@
             hx-on::after-request="document.querySelectorAll('#batch-form input[type=checkbox]').forEach(c=>c.checked=false)">批量驗證</button>
     <button type="button" class="danger" hx-post="/batch/delete" hx-include="#batch-form"
             hx-target="#pkg-list" hx-swap="innerHTML"
-            hx-confirm="確定移入垃圾桶？可至 out/.trash/ 復原">批量刪除</button>
+            hx-confirm="確定移入垃圾桶？可至 out/.trash/ 復原"
+            hx-on::before-request="document.getElementById('batch-result').innerHTML=''">批量刪除</button>
     <span class="hint">（發布請點入貼文於審核頁確認；已啟用自動發布模式時爬取後自動執行）</span>
   </div>
   <div id="batch-result"></div>
@@ -32,7 +33,8 @@
         <td><span class="pill {{ p.status }}">{{ p.status }}</span></td>
         <td><button type="button" class="danger" hx-post="/packages/{{ p.post_id }}/delete"
                     hx-target="#pkg-list" hx-swap="innerHTML"
-                    hx-confirm="確定刪除 {{ p.post_id }}？將移到 out/.trash/（可復原）">刪除</button></td>
+                    hx-confirm="確定刪除 {{ p.post_id }}？將移到 out/.trash/（可復原）"
+                    hx-on::after-request="let s=document.querySelector('[name=status]');if(s)s.value=''">刪除</button></td>
       </tr>
     {% endfor %}
     </tbody>

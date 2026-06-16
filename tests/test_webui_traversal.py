@@ -48,6 +48,16 @@ def test_dot_dir_post_id_blocked(tmp_path):
     assert c.post("/packages/.trash/publish", data={"title": "x"}).status_code == 404
 
 
+def test_trash_restore_traversal_blocked(tmp_path):
+    """Traversal post_id on restore endpoint must be rejected."""
+    assert _client(tmp_path).post(f"/trash/{_TRAVERSAL}/restore").status_code == 404
+
+
+def test_trash_restore_dot_dir_blocked(tmp_path):
+    """Dot-dir post_id on restore endpoint must be rejected."""
+    assert _client(tmp_path).post("/trash/.evil/restore").status_code == 404
+
+
 def test_publish_gate_order_reviewed_before_title(tmp_path):
     """Gate (1) (reviewed/content) is checked before gate (3) (title): an
     un-reviewed, draft_verified package submitted with a WRONG title returns the
