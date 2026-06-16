@@ -62,8 +62,8 @@ def run_pipeline(items, webui_cfg: dict, progress_cb=None) -> dict:
     download_dir = Path(webui_cfg["download_dir"])
     out_dir = webui_cfg["out_dir"]
     audit_log = webui_cfg["audit_log"]
-    cover_retries = int(webui_cfg.get("cover_retries", 0))
-    cover_backoff = float(webui_cfg.get("cover_backoff_sec", 0.0))
+    cover_retries = int(webui_cfg.get("cover_retries", select_cover.DEFAULT_RETRIES))
+    cover_backoff = float(webui_cfg.get("cover_backoff_sec", select_cover.DEFAULT_BACKOFF_SEC))
     cover_concurrency = int(webui_cfg.get("cover_download_concurrency", 5))
 
     run_id = runs.new_run_id()  # correlates every record of this run (R9)
@@ -90,10 +90,6 @@ def run_pipeline(items, webui_cfg: dict, progress_cb=None) -> dict:
 
     with state.connect(webui_cfg["state_path"]) as conn:
         deduped = list(dedupe_posts.dedupe(normalized, conn, on_skip=_on_skip))
-    for record, reason in skips:
-        runs.record_run(webui_cfg["state_path"], stage="dedupe", post_id=None,
-                        status="skipped", detail=str(record.get("canonical_url", "")),
-                        error=f"reason={reason}", run_id=run_id, severity="info")
     skipped = before - len(deduped)
     _report(f"deduped: {len(deduped)} new, {skipped} skipped")
 
@@ -104,30 +100,42 @@ def run_pipeline(items, webui_cfg: dict, progress_cb=None) -> dict:
                             max_workers=cover_concurrency, progress_cb=_report)
 
     # Stages 4-6: caption → (cover already done) → watermark → build, per item.
-    for rec in deduped:
-        title = rec.get("title", "")
-        try:
-            rec = render_caption.render_record(rec, template_cfg)
-            cover_err = rec.get("cover_error")
-            if cover_err:
-                raise ExternalError(cover_err)
-            rec = watermark_cover.watermark(rec, wm_cfg)
-            rec["run_id"] = run_id  # Q7: persist into manifest.backend.run_id (publish reads it back)
-            manifest_path = build_manifest.build(rec, out_dir, audit_log)
-            post_id = Path(manifest_path).parent.name
-            built.append({"post_id": post_id, "title": title,
-                          "manifest_path": manifest_path})
-            runs.record_run(webui_cfg["state_path"], stage="build", post_id=post_id,
-                            status="ok", detail=title, run_id=run_id, severity="info")
-            _report(f"built {post_id}")
-        except Exception as exc:  # noqa: BLE001 - classify, record, keep batch alive
-            error_class = _error_class(exc)
-            failed.append({"title": title, "stage": "build",
-                           "error": str(exc), "error_class": error_class})
-            runs.record_run(webui_cfg["state_path"], stage="build", post_id=None,
-                            status="failed", detail=title, error=str(exc),
-                            run_id=run_id,
-                            severity="warning" if error_class == "validation" else "error")
-            _report(f"failed: {title}: {exc}")
+    # A single open_run_conn reuses one SQLite connection for all record_run
+    # calls below, amortising open/schema-check cost across the batch. Each
+    # call still commits immediately (per-row durability).
+    with runs.open_run_conn(webui_cfg["state_path"]) as run_conn:
+        for record, reason in skips:
+            runs.record_run(webui_cfg["state_path"], stage="dedupe", post_id=None,
+                            status="skipped", detail=str(record.get("canonical_url", "")),
+                            error=f"reason={reason}", run_id=run_id, severity="info",
+                            conn=run_conn)
+
+        for rec in deduped:
+            title = rec.get("title", "")
+            try:
+                rec = render_caption.render_record(rec, template_cfg)
+                cover_err = rec.get("cover_error")
+                if cover_err:
+                    raise ExternalError(cover_err)
+                rec = watermark_cover.watermark(rec, wm_cfg)
+                rec["run_id"] = run_id  # Q7: persist into manifest.backend.run_id (publish reads it back)
+                manifest_path = build_manifest.build(rec, out_dir, audit_log)
+                post_id = Path(manifest_path).parent.name
+                built.append({"post_id": post_id, "title": title,
+                              "manifest_path": manifest_path})
+                runs.record_run(webui_cfg["state_path"], stage="build", post_id=post_id,
+                                status="ok", detail=title, run_id=run_id, severity="info",
+                                conn=run_conn)
+                _report(f"built {post_id}")
+            except Exception as exc:  # noqa: BLE001 - classify, record, keep batch alive
+                error_class = _error_class(exc)
+                failed.append({"title": title, "stage": "build",
+                               "error": str(exc), "error_class": error_class})
+                runs.record_run(webui_cfg["state_path"], stage="build", post_id=None,
+                                status="failed", detail=title, error=str(exc),
+                                run_id=run_id,
+                                severity="warning" if error_class == "validation" else "error",
+                                conn=run_conn)
+                _report(f"failed: {title}: {exc}")
 
     return {"built": built, "failed": failed, "skipped": skipped}
