@@ -1,0 +1,14 @@
+<div class="stat-cards" hx-get="/_dashboard_stats" hx-trigger="every 10s" hx-swap="outerHTML">
+  <a class="stat-card" href="/packages">
+    <span class="stat-num">{{ actionable }}</span>
+    <span class="stat-label">待處理</span>
+  </a>
+  <a class="stat-card ok" href="/packages?status=draft_verified">
+    <span class="stat-num">{{ verified }}</span>
+    <span class="stat-label">已驗證</span>
+  </a>
+  <a class="stat-card accent" href="/packages?status=published">
+    <span class="stat-num">{{ published }}</span>
+    <span class="stat-label">已發布</span>
+  </a>
+</div>

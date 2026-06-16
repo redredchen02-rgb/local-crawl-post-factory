@@ -12,6 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from webui.routers import (
     actions,
     crawl,
+    dashboard,
     history_audit,
     packages,
     settings_auth,
@@ -30,6 +31,7 @@ def create_app(config_path: str = WEBUI_CONFIG_PATH) -> FastAPI:
     # Gate ① ("reviewed") is now persisted in the state DB, bound to the reviewed
     # content version (core.reviewed) -- survives restart, fails closed on edits.
 
+    app.include_router(dashboard.router)
     app.include_router(settings_auth.router)
     app.include_router(crawl.router)
     app.include_router(packages.router)

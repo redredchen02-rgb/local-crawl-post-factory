@@ -8,7 +8,6 @@ from webui.routers._ctx import auth_light, cfg_from_request, templates
 router = APIRouter()
 
 
-@router.get("/", response_class=HTMLResponse)
 @router.get("/settings", response_class=HTMLResponse)
 def settings_page(request: Request):
     cfg = cfg_from_request(request)

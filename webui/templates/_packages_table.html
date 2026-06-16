@@ -21,7 +21,7 @@
     <thead><tr>
       <th><input type="checkbox" id="select-all" title="全選／取消全選"
                  onchange="document.querySelectorAll('#batch-form input[name=post_ids]').forEach(cb => cb.checked = this.checked)"></th>
-      <th>post_id</th><th>標題</th><th>狀態</th><th></th>
+      <th>post_id</th><th>標題</th><th>狀態</th><th>操作</th><th></th>
     </tr></thead>
     <tbody>
     {% for p in packages %}
@@ -31,6 +31,22 @@
         <td>{% if not p.broken %}<a href="/packages/{{ p.post_id }}">{{ p.post_id }}</a>{% else %}{{ p.post_id }}{% endif %}</td>
         <td>{{ p.title }}</td>
         <td><span class="pill {{ p.status }}">{{ p.status }}</span></td>
+        <td class="row-actions">
+          {% if not p.broken %}
+          <span id="row-action-{{ p.post_id }}">
+            <button type="button" class="sm" hx-post="/packages/{{ p.post_id }}/draft"
+                    hx-target="#row-action-{{ p.post_id }}" hx-swap="innerHTML"
+                    hx-indicator="#row-action-{{ p.post_id }} .btn-spinner">
+              <span class="htmx-indicator btn-spinner">⟳</span>草稿
+            </button>
+            <button type="button" class="sm secondary" hx-post="/packages/{{ p.post_id }}/verify"
+                    hx-target="#row-action-{{ p.post_id }}" hx-swap="innerHTML"
+                    hx-indicator="#row-action-{{ p.post_id }} .btn-spinner">
+              <span class="htmx-indicator btn-spinner">⟳</span>驗證
+            </button>
+          </span>
+          {% endif %}
+        </td>
         <td><button type="button" class="danger" hx-post="/packages/{{ p.post_id }}/delete"
                     hx-target="#pkg-list" hx-swap="innerHTML"
                     hx-confirm="確定刪除 {{ p.post_id }}？將移到 out/.trash/（可復原）"

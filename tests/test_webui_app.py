@@ -81,3 +81,24 @@ def test_stylesheet_served_and_linked(tmp_path):
     assert '<link rel="stylesheet" href="/static/app.css">' in page.text
     # inline <style> block was removed in favour of the external sheet
     assert "<style>" not in page.text
+
+
+def test_root_is_dashboard(tmp_path):
+    client, _ = _client(tmp_path)
+    r = client.get("/")
+    assert r.status_code == 200
+    assert "待處理" in r.text or "總覽" in r.text
+
+
+def test_dashboard_stats_partial(tmp_path):
+    client, _ = _client(tmp_path)
+    r = client.get("/_dashboard_stats")
+    assert r.status_code == 200
+    assert "待處理" in r.text
+
+
+def test_settings_still_reachable(tmp_path):
+    client, _ = _client(tmp_path)
+    r = client.get("/settings")
+    assert r.status_code == 200
+    assert "https://example.com/news" in r.text
