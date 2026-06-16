@@ -27,8 +27,8 @@ from pathlib import Path
 from core import cli, filesystem, io_ndjson, url_utils
 from core.errors import ExternalError, ValidationError
 
-DEFAULT_RETRIES = 0  # backward compatible: one attempt, no retry
-DEFAULT_BACKOFF_SEC = 0.0
+DEFAULT_RETRIES = 3        # 3 retries → up to 4 attempts total
+DEFAULT_BACKOFF_SEC = 1.0  # exponential: 1 s, 2 s, 4 s between attempts
 
 _IMAGE_EXTS = (".jpg", ".jpeg", ".png", ".webp", ".gif")
 _CONTENT_TYPE_EXT = {
@@ -79,7 +79,7 @@ def _fetch(url: str, dest: Path, timeout: int,
     """Download ``url`` into ``dest``; return the chosen extension.
 
     Retries transient ``ExternalError`` (network/timeout) up to ``retries``
-    extra attempts with linear backoff; ``ValidationError`` (non-image) is never
+    extra attempts with exponential backoff; ``ValidationError`` (non-image) is never
     retried. Factored out so tests can monkeypatch it without touching the
     network.
     """
@@ -92,7 +92,7 @@ def _fetch(url: str, dest: Path, timeout: int,
             if attempt >= attempts:
                 raise
             if backoff_sec:
-                time.sleep(backoff_sec * attempt)
+                time.sleep(backoff_sec * (2 ** (attempt - 1)))
 
     final = dest.with_suffix(ext)
     filesystem.ensure_dir(final.parent)

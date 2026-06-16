@@ -85,7 +85,7 @@ def test_fetch_timeout_exits_4(tmp_path, monkeypatch):
 # --- U2 (R2): transient retry on download ------------------------------------
 
 def test_fetch_no_retry_by_default(tmp_path, monkeypatch):
-    """retries=0 (default): _download_once is called exactly once."""
+    """Default retries=3, but first attempt succeeds → _download_once called once."""
     calls = {"n": 0}
 
     def once(url, timeout):
@@ -140,6 +140,56 @@ def test_fetch_validation_error_not_retried(tmp_path, monkeypatch):
     with pytest.raises(ValidationError):
         _fetch("https://x/c.jpg", tmp_path / "c", 20, retries=3, backoff_sec=0)
     assert calls["n"] == 1
+
+
+def test_fetch_explicit_zero_retries_no_sleep(tmp_path, monkeypatch):
+    """retries=0 (explicit) stays backward-compatible: no sleep, one attempt."""
+    calls = {"n": 0}
+    slept = []
+
+    def once(url, timeout):
+        calls["n"] += 1
+        return b"img", ".jpg"
+
+    monkeypatch.setattr(select_cover, "_download_once", once)
+    monkeypatch.setattr(select_cover.time, "sleep", lambda s: slept.append(s))
+    _fetch("https://x/c.jpg", tmp_path / "c", 20, retries=0)
+    assert calls["n"] == 1
+    assert slept == []
+
+
+def test_fetch_exponential_backoff_sleep_sequence(tmp_path, monkeypatch):
+    """3 retries → 4 attempts total; sleep called 3 times with exponential gaps."""
+    calls = {"n": 0}
+    slept = []
+
+    def always_fail(url, timeout):
+        calls["n"] += 1
+        raise ExternalError("down")
+
+    monkeypatch.setattr(select_cover, "_download_once", always_fail)
+    monkeypatch.setattr(select_cover.time, "sleep", lambda s: slept.append(s))
+    with pytest.raises(ExternalError):
+        _fetch("https://x/c.jpg", tmp_path / "c", 20, retries=3, backoff_sec=1.0)
+    # 4 attempts: sleep after attempts 1, 2, 3 (not after final failure)
+    assert calls["n"] == 4
+    assert slept == [1.0, 2.0, 4.0]
+
+
+def test_fetch_default_retries_exhaust_sleep_sequence(tmp_path, monkeypatch):
+    """With DEFAULT_RETRIES=3 and all attempts failing, sleep sequence is [1,2,4]."""
+    calls = {"n": 0}
+    slept = []
+
+    def always_fail(url, timeout):
+        calls["n"] += 1
+        raise ExternalError("down")
+
+    monkeypatch.setattr(select_cover, "_download_once", always_fail)
+    monkeypatch.setattr(select_cover.time, "sleep", lambda s: slept.append(s))
+    with pytest.raises(ExternalError):
+        _fetch("https://x/c.jpg", tmp_path / "c", 20)  # uses DEFAULT_RETRIES=3
+    assert slept == [1.0, 2.0, 4.0]
 
 
 # --- select_all: batch parallel cover download -------------------------------

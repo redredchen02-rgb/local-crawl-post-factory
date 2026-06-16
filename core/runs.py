@@ -95,15 +95,48 @@ def _connect(path):
         conn.close()
 
 
-def record_run(path, *, stage, status, post_id=None, detail=None, error=None,
-               run_id=None, severity=None) -> None:
-    """Append one run record. Never raises on a missing table (auto-created)."""
+@contextmanager
+def open_run_conn(path):
+    """Reusable connection for batched record_run calls within one pipeline run.
+
+    Keeps a single SQLite connection open across multiple record_run() calls,
+    amortising the open/schema-check/close cost for bulk writes. Each
+    record_run(conn=conn) call commits immediately (per-row durability), so a
+    failure mid-batch leaves prior records intact.
+
+    Usage::
+
+        with runs.open_run_conn(state_path) as conn:
+            for item in items:
+                runs.record_run(state_path, ..., conn=conn)
+    """
     with _connect(path) as conn:
+        yield conn
+
+
+def record_run(path, *, stage, status, post_id=None, detail=None, error=None,
+               run_id=None, severity=None, conn=None) -> None:
+    """Append one run record. Never raises on a missing table (auto-created).
+
+    Pass ``conn`` (from :func:`open_run_conn`) to reuse an existing connection
+    and avoid repeated open/schema-check overhead during bulk writes. When
+    ``conn`` is provided each insert is committed immediately to preserve
+    per-row durability semantics.
+    """
+    if conn is not None:
         conn.execute(
             "INSERT INTO runs (ts, stage, post_id, status, detail, error, run_id, severity) "
             "VALUES (?,?,?,?,?,?,?,?)",
             (_now(), stage, post_id, status, detail, error, run_id, severity),
         )
+        conn.commit()
+    else:
+        with _connect(path) as conn_inner:
+            conn_inner.execute(
+                "INSERT INTO runs (ts, stage, post_id, status, detail, error, run_id, severity) "
+                "VALUES (?,?,?,?,?,?,?,?)",
+                (_now(), stage, post_id, status, detail, error, run_id, severity),
+            )
 
 
 def list_runs(path, limit=100, *, post_id=None, severity=None, run_id=None) -> list:
