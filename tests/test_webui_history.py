@@ -76,3 +76,44 @@ def test_audit_hx_request_returns_fragment(tmp_path):
         '{"ts":"t","stage":"draft-post","status":"ok","post_id":"p1"}\n', encoding="utf-8")
     frag = client.get("/audit", headers={"HX-Request": "true"})
     assert "<nav>" not in frag.text and "draft-post" in frag.text
+
+
+def test_history_filter_by_post_id(tmp_path):
+    client, tp = _client(tmp_path)
+    runs.record_run(str(tp / "state.sqlite"), stage="draft", post_id="abc123", status="ok")
+    runs.record_run(str(tp / "state.sqlite"), stage="draft", post_id="xyz999", status="ok")
+    r = client.get("/history?post_id=abc123")
+    assert r.status_code == 200
+    assert "abc123" in r.text
+    assert "xyz999" not in r.text
+
+
+def test_history_filter_by_severity(tmp_path):
+    client, tp = _client(tmp_path)
+    runs.record_run(str(tp / "state.sqlite"), stage="publish", post_id="p1",
+                    status="failed", severity="error", error="boom")
+    runs.record_run(str(tp / "state.sqlite"), stage="draft", post_id="p2",
+                    status="ok", severity="info")
+    r = client.get("/history?severity=error")
+    assert r.status_code == 200
+    assert "p1" in r.text
+    assert "p2" not in r.text
+
+
+def test_history_filter_combined(tmp_path):
+    client, tp = _client(tmp_path)
+    runs.record_run(str(tp / "state.sqlite"), stage="verify", post_id="match",
+                    status="failed", severity="error")
+    runs.record_run(str(tp / "state.sqlite"), stage="verify", post_id="other",
+                    status="failed", severity="error")
+    r = client.get("/history?post_id=match&severity=error")
+    assert "match" in r.text
+    assert "other" not in r.text
+
+
+def test_history_filter_no_match_shows_empty(tmp_path):
+    client, tp = _client(tmp_path)
+    runs.record_run(str(tp / "state.sqlite"), stage="draft", post_id="abc", status="ok")
+    r = client.get("/history?post_id=nope")
+    assert r.status_code == 200
+    assert "尚無運行紀錄" in r.text

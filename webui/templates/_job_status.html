@@ -1,3 +1,4 @@
+{% set stage_zh = {'draft': '建草稿', 'verify': '驗證', 'publish': '發布'} %}
 {% if job.status in ('pending', 'running') %}
 <div hx-get="/jobs/{{ job_id }}" hx-trigger="every 1s" hx-swap="outerHTML">
   <p>狀態：{{ job.status }}…</p>
@@ -11,13 +12,13 @@
   <ul>{% for b in job.result.built %}<li>{{ b.post_id }} — {{ b.title }}</li>{% endfor %}</ul>
   <p class="hint"><a href="/packages">前往上膛清單 →</a></p>
   {% elif job.result and job.result.get('batch') %}
-  <p class="ok">批量 {{ job.result.stage }} 完成 ✓ 成功 {{ job.result.ok | length }}，失敗 {{ job.result.failed | length }}。</p>
+  <p class="ok">批量{{ stage_zh.get(job.result.stage, job.result.stage) }}完成 ✓ 成功 {{ job.result.ok | length }}，失敗 {{ job.result.failed | length }}。</p>
   {% if job.result.failed %}
   <ul>{% for f in job.result.failed %}<li class="error">{{ f.post_id }} — {{ f.error }}</li>{% endfor %}</ul>
   {% endif %}
   <p class="hint"><a href="/packages">前往上膛清單 →</a></p>
   {% else %}
-  <p class="ok">完成 ✓ {{ job.result.stage }} — {{ job.result.post_id }}</p>
+  <p class="ok">完成 ✓ {{ stage_zh.get(job.result.stage, job.result.stage) }} — {{ job.result.post_id }}</p>
   {% endif %}
 </div>
 {% else %}
