@@ -270,3 +270,28 @@ def test_trash_restore_moves_back_to_out(tmp_path):
 def test_trash_restore_unknown_404(tmp_path):
     client = _client(tmp_path, tmp_path / "out")
     assert client.post("/trash/nope/restore").status_code == 404
+
+
+def test_trash_restore_conflict_409(tmp_path):
+    """Restore fails with 409 when a live package with the same id already exists."""
+    out = tmp_path / "out"
+    _pkg(out, "20260615_a", "甲文")
+    client = _client(tmp_path, out)
+    client.post("/packages/20260615_a/delete")          # now in .trash
+    _pkg(out, "20260615_a", "重建的甲文")               # re-create live package
+    r = client.post("/trash/20260615_a/restore")
+    assert r.status_code == 409
+    assert (out / ".trash" / "20260615_a").exists()     # still in trash
+
+
+def test_trash_empty_clears_all(tmp_path):
+    """POST /trash/empty permanently deletes everything in .trash."""
+    out = tmp_path / "out"
+    _pkg(out, "20260615_a", "甲文")
+    _pkg(out, "20260615_b", "乙文")
+    client = _client(tmp_path, out)
+    client.post("/packages/20260615_a/delete")
+    client.post("/packages/20260615_b/delete")
+    r = client.post("/trash/empty")
+    assert r.status_code == 200
+    assert not (out / ".trash").exists() or not any((out / ".trash").iterdir())

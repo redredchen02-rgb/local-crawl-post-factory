@@ -486,11 +486,27 @@ def create_app(config_path: str = WEBUI_CONFIG_PATH) -> FastAPI:
     @app.post("/trash/{post_id}/restore", response_class=HTMLResponse)
     def restore_package(request: Request, post_id: str):
         cfg = _cfg()
-        restored = _restore_from_trash(cfg["out_dir"], post_id)
-        if not restored:
+        result = _restore_from_trash(cfg["out_dir"], post_id)
+        if result == "not_found":
             return HTMLResponse('<p class="error">找不到此垃圾桶項目</p>', status_code=404)
+        if result == "conflict":
+            return HTMLResponse('<p class="error">上膛清單已有同名貼文，無法復原</p>', status_code=409)
         rows = _scan_trash(cfg["out_dir"])
-        return templates.TemplateResponse(request, "_trash_table.html", {"items": rows})
+        return templates.TemplateResponse(request, "_trash_table.html",
+                                          {"items": rows, "msg": f"已復原：{post_id}",
+                                           "msg_class": "ok"})
+
+    @app.post("/trash/empty", response_class=HTMLResponse)
+    def empty_trash(request: Request):
+        import shutil
+
+        cfg = _cfg()
+        trash = Path(cfg["out_dir"]) / ".trash"
+        if trash.exists():
+            shutil.rmtree(trash)
+        return templates.TemplateResponse(request, "_trash_table.html",
+                                          {"items": [], "msg": "垃圾桶已清空",
+                                           "msg_class": "ok"})
 
     @app.get("/auth-status", response_class=HTMLResponse)
     def auth_status(request: Request):
@@ -633,21 +649,24 @@ def _scan_trash(out_dir: str) -> list[dict]:
     return rows
 
 
-def _restore_from_trash(out_dir: str, post_id: str) -> bool:
-    """Move post_id from .trash/ back to out_dir/. Returns True on success."""
+def _restore_from_trash(out_dir: str, post_id: str) -> str:
+    """Move post_id from .trash/ back to out_dir/.
+
+    Returns "ok" | "not_found" | "conflict".
+    """
     import shutil
 
     if not post_id or post_id.startswith(".") or "/" in post_id or "\\" in post_id:
-        return False
+        return "not_found"
     trash = Path(out_dir) / ".trash"
     src = (trash / post_id).resolve()
     if src.parent != trash.resolve() or not src.is_dir():
-        return False
+        return "not_found"
     dest = Path(out_dir) / post_id
     if dest.exists():
-        return False  # would overwrite live package
+        return "conflict"
     shutil.move(str(src), str(dest))
-    return True
+    return "ok"
 
 
 def _safe_pkg_dir(out_dir: str, post_id: str):

@@ -4,9 +4,11 @@
   <form id="batch-form">
   <div class="batch-bar">
     <button type="button" hx-post="/batch/draft" hx-include="#batch-form"
-            hx-target="#batch-result" hx-swap="innerHTML">批量建草稿</button>
+            hx-target="#batch-result" hx-swap="innerHTML"
+            hx-on::after-request="document.querySelectorAll('#batch-form input[type=checkbox]').forEach(c=>c.checked=false)">批量建草稿</button>
     <button type="button" hx-post="/batch/verify" hx-include="#batch-form"
-            hx-target="#batch-result" hx-swap="innerHTML">批量驗證</button>
+            hx-target="#batch-result" hx-swap="innerHTML"
+            hx-on::after-request="document.querySelectorAll('#batch-form input[type=checkbox]').forEach(c=>c.checked=false)">批量驗證</button>
     <button type="button" class="danger" hx-post="/batch/delete" hx-include="#batch-form"
             hx-target="#pkg-list" hx-swap="innerHTML"
             hx-confirm="確定移入垃圾桶？可至 out/.trash/ 復原">批量刪除</button>

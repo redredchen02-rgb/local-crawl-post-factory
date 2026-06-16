@@ -149,6 +149,11 @@ hr { border: none; border-top: 1px solid var(--line); margin: 1.75rem 0; }
 .toolbar input[type=text] { flex: 1 1 12rem; width: auto; margin: 0; }
 .toolbar select { width: auto; margin: 0; }
 
+/* batch action bar */
+.batch-bar { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; padding: .5rem 0; }
+.batch-bar button { margin-top: 0; }
+.batch-bar .hint { margin-left: auto; }
+
 @media (max-width: 600px) {
   body { padding: 1rem .75rem 3rem; }
   h1 { font-size: 1.35rem; }
