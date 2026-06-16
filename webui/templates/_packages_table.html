@@ -15,11 +15,16 @@
   <div id="batch-result"></div>
   <div class="table-wrap">
   <table>
-    <thead><tr><th></th><th>post_id</th><th>標題</th><th>狀態</th><th></th></tr></thead>
+    <thead><tr>
+      <th><input type="checkbox" id="select-all" title="全選／取消全選"
+                 onchange="document.querySelectorAll('#batch-form input[name=post_ids]').forEach(cb => cb.checked = this.checked)"></th>
+      <th>post_id</th><th>標題</th><th>狀態</th><th></th>
+    </tr></thead>
     <tbody>
     {% for p in packages %}
       <tr{% if p.broken %} class="error"{% endif %}>
-        <td>{% if not p.broken %}<input type="checkbox" name="post_ids" value="{{ p.post_id }}">{% endif %}</td>
+        <td>{% if not p.broken %}<input type="checkbox" name="post_ids" value="{{ p.post_id }}"
+                onchange="document.getElementById('select-all').indeterminate=true">{% endif %}</td>
         <td>{% if not p.broken %}<a href="/packages/{{ p.post_id }}">{{ p.post_id }}</a>{% else %}{{ p.post_id }}{% endif %}</td>
         <td>{{ p.title }}</td>
         <td><span class="pill {{ p.status }}">{{ p.status }}</span></td>

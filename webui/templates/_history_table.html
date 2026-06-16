@@ -7,7 +7,8 @@
     <tbody>
     {% for r in runs %}
       <tr{% if r.status == 'failed' %} class="error"{% endif %}>
-        <td>{{ r.ts }}</td><td>{{ r.stage }}</td><td>{{ r.post_id or '' }}</td>
+        <td>{{ r.ts }}</td><td>{{ r.stage }}</td>
+        <td>{% if r.post_id %}<a href="/packages/{{ r.post_id }}">{{ r.post_id }}</a>{% endif %}</td>
         <td><span class="pill {{ r.status }}">{{ r.status }}</span></td>
         <td>{{ r.severity or '' }}</td><td class="hint">{{ r.run_id or '' }}</td>
         <td>{{ r.error or r.detail or '' }}</td>

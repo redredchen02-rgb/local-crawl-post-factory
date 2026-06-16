@@ -1,0 +1,21 @@
+{% if not items %}
+  <p class="hint">垃圾桶是空的。</p>
+{% else %}
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>post_id</th><th>標題</th><th></th></tr></thead>
+    <tbody>
+    {% for item in items %}
+      <tr>
+        <td>{{ item.post_id }}</td>
+        <td>{{ item.title }}</td>
+        <td>
+          <button hx-post="/trash/{{ item.post_id }}/restore"
+                  hx-target="#trash-list" hx-swap="innerHTML">復原</button>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+{% endif %}
