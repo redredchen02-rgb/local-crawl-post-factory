@@ -1,6 +1,7 @@
 """Shared request-aware context for all webui routers."""
 
 import logging
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +15,13 @@ from src import draft_post, verify_draft
 
 _HERE = Path(__file__).parent.parent
 templates = Jinja2Templates(directory=str(_HERE / "templates"))
+
+try:
+    _app_version = version("local-crawl-post-factory")
+except PackageNotFoundError:
+    _app_version = "dev"
+
+templates.env.globals["app_version"] = _app_version
 _logger = logging.getLogger(__name__)
 
 
@@ -48,7 +56,7 @@ def submit_job(request: Request, stage: str, post_id: str, cfg: dict, call) -> H
     """Run a backend command in a job: record the run, flag session expiry.
 
     publish records its own success run (with the manifest's build run_id)
-    inside publish_post._run, so we skip the success record here for publish
+    inside publish_post.run, so we skip the success record here for publish
     to avoid a double write (Q7). Failures are still recorded here for every
     stage, since the backend commands don't record their own failures.
     """

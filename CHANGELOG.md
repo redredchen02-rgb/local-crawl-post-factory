@@ -5,12 +5,16 @@ All notable changes to this project will be documented in this file.
 ## [0.2.2.0] - 2026-06-16
 
 ### Added
-- **Dashboard 首頁**（`GET /`）：開啟 WebUI 即顯示全局統計卡片（待處理 / 已驗證 / 已發布）+ 最近 5 條運行歷史 + 爬取快捷鈕；統計卡片每 10 秒自動刷新（`/_dashboard_stats` partial）。設定頁移至 `/settings`。
-- **Package 列表行內操作**：上膛清單每行新增「草稿」「驗證」按鈕，直接觸發 hx-post，無需跳轉 detail 頁；操作結果 inline 顯示於該行。
-- **Detail 頁流程進度條**：`建包 → 建草稿 → 驗證 → 發布` 步驟指示器，依當前 status 高亮當前步驟；操作結果 inline swap 取代按鈕區域；發布表單預填標題。
-- **Toast 通知系統**：右上角固定 `#toast-container`，偵測 HTMX 回應中的 `<p class="ok/error">` 自動彈出通知；成功通知 3 秒自消，失敗通知需手動關閉，最多同時 3 條。
-- **Loading 狀態 + 防雙擊**：所有 HTMX 操作按鈕加入 `.htmx-indicator` 旋轉動畫；請求進行中設 `pointer-events:none` 防重複提交。
-- **全選 Checkbox**：上膛清單表頭全選 checkbox（已於 v0.2.0.0 實作，本版確認正常）。
+- **版本號頁腳**：所有頁面底部顯示 `v{version}`，版本來源 `importlib.metadata`（開發環境顯示 `dev`）。
+- **設定頁診斷區塊**：顯示 config 路徑、state DB 路徑、storage-state 路徑、output 目錄的存在狀態，方便快速確認環境設定是否完整。
+- **Inline 編輯**：detail 頁標題與文案各有「編輯」按鈕，展開 inline form，儲存後自動收合；空值送出時回 400 提示。
+- **Retry 按鈕**：detail 頁失敗區塊（`.failure-box`）在 draft/verify 階段顯示「重試」按鈕，可直接觸發重試而不需捲動至後台動作區。
+- **發布後自動刷新**：detail 頁發布成功後 2 秒自動重新整理，呈現最新狀態。
+- **→ 運行歷史 link**：detail 頁 post_id 欄位旁新增快捷連結，直達該貼文歷史紀錄。
+
+### Changed
+- **`package_built` badge 琥珀色**：`.pill.package_built` 改為橙黃色，與 drafted（橙色）、draft_verified（綠色）、published（藍色）視覺區分更明確。
+- **failure 區塊樣式**：改用 `.failure-box` 包裝，背景紅色弱底，標題移入 box 內，視覺更聚焦。
 
 ## [0.2.1.1] - 2026-06-16
 

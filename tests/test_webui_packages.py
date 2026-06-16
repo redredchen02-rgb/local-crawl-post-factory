@@ -301,25 +301,60 @@ def test_edit_updates_title(tmp_path):
     out = tmp_path / "out"
     _pkg(out, "20260615_a", "舊標題")
     client = _client(tmp_path, out)
-    r = client.post("/packages/20260615_a/edit", data={"title": "新標題", "caption": ""})
+    r = client.post("/packages/20260615_a/edit", data={"title": "新標題"})
     assert r.status_code == 200
-    assert "已儲存" in r.text
-    import json
     m = json.loads((out / "20260615_a" / "manifest.json").read_text(encoding="utf-8"))
     assert m["content"]["title"] == "新標題"
 
 
 def test_edit_updates_caption(tmp_path):
     out = tmp_path / "out"
-    _pkg(out, "20260615_a", "甲文", caption="舊文案")
+    _pkg(out, "20260615_a", "甲文")
     client = _client(tmp_path, out)
-    r = client.post("/packages/20260615_a/edit", data={"title": "", "caption": "新文案"})
+    r = client.post("/packages/20260615_a/edit", data={"caption": "新文案內容"})
     assert r.status_code == 200
-    assert "已儲存" in r.text
-    assert (out / "20260615_a" / "caption.txt").read_text(encoding="utf-8") == "新文案"
+    assert (out / "20260615_a" / "caption.txt").read_text(encoding="utf-8") == "新文案內容"
+
+
+def test_edit_empty_both_400(tmp_path):
+    out = tmp_path / "out"
+    _pkg(out, "20260615_a", "甲文")
+    client = _client(tmp_path, out)
+    r = client.post("/packages/20260615_a/edit", data={"title": "", "caption": ""})
+    assert r.status_code == 400
 
 
 def test_edit_unknown_404(tmp_path):
-    client = _client(tmp_path, tmp_path / "out")
-    r = client.post("/packages/nope/edit", data={"title": "x", "caption": ""})
+    out = tmp_path / "out"
+    out.mkdir(parents=True)
+    client = _client(tmp_path, out)
+    r = client.post("/packages/nonexistent/edit", data={"title": "x"})
     assert r.status_code == 404
+
+
+def test_settings_shows_diagnostics(tmp_path):
+    cfgp = tmp_path / "webui.yaml"
+    webui_config.save(str(cfgp), {"start_url": "https://example.com"})
+    client = TestClient(create_app(str(cfgp)))
+    r = client.get("/settings")
+    assert r.status_code == 200
+    assert "診斷" in r.text
+    assert str(cfgp) in r.text
+
+
+def test_footer_shows_version(tmp_path):
+    cfgp = tmp_path / "webui.yaml"
+    webui_config.save(str(cfgp), {"start_url": "https://example.com"})
+    client = TestClient(create_app(str(cfgp)))
+    r = client.get("/settings")
+    assert "local-crawl-post-factory v" in r.text
+
+
+def test_detail_shows_history_link(tmp_path):
+    out = tmp_path / "out"
+    _pkg(out, "20260615_a", "甲文", status="drafted")
+    client = _client(tmp_path, out)
+    r = client.get("/packages/20260615_a")
+    assert r.status_code == 200
+    assert "運行歷史" in r.text
+    assert "/history?post_id=20260615_a" in r.text

@@ -69,9 +69,11 @@ def edit_package(request: Request, post_id: str,
     pkg = _safe_pkg_dir(cfg["out_dir"], post_id)
     if pkg is None or not (pkg / "manifest.json").exists():
         return HTMLResponse('<p class="error">找不到此貼文包</p>', status_code=404)
-    m = json.loads((pkg / "manifest.json").read_text(encoding="utf-8"))
     title = title.strip()
     caption = caption.strip()
+    if not title and not caption:
+        return HTMLResponse('<p class="error">標題與文案不可同時為空</p>', status_code=400)
+    m = json.loads((pkg / "manifest.json").read_text(encoding="utf-8"))
     if title:
         m.setdefault("content", {})["title"] = title
     if caption:

@@ -14,7 +14,8 @@
 </div>
 
 <table>
-  <tr><th>post_id</th><td>{{ post_id }} <a class="hint" href="/history?post_id={{ post_id }}" style="font-size:.85rem">→ 運行歷史</a></td></tr>
+  <tr><th>post_id</th>
+    <td>{{ post_id }} <a href="/history?post_id={{ post_id }}" class="hint" style="font-size:.85rem">→ 運行歷史</a></td></tr>
   <tr><th>狀態</th><td><span class="pill {{ status }}">{{ status }}</span></td></tr>
   <tr><th>來源</th><td><a href="{{ canonical_url }}" target="_blank" rel="noopener">{{ canonical_url }}</a></td></tr>
 </table>
@@ -27,47 +28,46 @@
 {% endif %}
 
 <h2>標題
-  <button type="button" class="sm secondary" style="vertical-align:middle"
-          onclick="document.getElementById('edit-title').toggleAttribute('hidden')">編輯</button>
+  <button type="button" class="sm secondary" style="margin-left:.5rem"
+          onclick="this.closest('h2').nextElementSibling.toggleAttribute('hidden')">編輯</button>
 </h2>
-<p id="display-title" style="font-weight:600">{{ title }}</p>
-<form id="edit-title" hidden hx-post="/packages/{{ post_id }}/edit"
-      hx-target="#edit-save-msg" hx-swap="innerHTML" class="inline-edit-form">
-  <input type="text" name="title" value="{{ title }}">
-  <input type="hidden" name="caption" value="">
-  <button type="submit" class="sm" hx-indicator="this">
-    <span class="htmx-indicator btn-spinner">⟳</span>儲存
-  </button>
-</form>
+<div hidden>
+  <form class="inline-edit-form" hx-post="/packages/{{ post_id }}/edit"
+        hx-swap="none" hx-on::after-request="this.closest('div').setAttribute('hidden','')">
+    <input type="text" name="title" value="{{ title }}" placeholder="標題">
+    <button type="submit" class="sm">儲存</button>
+  </form>
+</div>
 
 <h2>文案
-  <button type="button" class="sm secondary" style="vertical-align:middle"
-          onclick="document.getElementById('edit-caption').toggleAttribute('hidden')">編輯</button>
+  <button type="button" class="sm secondary" style="margin-left:.5rem"
+          onclick="this.closest('h2').nextElementSibling.toggleAttribute('hidden')">編輯</button>
 </h2>
-<div id="edit-save-msg"></div>
+<div hidden>
+  <form class="inline-edit-form" hx-post="/packages/{{ post_id }}/edit"
+        hx-swap="none" hx-on::after-request="this.closest('div').setAttribute('hidden','')">
+    <textarea name="caption" rows="6">{{ caption }}</textarea>
+    <button type="submit" class="sm">儲存</button>
+  </form>
+</div>
 <pre class="preview">{{ caption }}</pre>
-<form id="edit-caption" hidden hx-post="/packages/{{ post_id }}/edit"
-      hx-target="#edit-save-msg" hx-swap="innerHTML" class="inline-edit-form">
-  <input type="hidden" name="title" value="">
-  <textarea name="caption">{{ caption }}</textarea>
-  <button type="submit" class="sm" hx-indicator="this">
-    <span class="htmx-indicator btn-spinner">⟳</span>儲存
-  </button>
-</form>
 
 {% if failure %}
 <div class="failure-box">
-  <h2 class="error">上次後台動作失敗（{{ failure.stage }}）</h2>
-  <p class="error">{{ failure.error }}</p>
+  <h2>上次後台動作失敗（{{ failure.stage }}）</h2>
+  <p>{{ failure.error }}</p>
   <p class="hint">時間：{{ failure.ts }}　URL：{{ failure.url }}</p>
-  {% if failure.stage in ('draft', 'verify') %}
-  <button class="sm" hx-post="/packages/{{ post_id }}/{{ failure.stage }}"
-          hx-target="#action-area" hx-swap="innerHTML" hx-indicator="this">
-    <span class="htmx-indicator btn-spinner">⟳</span>重試 {{ '建草稿' if failure.stage == 'draft' else '驗證' }}
-  </button>
-  {% endif %}
   {% if failure.screenshot %}
-  <img src="/packages/{{ post_id }}/failure-image" alt="失敗截圖" style="max-width:100%;margin-top:.75rem">
+  <img src="/packages/{{ post_id }}/failure-image" alt="失敗截圖" style="max-width:100%">
+  {% endif %}
+  {% if failure.stage in ('draft', 'verify') %}
+  <div style="margin-top:.75rem">
+    {% set retry_label = '重試建草稿' if failure.stage == 'draft' else '重試驗證' %}
+    {% set retry_url = '/packages/' + post_id + ('/draft' if failure.stage == 'draft' else '/verify') %}
+    <button hx-post="{{ retry_url }}" hx-target="#action-area" hx-swap="innerHTML" hx-indicator="this">
+      <span class="htmx-indicator btn-spinner">⟳</span>{{ retry_label }}
+    </button>
+  </div>
   {% endif %}
 </div>
 {% endif %}
@@ -95,7 +95,8 @@
 {% if status == 'draft_verified' %}
 <h2>發布（三重確認）</h2>
 <p class="hint">你正在此審核頁；狀態已驗證。請輸入貼文標題以確認發布——此動作不可逆。</p>
-<form hx-post="/packages/{{ post_id }}/publish" hx-target="#action-area" hx-swap="innerHTML">
+<form hx-post="/packages/{{ post_id }}/publish" hx-target="#action-area" hx-swap="innerHTML"
+      hx-on::after-request="if(event.detail.successful) setTimeout(()=>window.location.reload(), 2000)">
   <label>輸入標題以確認</label>
   <input type="text" name="title" placeholder="{{ title }}" value="{{ title }}">
   <button type="submit" hx-indicator="this">
