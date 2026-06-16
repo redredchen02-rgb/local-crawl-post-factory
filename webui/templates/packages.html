@@ -10,6 +10,7 @@
     <option value="">全部狀態</option>
     <option value="package_built"{% if status == 'package_built' %} selected{% endif %}>package_built</option>
     <option value="draft_verified"{% if status == 'draft_verified' %} selected{% endif %}>draft_verified</option>
+    <option value="published"{% if status == 'published' %} selected{% endif %}>published</option>
     <option value="error"{% if status == 'error' %} selected{% endif %}>error</option>
   </select>
 </div>
@@ -18,5 +19,5 @@
 {% include "_packages_table.html" %}
 </div>
 
-<p class="hint">發布為人工動作：<code>publish-post --manifest out/&lt;post_id&gt;/manifest.json --backend configs/backend.yaml --approve</code></p>
+<p class="hint">點入貼文可在 WebUI 發布；或啟用<a href="/settings">自動發布模式</a>讓爬取後全程自動執行。</p>
 {% endblock %}
