@@ -204,17 +204,9 @@ def test_trash_dir_not_listed_as_package(tmp_path):
 def test_publish_endpoint_is_gated_not_absent(tmp_path):
     """Control-center model: a publish route exists but is gated (see
     test_webui_publish_gate). It must never publish without the triple gate."""
-    app = create_app(str(tmp_path / "webui.yaml"))
-
-    def _all_paths(routes, prefix=""):
-        for r in routes:
-            if hasattr(r, "path"):
-                yield prefix + r.path
-            if hasattr(r, "routes"):
-                yield from _all_paths(r.routes, prefix)
-
-    paths = list(_all_paths(app.routes))
-    assert "/packages/{post_id}/publish" in paths
+    client = _client(tmp_path, tmp_path / "out")
+    schema = client.get("/openapi.json").json()
+    assert "/packages/{post_id}/publish" in schema["paths"]
 
 
 def test_default_view_hides_published(tmp_path):
