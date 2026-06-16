@@ -49,11 +49,8 @@ line-length = 100
 select = ["E4", "E7", "E9", "F"]
 
 [tool.mypy]
-# Non-blocking baseline (U3/Q3). CI runs mypy with continue-on-error and records the
-# error count -- it never fails the build. This round captures a baseline of *real*
-# type issues (arg-type, bad assignments, implicit-Optional) without forcing
-# annotations tree-wide: `disallow_untyped_defs` surfaces 50+ annotation gaps and is
-# deferred to a dedicated typing pass.
+# Blocking typecheck gate. The tree is currently 0-error under this config;
+# stricter flags are added gradually in dedicated typing passes.
 python_version = "3.11"
 files = ["core", "src", "browser", "webui"]
 ignore_missing_imports = true   # Scrapy / Playwright ship no type stubs
