@@ -65,6 +65,7 @@
 {% else %}
 <p class="hint">輸入 URL 後按下方按鈕：背景跑「爬取 → 建包」，發布仍維持人工 CLI。</p>
 {% endif %}
-<button hx-post="/crawl" hx-target="#job" hx-swap="innerHTML">爬取最新並建包</button>
+<button hx-post="/crawl" hx-target="#job" hx-swap="innerHTML"
+        hx-on::after-request="document.getElementById('job').scrollIntoView({behavior:'smooth'})">爬取最新並建包</button>
 <div id="job"></div>
 {% endblock %}
