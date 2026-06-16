@@ -163,13 +163,13 @@ def _run_auto_pipeline(job, cfg: dict, built: list[dict]) -> None:
             approve=True,
             expected_content_id=cid,
         )
-        _, exc = _retry(lambda ns=ns: publish_post._run(ns))
-        if exc is None:
+        _pub_val, pub_err = _retry(lambda ns=ns: publish_post._run(ns))
+        if pub_err is None:
             publish_ok += 1
         else:
-            failed.append({"post_id": pid, "stage": "publish", "error": str(exc)})
+            failed.append({"post_id": pid, "stage": "publish", "error": str(pub_err)})
             runs.record_run(cfg["state_path"], stage="publish", post_id=pid,
-                            status="failed", error=str(exc), run_id=run_id, severity="error")
+                            status="failed", error=str(pub_err), run_id=run_id, severity="error")
 
     skip_count = verify_fail_count
     jobs.report(
@@ -362,9 +362,9 @@ def create_app(config_path: str = WEBUI_CONFIG_PATH) -> FastAPI:
         if skipped:
             escaped = ", ".join(html.escape(p) for p in skipped)
             msg += f'<p class="error">找不到（已略過）：{escaped}</p>'
-        return msg + templates.TemplateResponse(
+        return msg + bytes(templates.TemplateResponse(
             request, "_packages_table.html", {"packages": rows, "q": "", "status": ""}
-        ).body.decode()
+        ).body).decode()
 
     @app.post("/batch/{stage}", response_class=HTMLResponse)
     def batch_action(request: Request, stage: str, post_ids: list[str] = Form(default=[])):

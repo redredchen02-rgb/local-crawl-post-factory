@@ -137,13 +137,14 @@ def test_empty_built_early_return(mock_draft, mock_verify, mock_publish,
     assert any("無新稿件" in m for m in job.progress)
 
 
+@patch("webui.app.time.sleep")
 @patch("webui.app.runs.record_run")
 @patch("webui.app.reviewed.mark")
 @patch("webui.app.publish_post._run")
 @patch("webui.app.verify_draft._run")
 @patch("webui.app.draft_post._run")
 def test_draft_fail_all_retries_skips_verify_and_publish(
-        mock_draft, mock_verify, mock_publish, mock_mark, mock_record, tmp_path):
+        mock_draft, mock_verify, mock_publish, mock_mark, mock_record, mock_sleep, tmp_path):
     cfg = _make_cfg(tmp_path)
     built = [_make_built("p1", tmp_path)]
     job = _make_job()
@@ -158,13 +159,14 @@ def test_draft_fail_all_retries_skips_verify_and_publish(
     assert "失敗 1" in summary
 
 
+@patch("webui.app.time.sleep")
 @patch("webui.app.runs.record_run")
 @patch("webui.app.reviewed.mark")
 @patch("webui.app.publish_post._run")
 @patch("webui.app.verify_draft._run")
 @patch("webui.app.draft_post._run")
 def test_verify_fail_skips_publish_counted_as_verify_fail(
-        mock_draft, mock_verify, mock_publish, mock_mark, mock_record, tmp_path):
+        mock_draft, mock_verify, mock_publish, mock_mark, mock_record, mock_sleep, tmp_path):
     cfg = _make_cfg(tmp_path)
     built = [_make_built("p1", tmp_path)]
     job = _make_job()
@@ -179,13 +181,14 @@ def test_verify_fail_skips_publish_counted_as_verify_fail(
     assert "驗證失敗 1" in summary
 
 
+@patch("webui.app.time.sleep")
 @patch("webui.app.runs.record_run")
 @patch("webui.app.reviewed.mark")
 @patch("webui.app.publish_post._run")
 @patch("webui.app.verify_draft._run")
 @patch("webui.app.draft_post._run")
 def test_one_draft_fails_others_continue(
-        mock_draft, mock_verify, mock_publish, mock_mark, mock_record, tmp_path):
+        mock_draft, mock_verify, mock_publish, mock_mark, mock_record, mock_sleep, tmp_path):
     cfg = _make_cfg(tmp_path)
     built = [_make_built("p1", tmp_path), _make_built("p2", tmp_path)]
     job = _make_job()

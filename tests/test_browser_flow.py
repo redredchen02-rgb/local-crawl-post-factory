@@ -7,6 +7,8 @@ transitions, the publish receipt, and the SQLite 'published' write (R9).
 import json
 
 import pytest
+
+pytestmark = pytest.mark.browser  # Playwright end-to-end; excluded from fast-run
 import yaml
 
 from core import cli, state as state_mod, url_utils
