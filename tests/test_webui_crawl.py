@@ -47,7 +47,7 @@ def test_crawl_builds_packages(tmp_path, monkeypatch):
     assert jid
 
     for _ in range(100):
-        s = client.get(f"/jobs/{jid}")
+        client.get(f"/jobs/{jid}")
         j = jobs_mod.get(jid)
         if j and j["status"] in ("done", "failed"):
             break
@@ -95,7 +95,7 @@ def test_crawl_current_updates(tmp_path, monkeypatch):
     assert jid
 
     for _ in range(100):
-        s = client.get(f"/jobs/{jid}")
+        client.get(f"/jobs/{jid}")
         j = jobs_mod.get(jid)
         if j and j["status"] in ("done", "failed"):
             break

@@ -6,6 +6,7 @@ to live in their own existing yaml files, referenced here by path.
 
 import os
 from pathlib import Path
+from typing import Any
 
 from core.errors import ValidationError, DependencyError
 from core.validators import valid_url
@@ -29,10 +30,13 @@ DEFAULTS = {
     "audit_log": "./logs/audit.jsonl",
     "backend_config": "./configs/backend.yaml",
     "storage_state": "./auth/storage-state.json",
+    "auto_pipeline": False,
 }
 
 _INT_FIELDS = ("limit", "concurrency", "cover_retries", "cover_download_concurrency")
 _FLOAT_FIELDS = ("download_delay", "cover_backoff_sec")
+# Checkbox fields: form POST sends "on" when checked, absent when unchecked.
+_BOOL_FIELDS = ("auto_pipeline",)
 
 # Output/runtime path fields resolved relative to the config file's directory
 # (R7) so the WebUI writes to the same place regardless of launch directory.
@@ -85,12 +89,17 @@ def _resolve_paths(cfg: dict, base) -> None:
     base = Path(base).resolve()
     for field in _PATH_FIELDS:
         env_name = _ENV_OVERRIDES.get(field)
-        from_env = bool(env_name and os.environ.get(env_name))
-        raw = os.environ[env_name] if from_env else cfg.get(field)
-        if not isinstance(raw, str) or not raw.strip():
-            if from_env:
+        raw: Any
+        if env_name is not None and env_name in os.environ:
+            raw = os.environ[env_name]
+            from_env = True
+            if not raw.strip():
                 raise ValidationError(f"{env_name} is empty or not a valid path")
-            continue
+        else:
+            raw = cfg.get(field)
+            from_env = False
+            if not isinstance(raw, str) or not raw.strip():
+                continue
         p = Path(raw).expanduser() if from_env else Path(raw)
         if not p.is_absolute():
             p = base / p
@@ -149,3 +158,17 @@ def _coerce(cfg: dict) -> None:
             cfg[field] = float(cfg[field])
         except (TypeError, ValueError):
             raise ValidationError(f"{field} must be a number")
+    for field in _BOOL_FIELDS:
+        val = cfg.get(field)
+        # HTML checkbox: "on" when checked, absent (None/missing) when unchecked.
+        # YAML native bool passes through unchanged.
+        if isinstance(val, bool):
+            pass
+        elif isinstance(val, str):
+            cfg[field] = val.lower() == "on"
+        elif isinstance(val, (int, float)):
+            cfg[field] = bool(val)
+        elif val is None:
+            cfg[field] = False
+        else:
+            raise ValidationError(f"{field} must be a boolean value, got {type(val).__name__}")

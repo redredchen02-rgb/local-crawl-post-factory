@@ -26,6 +26,7 @@ import sys
 import tempfile
 import time
 from datetime import datetime, timezone
+from typing import Any
 
 from core import cli
 from core.errors import DependencyError, ExternalError, ValidationError
@@ -96,7 +97,7 @@ def _crawl_worker(opts: dict, out_path: str, status_path: str,
     snapshot (``{responses, items, last_url, last_title}``) atomically after
     each response so the parent can poll for real-time status.
     """
-    status = {"responses": 0, "items": 0, "error": None}
+    status: dict[str, int | str | None] = {"responses": 0, "items": 0, "error": None}
 
     def _write_progress():
         if not progress_path:
@@ -134,7 +135,7 @@ def _crawl_worker(opts: dict, out_path: str, status_path: str,
 
         class _Spider(Spider):
             name = "crawl_posts"
-            custom_settings = {
+            custom_settings: Any = {
                 **BASE_SPIDER_SETTINGS,
                 "USER_AGENT": opts["user_agent"],
                 "ROBOTSTXT_OBEY": not opts["no_robots"],
@@ -354,6 +355,7 @@ def crawl_items(opts: dict, progress_cb=None) -> list:
     proc.start()
 
     if progress_cb:
+        assert progress_path is not None
         _last_progress = None
         while proc.is_alive():
             snap = _read_progress(progress_path)

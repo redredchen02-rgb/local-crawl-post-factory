@@ -5,7 +5,7 @@ from pathlib import Path
 
 
 def record(log_path: str, post_id: str, stage: str, status: str, ts: str,
-           *, severity: str = "info", run_id: str = None, **extra) -> None:
+           *, severity: str = "info", run_id: str | None = None, **extra) -> None:
     """Append one audit line to ``log_path``.
 
     ``severity`` defaults to "info" (backward compatible); ``run_id`` correlates

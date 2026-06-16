@@ -1,12 +1,14 @@
 """Local WebUI (FastAPI + HTMX) — settings, one-click crawl→stage, package list.
 
-Localhost-only by design. The UI automates only up to build-manifest; it never
-drafts or publishes (publishing stays a manual CLI action with --approve).
+Localhost-only by design. Manual mode automates up to build-manifest; publishing
+stays a manual CLI action with --approve unless auto_pipeline is enabled in settings.
 """
 
 import json
+import time
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 from fastapi import FastAPI, Form, Request
 from fastapi.responses import HTMLResponse, FileResponse, PlainTextResponse
@@ -21,6 +23,158 @@ from src import draft_post, verify_draft, publish_post
 WEBUI_CONFIG_PATH = "./configs/webui.yaml"
 _HERE = Path(__file__).parent
 templates = Jinja2Templates(directory=str(_HERE / "templates"))
+
+
+# ---------------------------------------------------------------------------
+# Module-level helpers (usable from request handlers and background jobs)
+# ---------------------------------------------------------------------------
+
+def _action_ns(post_id: str, stage: str, cfg: dict):
+    """Build the argparse-style namespace for a backend command from webui cfg."""
+    pkg = _safe_pkg_dir(cfg["out_dir"], post_id)
+    if pkg is None:
+        return None
+    return cfg, SimpleNamespace(
+        manifest=str(pkg / "manifest.json"),
+        backend=cfg["backend_config"],
+        storage_state=cfg["storage_state"],
+        headless=True,
+        timeout_ms=backend_driver.DEFAULT_TIMEOUT_MS,
+        retries=None,
+        state=cfg["state_path"],
+        dry_run=False,
+    )
+
+
+def _retry(fn, times: int = 3, delay: float = 1.0) -> tuple[Any, Exception | None]:
+    """Call fn() up to *times* attempts, sleeping *delay* seconds between retries.
+
+    Returns (result, None) on success, (None, last_exception) after all attempts fail.
+    """
+    last_exc: Exception | None = None
+    for attempt in range(times):
+        try:
+            return fn(), None
+        except Exception as exc:  # noqa: BLE001
+            last_exc = exc
+            if attempt < times - 1:
+                time.sleep(delay)
+    return None, last_exc
+
+
+def _run_auto_pipeline(job, cfg: dict, built: list[dict]) -> None:
+    """Run draft→verify→publish for all *built* packages inside an existing job.
+
+    *built* is the list of dicts from pipeline.run_pipeline()["built"]:
+    [{"post_id": str, "title": str, "manifest_path": str}, ...]
+
+    Gate ① (reviewed) is bypassed by calling reviewed.mark() before publish.
+    Gates ② (draft_verified status) and ③ (title match) remain enforced.
+    Each stage retries up to 3 times with 1s delay on failure.
+
+    Note: reviewed.mark() is called before the publish attempt. If publish fails all
+    retries the reviewed record persists — intentional for a single-user tool (the
+    user can re-publish manually without re-reviewing unchanged, already-verified content).
+    """
+    if not built:
+        jobs.report(job, "無新稿件，跳過自動發布")
+        return
+
+    total = len(built)
+    run_id = runs.new_run_id()
+    drafted_ok: list[dict] = []
+    verify_ok: list[dict] = []
+    failed: list[dict] = []
+
+    # --- DRAFT LOOP ---
+    jobs.report(job, f"自動建草稿（共 {total} 篇）…")
+    for i, item in enumerate(built):
+        pid = item["post_id"]
+        jobs.set_current(job, f"建草稿 {i + 1}/{total}：{item.get('title', pid)}")
+        prepared = _action_ns(pid, "draft", cfg)
+        if prepared is None:
+            failed.append({"post_id": pid, "stage": "draft", "error": "找不到此貼文包"})
+            continue
+        _, ns = prepared
+        _, exc = _retry(lambda ns=ns: draft_post._run(ns))
+        if exc is None:
+            drafted_ok.append(item)
+            runs.record_run(cfg["state_path"], stage="draft", post_id=pid,
+                            status="ok", run_id=run_id, severity="info")
+        else:
+            failed.append({"post_id": pid, "stage": "draft", "error": str(exc)})
+            runs.record_run(cfg["state_path"], stage="draft", post_id=pid,
+                            status="failed", error=str(exc), run_id=run_id, severity="error")
+
+    jobs.report(job, f"建草稿完成：{len(drafted_ok)}/{total} 成功")
+
+    # --- VERIFY LOOP ---
+    jobs.report(job, f"自動驗證（共 {len(drafted_ok)} 篇）…")
+    for i, item in enumerate(drafted_ok):
+        pid = item["post_id"]
+        jobs.set_current(job, f"驗證 {i + 1}/{len(drafted_ok)}：{item.get('title', pid)}")
+        prepared = _action_ns(pid, "verify", cfg)
+        if prepared is None:
+            failed.append({"post_id": pid, "stage": "verify", "error": "找不到此貼文包"})
+            continue
+        _, ns = prepared
+        _, exc = _retry(lambda ns=ns: verify_draft._run(ns))
+        if exc is None:
+            verify_ok.append(item)
+            runs.record_run(cfg["state_path"], stage="verify", post_id=pid,
+                            status="ok", run_id=run_id, severity="info")
+        else:
+            failed.append({"post_id": pid, "stage": "verify", "error": str(exc)})
+            runs.record_run(cfg["state_path"], stage="verify", post_id=pid,
+                            status="failed", error=str(exc), run_id=run_id, severity="error")
+
+    verify_fail_count = len(drafted_ok) - len(verify_ok)
+    jobs.report(job, f"驗證完成：{len(verify_ok)}/{len(drafted_ok)} 成功")
+
+    # --- PUBLISH LOOP (only verified packages) ---
+    jobs.report(job, f"自動發布（共 {len(verify_ok)} 篇）…")
+    publish_ok = 0
+    for i, item in enumerate(verify_ok):
+        pid = item["post_id"]
+        jobs.set_current(job, f"發布 {i + 1}/{len(verify_ok)}：{item.get('title', pid)}")
+        pkg = _safe_pkg_dir(cfg["out_dir"], pid)
+        if pkg is None or not (pkg / "manifest.json").exists():
+            failed.append({"post_id": pid, "stage": "publish", "error": "找不到 manifest"})
+            continue
+        m = json.loads((pkg / "manifest.json").read_text(encoding="utf-8"))
+        cid = reviewed.content_id(m)
+        # Bypass Gate ① by marking as reviewed before calling publish.
+        # Gates ② (draft_verified) and ③ (title match) remain enforced inside publish_post._run.
+        try:
+            reviewed.mark(cfg["state_path"], pid, cid)
+        except Exception as exc:  # noqa: BLE001
+            failed.append({"post_id": pid, "stage": "publish", "error": f"reviewed.mark 失敗：{exc}"})
+            continue
+        ns = SimpleNamespace(
+            manifest=str(pkg / "manifest.json"),
+            backend=cfg["backend_config"],
+            storage_state=cfg["storage_state"],
+            headless=True,
+            timeout_ms=backend_driver.DEFAULT_TIMEOUT_MS,
+            retries=None,
+            state=cfg["state_path"],
+            approve=True,
+            expected_content_id=cid,
+        )
+        _, exc = _retry(lambda ns=ns: publish_post._run(ns))
+        if exc is None:
+            publish_ok += 1
+        else:
+            failed.append({"post_id": pid, "stage": "publish", "error": str(exc)})
+            runs.record_run(cfg["state_path"], stage="publish", post_id=pid,
+                            status="failed", error=str(exc), run_id=run_id, severity="error")
+
+    skip_count = verify_fail_count
+    jobs.report(
+        job,
+        f"自動發布完成：成功 {publish_ok} / 失敗 {len(failed)} / "
+        f"跳過 {skip_count}（驗證失敗 {verify_fail_count}）"
+    )
 
 
 def create_app(config_path: str = WEBUI_CONFIG_PATH) -> FastAPI:
@@ -53,12 +207,14 @@ def create_app(config_path: str = WEBUI_CONFIG_PATH) -> FastAPI:
                       source_id: str = Form(""),
                       cover_download_concurrency: str = Form("5"),
                       cover_retries: str = Form("0"),
-                      cover_backoff_sec: str = Form("0")):
+                      cover_backoff_sec: str = Form("0"),
+                      auto_pipeline: str = Form("")):
         incoming = {"start_url": start_url.strip(), "item_regex": item_regex,
                     "deny_regex": deny_regex, "limit": limit, "source_id": source_id,
                     "download_delay": download_delay, "concurrency": concurrency,
                     "cover_download_concurrency": cover_download_concurrency,
-                    "cover_retries": cover_retries, "cover_backoff_sec": cover_backoff_sec}
+                    "cover_retries": cover_retries, "cover_backoff_sec": cover_backoff_sec,
+                    "auto_pipeline": auto_pipeline}
         try:
             cfg = webui_config.save(app.state.config_path, {**_cfg(), **incoming})
         except CliError as exc:
@@ -86,6 +242,8 @@ def create_app(config_path: str = WEBUI_CONFIG_PATH) -> FastAPI:
             jobs.report(job, f"爬取完成：{len(items)} 篇")
             jobs.set_current(job, "建包中…")
             result = pipeline.run_pipeline(items, cfg, progress_cb=lambda m: jobs.report(job, m))
+            if cfg.get("auto_pipeline"):
+                _run_auto_pipeline(job, cfg, result.get("built", []))
             return result
 
         job_id = jobs.submit(_work)
@@ -170,28 +328,11 @@ def create_app(config_path: str = WEBUI_CONFIG_PATH) -> FastAPI:
 
     @app.post("/packages/{post_id}/draft", response_class=HTMLResponse)
     def action_draft(request: Request, post_id: str):
-        return _submit_action(request, "draft", post_id, _action_ns(post_id, "draft"))
+        return _submit_action(request, "draft", post_id, _action_ns(post_id, "draft", _cfg()))
 
     @app.post("/packages/{post_id}/verify", response_class=HTMLResponse)
     def action_verify(request: Request, post_id: str):
-        return _submit_action(request, "verify", post_id, _action_ns(post_id, "verify"))
-
-    def _action_ns(post_id, stage):
-        """Build the argparse-style namespace for a backend command from webui cfg."""
-        cfg = _cfg()
-        pkg = _safe_pkg_dir(cfg["out_dir"], post_id)
-        if pkg is None:
-            return None
-        return cfg, SimpleNamespace(
-            manifest=str(pkg / "manifest.json"),
-            backend=cfg["backend_config"],
-            storage_state=cfg["storage_state"],
-            headless=True,
-            timeout_ms=backend_driver.DEFAULT_TIMEOUT_MS,
-            retries=None,
-            state=cfg["state_path"],
-            dry_run=False,
-        )
+        return _submit_action(request, "verify", post_id, _action_ns(post_id, "verify", _cfg()))
 
     def _submit_action(request, stage, post_id, prepared):
         if prepared is None:
@@ -223,7 +364,7 @@ def create_app(config_path: str = WEBUI_CONFIG_PATH) -> FastAPI:
             ok, failed = [], []
             for i, pid in enumerate(post_ids):
                 jobs.set_current(job, f"批量{label}中…（{i + 1}/{len(post_ids)}）")
-                prepared = _action_ns(pid, stage)
+                prepared = _action_ns(pid, stage, cfg)
                 if prepared is None:  # invalid / traversal post_id -> skip, isolate
                     failed.append({"post_id": pid, "error": "找不到此貼文包"})
                     runs.record_run(cfg["state_path"], stage=stage, post_id=pid,
@@ -438,7 +579,7 @@ def _safe_pkg_dir(out_dir: str, post_id: str):
 
 def _scan_packages(out_dir: str):
     """Read every out/<post_id>/manifest.json; skip broken ones."""
-    rows = []
+    rows: list[dict] = []
     base = Path(out_dir)
     if not base.exists():
         return rows

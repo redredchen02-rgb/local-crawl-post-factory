@@ -111,7 +111,7 @@ def watermark(record: dict, cfg: dict) -> dict:
             target_w = max(1, int(cover.width * max_ratio))
             scale = target_w / logo.width
             target_h = max(1, int(logo.height * scale))
-            logo = logo.resize((target_w, target_h), Image.LANCZOS)
+            logo = logo.resize((target_w, target_h), Image.Resampling.LANCZOS)
 
             if opacity < 1.0:
                 alpha = logo.split()[3].point(lambda a: int(a * opacity))

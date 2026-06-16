@@ -38,6 +38,7 @@ def _run(args) -> int:
     cfg = load_backend(args.backend)
     mf.require_status(manifest, "package_built")
     post_id = manifest.get("post_id")
+    assert isinstance(post_id, str)
 
     if args.dry_run:
         # origin §17.8: dry-run validates without submitting.

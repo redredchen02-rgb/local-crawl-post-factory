@@ -36,12 +36,30 @@
   <label>重試間隔秒數（cover_backoff_sec）</label>
   <input type="number" name="cover_backoff_sec" value="{{ cfg.cover_backoff_sec }}" min="0" step="0.5">
 
+  <h3 style="margin-top:1.5em">自動化</h3>
+
+  <label style="display:flex;align-items:center;gap:.5em;cursor:pointer">
+    <input type="checkbox" name="auto_pipeline"{% if cfg.auto_pipeline %} checked{% endif %}>
+    自動發布模式（爬取完自動建草稿 → 驗證 → 發布，不需手動確認）
+  </label>
+
+  {% if cfg.auto_pipeline %}
+  <div style="background:#fff3cd;border:1px solid #ffc107;border-radius:4px;padding:.75em 1em;margin-top:.5em;color:#856404">
+    ⚠️ <strong>自動發布已啟用</strong>：爬取完成後將自動繞過審稿門，直接發布所有新稿件。<br>
+    執行自動發布期間請勿手動審閱稿件，以免發生衝突。
+  </div>
+  {% endif %}
+
   <button type="submit">儲存設定</button>
 </form>
 
 <hr>
 <h2>爬取並上膛</h2>
+{% if cfg.auto_pipeline %}
+<p class="hint">自動發布模式：按下後將自動執行「爬取 → 建草稿 → 驗證 → 發布」全流程。</p>
+{% else %}
 <p class="hint">輸入 URL 後按下方按鈕：背景跑「爬取 → 建包」，發布仍維持人工 CLI。</p>
+{% endif %}
 <button hx-post="/crawl" hx-target="#job" hx-swap="innerHTML">爬取最新並建包</button>
 <div id="job"></div>
 {% endblock %}
