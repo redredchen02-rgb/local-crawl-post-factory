@@ -92,5 +92,5 @@ def submit_action(request: Request, stage: str, post_id: str, prepared: Any) -> 
     if prepared is None:
         return HTMLResponse('<p class="error">找不到此貼文包</p>', status_code=404)
     cfg, ns = prepared
-    runner = {"draft": draft_post.run, "verify": verify_draft.run}[stage]
+    runner = {"draft": draft_post._run, "verify": verify_draft._run}[stage]
     return submit_job(request, stage, post_id, cfg, lambda: runner(ns))
