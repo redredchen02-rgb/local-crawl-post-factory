@@ -3,6 +3,16 @@
 {% block content %}
 <p><a href="/packages">← 回上膛清單</a></p>
 
+{% set steps = [('建包', 'package_built'), ('建草稿', 'drafted'), ('驗證', 'draft_verified'), ('發布', 'published')] %}
+{% set status_order = {'package_built': 0, 'drafted': 1, 'draft_verified': 2, 'published': 3} %}
+{% set cur = status_order.get(status, 0) %}
+<div class="step-bar">
+  {% for label, s in steps %}
+    {% set idx = loop.index0 %}
+    <div class="step {% if idx < cur %}done{% elif idx == cur %}current{% endif %}">{{ label }}</div>
+  {% endfor %}
+</div>
+
 <table>
   <tr><th>post_id</th><td>{{ post_id }}</td></tr>
   <tr><th>狀態</th><td><span class="pill {{ status }}">{{ status }}</span></td></tr>
@@ -35,19 +45,28 @@
 {% else %}
 <h2>後台動作</h2>
 <p class="hint">需先以 <code>auth-login</code> 取得登入態。動作於背景執行。</p>
-<div>
-  <button hx-post="/packages/{{ post_id }}/draft" hx-target="#action" hx-swap="innerHTML">建草稿</button>
-  <button hx-post="/packages/{{ post_id }}/verify" hx-target="#action" hx-swap="innerHTML">驗證草稿</button>
+<div id="action-area">
+  <button hx-post="/packages/{{ post_id }}/draft"
+          hx-target="#action-area" hx-swap="innerHTML"
+          hx-indicator="this">
+    <span class="htmx-indicator btn-spinner">⟳</span>建草稿
+  </button>
+  <button hx-post="/packages/{{ post_id }}/verify"
+          hx-target="#action-area" hx-swap="innerHTML"
+          hx-indicator="this">
+    <span class="htmx-indicator btn-spinner">⟳</span>驗證草稿
+  </button>
 </div>
-<div id="action"></div>
 
 {% if status == 'draft_verified' %}
 <h2>發布（三重確認）</h2>
 <p class="hint">你正在此審核頁；狀態已驗證。請輸入貼文標題以確認發布——此動作不可逆。</p>
-<form hx-post="/packages/{{ post_id }}/publish" hx-target="#action" hx-swap="innerHTML">
+<form hx-post="/packages/{{ post_id }}/publish" hx-target="#action-area" hx-swap="innerHTML">
   <label>輸入標題以確認</label>
-  <input type="text" name="title" placeholder="{{ title }}">
-  <button type="submit">確認發布</button>
+  <input type="text" name="title" placeholder="{{ title }}" value="{{ title }}">
+  <button type="submit" hx-indicator="this">
+    <span class="htmx-indicator btn-spinner">⟳</span>確認發布
+  </button>
 </form>
 {% else %}
 <p class="hint">發布鈕僅在狀態為 <code>draft_verified</code> 時出現（目前：{{ status }}）。請先建草稿並驗證。</p>

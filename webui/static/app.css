@@ -154,6 +154,71 @@ hr { border: none; border-top: 1px solid var(--line); margin: 1.75rem 0; }
 .batch-bar button { margin-top: 0; }
 .batch-bar .hint { margin-left: auto; }
 
+/* ---- htmx loading / indicator ---- */
+.htmx-indicator { display: none; }
+.htmx-request .htmx-indicator { display: inline; animation: spin .7s linear infinite; }
+.htmx-request.htmx-indicator { display: inline; animation: spin .7s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+button.htmx-request,
+button.htmx-request:hover {
+  opacity: .65;
+  pointer-events: none;
+  filter: none;
+}
+
+/* small inline action buttons */
+button.sm {
+  font-size: .8rem;
+  padding: .25rem .6rem;
+  margin-top: 0;
+}
+
+/* row-actions cell: compact, no card border */
+.row-actions { white-space: nowrap; }
+
+/* stat cards on dashboard */
+.stat-cards { display: flex; gap: 1rem; flex-wrap: wrap; margin-top: .5rem; }
+.stat-card {
+  flex: 1 1 8rem;
+  background: var(--card); border: 1px solid var(--line);
+  border-radius: var(--radius); box-shadow: var(--shadow);
+  padding: 1.1rem 1.25rem;
+  text-decoration: none; color: var(--ink);
+  transition: box-shadow .15s;
+}
+.stat-card:hover { box-shadow: 0 3px 8px rgba(16,24,40,.1); }
+.stat-card .stat-num { display: block; font-size: 2.2rem; font-weight: 700; line-height: 1.1; }
+.stat-card .stat-label { display: block; font-size: .85rem; color: var(--muted); margin-top: .2rem; }
+.stat-card.ok .stat-num { color: var(--ok); }
+.stat-card.accent .stat-num { color: var(--accent); }
+
+/* step progress bar (U5) */
+.step-bar { display: flex; align-items: center; gap: 0; margin: .5rem 0 1.5rem; }
+.step { padding: .35rem .7rem; font-size: .82rem; font-weight: 600;
+        color: var(--muted); background: var(--bg);
+        border: 1px solid var(--line); border-right: none; }
+.step:first-child { border-radius: 8px 0 0 8px; }
+.step:last-child { border-right: 1px solid var(--line); border-radius: 0 8px 8px 0; }
+.step.done { background: var(--ok-weak); color: var(--ok); border-color: var(--ok); }
+.step.current { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+/* toast container (U6) */
+#toast-container {
+  position: fixed; top: 1rem; right: 1rem; z-index: 9999;
+  display: flex; flex-direction: column; gap: .5rem;
+  pointer-events: none;
+}
+.toast {
+  padding: .65rem 1rem; border-radius: 8px; font-size: .9rem; font-weight: 600;
+  box-shadow: 0 4px 12px rgba(0,0,0,.15);
+  pointer-events: auto;
+  animation: slide-in .2s ease;
+}
+.toast.ok  { background: var(--ok-weak);    color: var(--ok);    border: 1px solid var(--ok); }
+.toast.err { background: var(--error-weak); color: var(--error); border: 1px solid var(--error); }
+@keyframes slide-in { from { opacity: 0; transform: translateX(1rem); } to { opacity: 1; } }
+
 @media (max-width: 600px) {
   body { padding: 1rem .75rem 3rem; }
   h1 { font-size: 1.35rem; }

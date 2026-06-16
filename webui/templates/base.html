@@ -8,8 +8,38 @@
   <script src="/static/htmx.min.js"></script>
 </head>
 <body>
+<div id="toast-container"></div>
+<script>
+(function(){
+  var MAX=3, AUTO_MS=3000;
+  function show(msg, type){
+    var c=document.getElementById('toast-container');
+    while(c.children.length>=MAX) c.removeChild(c.firstChild);
+    var t=document.createElement('div');
+    t.className='toast '+(type==='ok'?'ok':'err');
+    t.textContent=msg;
+    t.onclick=function(){t.remove();};
+    c.appendChild(t);
+    if(type==='ok') setTimeout(function(){if(t.parentNode)t.remove();},AUTO_MS);
+  }
+  document.addEventListener('htmx:afterRequest',function(e){
+    var ok=e.detail.successful;
+    var xhr=e.detail.xhr;
+    if(!xhr) return;
+    var ct=xhr.getResponseHeader('content-type')||'';
+    if(!ct.includes('text/html')) return;
+    var txt=xhr.responseText||'';
+    // extract first <p class="ok"> or <p class="error"> from response
+    var mOk=txt.match(/<p[^>]*\bok\b[^>]*>([\s\S]*?)<\/p>/);
+    var mErr=txt.match(/<p[^>]*\berror\b[^>]*>([\s\S]*?)<\/p>/);
+    if(mOk) show(mOk[1].replace(/<[^>]+>/g,'').trim(),'ok');
+    else if(mErr) show(mErr[1].replace(/<[^>]+>/g,'').trim(),'err');
+    else if(!ok) show('操作失敗（HTTP '+xhr.status+'）','err');
+  });
+})();
+</script>
   <nav>
-    <a href="/settings">設定</a><a href="/packages">上膛清單</a><a href="/history">運行歷史</a><a href="/audit">Audit</a><a href="/trash">垃圾桶</a>
+    <a href="/">總覽</a><a href="/packages">上膛清單</a><a href="/settings">設定</a><a href="/history">運行歷史</a><a href="/audit">Audit</a><a href="/trash">垃圾桶</a>
     <span class="auth-light" hx-get="/auth-status" hx-trigger="load, every 10s" hx-swap="innerHTML">登入態：…</span>
   </nav>
   <h1>{% block heading %}{% endblock %}</h1>
