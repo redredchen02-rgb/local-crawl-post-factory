@@ -1,7 +1,23 @@
 {% extends "base.html" %}
 {% block heading %}運行歷史 / Run History{% endblock %}
 {% block content %}
-<div hx-get="/history" hx-trigger="every 5s" hx-swap="innerHTML">
+<div class="toolbar">
+  <input type="text" name="post_id" value="{{ post_id }}" placeholder="篩選 post_id…"
+         hx-get="/history" hx-target="#history-table" hx-swap="innerHTML"
+         hx-trigger="keyup changed delay:300ms" hx-include="[name='severity']">
+  <select name="severity" hx-get="/history" hx-target="#history-table" hx-swap="innerHTML"
+          hx-trigger="change" hx-include="[name='post_id']">
+    <option value=""{% if severity == '' %} selected{% endif %}>全部 severity</option>
+    <option value="info"{% if severity == 'info' %} selected{% endif %}>info</option>
+    <option value="warning"{% if severity == 'warning' %} selected{% endif %}>warning</option>
+    <option value="error"{% if severity == 'error' %} selected{% endif %}>error</option>
+  </select>
+</div>
+
+<div id="history-table"
+     hx-get="/history" hx-trigger="every 5s"
+     hx-include="[name='post_id'],[name='severity']"
+     hx-swap="innerHTML">
 {% include "_history_table.html" %}
 </div>
 {% endblock %}

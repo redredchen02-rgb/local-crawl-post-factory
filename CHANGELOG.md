@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.0.0] - 2026-06-16
+
+### Added
+- **垃圾桶頁**（`/trash`）：列出所有被移入 `out/.trash/` 的貼文，支援單筆「復原」及「清空垃圾桶」（永久刪除）。復原衝突時回 409 並保留垃圾桶原件。
+- **批量刪除**：上膛清單勾選多筆後可一鍵批量移入垃圾桶（`/batch/delete`）。
+- **全選 checkbox**：上膛清單表頭新增全選/取消全選 checkbox；個別勾選時顯示 indeterminate 狀態；批量操作完成後自動清除所有勾選。
+- **history 頁篩選 UI**：新增 post_id 文字搜尋及 severity 下拉篩選，每 5 秒自動刷新時保留篩選狀態。
+- **detail 頁刪除按鈕**：可直接從 detail 頁刪除貼文並跳回上膛清單。
+
+### Changed
+- **上膛清單預設視圖**：status 預設改為「進行中（未發布）」，隱藏已發布貼文；新增「全部（含已發布）」選項（`status=all`）。
+- **detail 頁 published 狀態**：已發布貼文不再顯示建草稿/驗證/CLI 指令等無意義按鈕，改為顯示綠色「已完成」橫幅。
+- **audit / history post_id 連結**：兩頁 post_id 欄位均可點擊直接跳往 detail 頁。
+- **`.batch-bar` 排版**：批量操作按鈕改為 flex 橫排並加上適當間距。
+- **Settings 自動化說明**：auto_pipeline 開關下補充說明哪些設定在自動模式仍生效。
+
 ## [0.1.0.0] - 2026-06-16
 
 ### Added
