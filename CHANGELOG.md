@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.1.0] - 2026-06-16
+
+### Changed
+- **webui 路由拆分**：`webui/app.py` 由 734 行拆分為 6 個 `APIRouter` 模組（`settings_auth`, `crawl`, `packages`, `actions`, `trash`, `history_audit`），app.py 縮減至 64 行。
+- **純函式輔助層**：I/O helper 移至 `webui/_helpers.py`；auto-pipeline 邏輯移至 `webui/_auto_pipeline.py`；router 共用 context（`cfg_from_request`, `auth_light`, `submit_job`）移至 `webui/routers/_ctx.py`。
+- **check_publish_gates**：從 `webui/app` 移至 `webui/_helpers`，消除路由模組對 app 的循環引入。
+- **note_expiry callback 修正**：`_run_auto_pipeline` 在 draft/verify/publish 每個階段的 `SessionExpiredError` 都正確回呼 `note_expiry`（先前僅接受參數但未呼叫）。
+- **imports 整理**：`webui/routers/actions.py` 移除所有函式體內延遲 import，改為模組頂層 import。
+
 ## [0.2.0.0] - 2026-06-16
 
 ### Added
