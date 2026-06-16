@@ -194,6 +194,19 @@ button.sm {
 .stat-card.ok .stat-num { color: var(--ok); }
 .stat-card.accent .stat-num { color: var(--accent); }
 
+/* failure box with retry */
+.failure-box {
+  background: var(--error-weak); border: 1px solid var(--error);
+  border-radius: var(--radius); padding: .85rem 1rem; margin: 1.25rem 0;
+}
+.failure-box h2 { margin-top: 0; }
+
+/* inline edit */
+.inline-edit-form { display: flex; gap: .5rem; align-items: flex-start; margin-top: .5rem; }
+.inline-edit-form textarea { flex: 1; font: inherit; font-size: .9rem; padding: .4rem .6rem;
+  border: 1px solid var(--line); border-radius: 8px; resize: vertical; min-height: 5rem; }
+.inline-edit-form input[type=text] { flex: 1; width: auto; }
+
 /* step progress bar (U5) */
 .step-bar { display: flex; align-items: center; gap: 0; margin: .5rem 0 1.5rem; }
 .step { padding: .35rem .7rem; font-size: .82rem; font-weight: 600;
