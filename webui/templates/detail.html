@@ -14,7 +14,7 @@
 </div>
 
 <table>
-  <tr><th>post_id</th><td>{{ post_id }}</td></tr>
+  <tr><th>post_id</th><td>{{ post_id }} <a class="hint" href="/history?post_id={{ post_id }}" style="font-size:.85rem">→ 運行歷史</a></td></tr>
   <tr><th>狀態</th><td><span class="pill {{ status }}">{{ status }}</span></td></tr>
   <tr><th>來源</th><td><a href="{{ canonical_url }}" target="_blank" rel="noopener">{{ canonical_url }}</a></td></tr>
 </table>
@@ -26,16 +26,50 @@
 <p class="hint">此貼文無封面圖。</p>
 {% endif %}
 
-<h2>文案</h2>
+<h2>標題
+  <button type="button" class="sm secondary" style="vertical-align:middle"
+          onclick="document.getElementById('edit-title').toggleAttribute('hidden')">編輯</button>
+</h2>
+<p id="display-title" style="font-weight:600">{{ title }}</p>
+<form id="edit-title" hidden hx-post="/packages/{{ post_id }}/edit"
+      hx-target="#edit-save-msg" hx-swap="innerHTML" class="inline-edit-form">
+  <input type="text" name="title" value="{{ title }}">
+  <input type="hidden" name="caption" value="">
+  <button type="submit" class="sm" hx-indicator="this">
+    <span class="htmx-indicator btn-spinner">⟳</span>儲存
+  </button>
+</form>
+
+<h2>文案
+  <button type="button" class="sm secondary" style="vertical-align:middle"
+          onclick="document.getElementById('edit-caption').toggleAttribute('hidden')">編輯</button>
+</h2>
+<div id="edit-save-msg"></div>
 <pre class="preview">{{ caption }}</pre>
+<form id="edit-caption" hidden hx-post="/packages/{{ post_id }}/edit"
+      hx-target="#edit-save-msg" hx-swap="innerHTML" class="inline-edit-form">
+  <input type="hidden" name="title" value="">
+  <textarea name="caption">{{ caption }}</textarea>
+  <button type="submit" class="sm" hx-indicator="this">
+    <span class="htmx-indicator btn-spinner">⟳</span>儲存
+  </button>
+</form>
 
 {% if failure %}
-<h2 class="error">上次後台動作失敗（{{ failure.stage }}）</h2>
-<p class="error">{{ failure.error }}</p>
-<p class="hint">時間：{{ failure.ts }}　URL：{{ failure.url }}</p>
-{% if failure.screenshot %}
-<img src="/packages/{{ post_id }}/failure-image" alt="失敗截圖" style="max-width:100%">
-{% endif %}
+<div class="failure-box">
+  <h2 class="error">上次後台動作失敗（{{ failure.stage }}）</h2>
+  <p class="error">{{ failure.error }}</p>
+  <p class="hint">時間：{{ failure.ts }}　URL：{{ failure.url }}</p>
+  {% if failure.stage in ('draft', 'verify') %}
+  <button class="sm" hx-post="/packages/{{ post_id }}/{{ failure.stage }}"
+          hx-target="#action-area" hx-swap="innerHTML" hx-indicator="this">
+    <span class="htmx-indicator btn-spinner">⟳</span>重試 {{ '建草稿' if failure.stage == 'draft' else '驗證' }}
+  </button>
+  {% endif %}
+  {% if failure.screenshot %}
+  <img src="/packages/{{ post_id }}/failure-image" alt="失敗截圖" style="max-width:100%;margin-top:.75rem">
+  {% endif %}
+</div>
 {% endif %}
 
 {% if status == 'published' %}

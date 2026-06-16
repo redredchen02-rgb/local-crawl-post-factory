@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.2.0] - 2026-06-16
+
+### Added
+- **Dashboard 首頁**（`GET /`）：開啟 WebUI 即顯示全局統計卡片（待處理 / 已驗證 / 已發布）+ 最近 5 條運行歷史 + 爬取快捷鈕；統計卡片每 10 秒自動刷新（`/_dashboard_stats` partial）。設定頁移至 `/settings`。
+- **Package 列表行內操作**：上膛清單每行新增「草稿」「驗證」按鈕，直接觸發 hx-post，無需跳轉 detail 頁；操作結果 inline 顯示於該行。
+- **Detail 頁流程進度條**：`建包 → 建草稿 → 驗證 → 發布` 步驟指示器，依當前 status 高亮當前步驟；操作結果 inline swap 取代按鈕區域；發布表單預填標題。
+- **Toast 通知系統**：右上角固定 `#toast-container`，偵測 HTMX 回應中的 `<p class="ok/error">` 自動彈出通知；成功通知 3 秒自消，失敗通知需手動關閉，最多同時 3 條。
+- **Loading 狀態 + 防雙擊**：所有 HTMX 操作按鈕加入 `.htmx-indicator` 旋轉動畫；請求進行中設 `pointer-events:none` 防重複提交。
+- **全選 Checkbox**：上膛清單表頭全選 checkbox（已於 v0.2.0.0 實作，本版確認正常）。
+
 ## [0.2.1.1] - 2026-06-16
 
 ### Changed

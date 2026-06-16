@@ -295,3 +295,31 @@ def test_trash_empty_clears_all(tmp_path):
     r = client.post("/trash/empty")
     assert r.status_code == 200
     assert not (out / ".trash").exists() or not any((out / ".trash").iterdir())
+
+
+def test_edit_updates_title(tmp_path):
+    out = tmp_path / "out"
+    _pkg(out, "20260615_a", "舊標題")
+    client = _client(tmp_path, out)
+    r = client.post("/packages/20260615_a/edit", data={"title": "新標題", "caption": ""})
+    assert r.status_code == 200
+    assert "已儲存" in r.text
+    import json
+    m = json.loads((out / "20260615_a" / "manifest.json").read_text(encoding="utf-8"))
+    assert m["content"]["title"] == "新標題"
+
+
+def test_edit_updates_caption(tmp_path):
+    out = tmp_path / "out"
+    _pkg(out, "20260615_a", "甲文", caption="舊文案")
+    client = _client(tmp_path, out)
+    r = client.post("/packages/20260615_a/edit", data={"title": "", "caption": "新文案"})
+    assert r.status_code == 200
+    assert "已儲存" in r.text
+    assert (out / "20260615_a" / "caption.txt").read_text(encoding="utf-8") == "新文案"
+
+
+def test_edit_unknown_404(tmp_path):
+    client = _client(tmp_path, tmp_path / "out")
+    r = client.post("/packages/nope/edit", data={"title": "x", "caption": ""})
+    assert r.status_code == 404
