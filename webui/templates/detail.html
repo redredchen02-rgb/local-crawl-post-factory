@@ -28,6 +28,11 @@
 {% endif %}
 {% endif %}
 
+{% if status == 'published' %}
+<div style="background:var(--ok-weak);border:1px solid var(--ok);border-radius:var(--radius);padding:.75em 1em;margin:1.25rem 0;color:var(--ok);font-weight:600">
+  ✓ 已發布——此貼文已完成全部流程，無需再執行後台動作。
+</div>
+{% else %}
 <h2>後台動作</h2>
 <p class="hint">需先以 <code>auth-login</code> 取得登入態。動作於背景執行。</p>
 <div>
@@ -53,4 +58,11 @@
 <pre>draft-post   --manifest out/{{ post_id }}/manifest.json --backend {{ backend_config }} --storage-state ./auth/storage-state.json --headless
 verify-draft --manifest out/{{ post_id }}/manifest.json --backend {{ backend_config }} --storage-state ./auth/storage-state.json --headless
 publish-post --manifest out/{{ post_id }}/manifest.json --backend {{ backend_config }} --storage-state ./auth/storage-state.json --state ./state/published.sqlite --approve --headless</pre>
+{% endif %}
+
+<hr>
+<button class="danger" hx-post="/packages/{{ post_id }}/delete"
+        hx-confirm="確定移入垃圾桶？可至 out/.trash/ 復原"
+        hx-swap="none"
+        hx-on::after-request="window.location='/packages'">刪除此貼文</button>
 {% endblock %}
