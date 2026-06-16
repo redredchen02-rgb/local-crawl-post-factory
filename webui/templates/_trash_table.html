@@ -1,6 +1,12 @@
+{% if msg %}<p class="{{ msg_class }}">{{ msg }}</p>{% endif %}
 {% if not items %}
   <p class="hint">垃圾桶是空的。</p>
 {% else %}
+  <div style="margin-bottom:.5rem">
+    <button class="danger" hx-post="/trash/empty"
+            hx-target="#trash-list" hx-swap="innerHTML"
+            hx-confirm="確定永久刪除所有垃圾桶項目？此動作不可逆。">清空垃圾桶</button>
+  </div>
   <div class="table-wrap">
   <table>
     <thead><tr><th>post_id</th><th>標題</th><th></th></tr></thead>
