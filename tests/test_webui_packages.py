@@ -205,7 +205,7 @@ def test_publish_endpoint_is_gated_not_absent(tmp_path):
     """Control-center model: a publish route exists but is gated (see
     test_webui_publish_gate). It must never publish without the triple gate."""
     app = create_app(str(tmp_path / "webui.yaml"))
-    paths = [r.path for r in app.routes]
+    paths = [r.path for r in app.routes if hasattr(r, "path")]
     assert "/packages/{post_id}/publish" in paths
 
 
