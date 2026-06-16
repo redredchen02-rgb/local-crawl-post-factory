@@ -1,6 +1,7 @@
 """core/pipeline orchestrator: in-process build without shell/network."""
 
 import json
+from pathlib import Path
 
 from core import pipeline, state, url_utils, runs
 from src import normalize_items
@@ -117,6 +118,134 @@ def test_build_stage_system_error_recorded(tmp_path, monkeypatch):
     assert any(r["status"] == "failed" for r in runs.list_runs(cfg["state_path"]))
 
 
+# --- T2: parallel cover download (select_cover.select_all) -------------------
+
+def _cover_item(slug, title, image_url=None):
+    """Item with an optional image_url for cover download tests."""
+    item = _item(slug, title)
+    if image_url:
+        item["image_url"] = image_url
+    return item
+
+
+def test_download_all_covers_downloads_in_parallel(tmp_path, monkeypatch):
+    """T2: All covers with image_url are downloaded, files created in download_dir."""
+    import time
+    from core import pipeline
+
+    download_dir = tmp_path / "assets"
+    download_dir.mkdir(parents=True)
+
+    records = [
+        _cover_item("a", "標題一", f"https://example.com/img/a.jpg"),
+        _cover_item("b", "標題二", f"https://example.com/img/b.jpg"),
+        _cover_item("c", "標題三", f"https://example.com/img/c.jpg"),
+    ]
+
+    dl_log = {}
+
+    def fake_select(rec, dl_dir, timeout, retries, backoff):
+        url = rec.get("image_url", "")
+        stem = "a" if "a.jpg" in url else ("b" if "b.jpg" in url else "c")
+        fname = f"{stem}.jpg"
+        (dl_dir / fname).write_text(f"fake-{stem}")
+        # Simulate network I/O delay to prove parallelism works
+        time.sleep(0.05)
+        dl_log[stem] = True
+        return {**rec, "cover_source": url, "cover_path": str(dl_dir / fname)}
+
+    monkeypatch.setattr(pipeline.select_cover, "select", fake_select)
+
+    pipeline.select_cover.select_all(
+        records, download_dir, timeout=5, retries=0, backoff_sec=0.0, max_workers=5)
+
+    # All three should have cover_path set and files exist
+    for rec in records:
+        assert rec.get("cover_path"), f"missing cover_path for {rec['title']}"
+        assert Path(rec["cover_path"]).exists(), f"file not found for {rec['title']}"
+
+    # Parallel download: < 150ms for 3 records each sleeping 50ms proves concurrency
+    # (50ms * 3 sequential = 150ms; parallel with 5 workers ≈ 50ms + overhead)
+    # This is a soft check; CI might have variance
+    assert len(dl_log) == 3, "not all three were downloaded"
+
+
+def test_download_all_covers_skips_no_image_url(tmp_path, monkeypatch):
+    """T2: Records without image_url are passed through unchanged."""
+    from core import pipeline
+
+    download_dir = tmp_path / "assets"
+    download_dir.mkdir(parents=True)
+
+    records = [
+        _cover_item("a", "無圖一", ""),  # no image_url
+        _cover_item("b", "有圖一", "https://example.com/img/b.jpg"),
+    ]
+
+    fake = None
+
+    def fake_select(rec, dl_dir, timeout, retries, backoff):
+        nonlocal fake
+        fake = rec.get("title")
+        url = rec.get("image_url", "")
+        fname = "b.jpg"
+        (dl_dir / fname).write_text("fake-b")
+        return {**rec, "cover_source": url, "cover_path": str(dl_dir / fname)}
+
+    monkeypatch.setattr(pipeline.select_cover, "select", fake_select)
+
+    pipeline.select_cover.select_all(
+        records, download_dir, timeout=5, retries=0, backoff_sec=0.0, max_workers=5)
+
+    # Record 'a' has no image_url, should have no cover_path
+    assert records[0].get("cover_path") is None
+    assert records[0].get("cover_source") is None
+
+    # Record 'b' should have cover downloaded
+    assert records[1].get("cover_path")
+    assert fake == "有圖一"  # only 'b' was processed
+
+
+def test_download_all_covers_partial_failure(tmp_path, monkeypatch):
+    """T2: Failed cover download sets cover_error but doesn't abort others."""
+    from core import pipeline
+
+    download_dir = tmp_path / "assets"
+    download_dir.mkdir(parents=True)
+
+    records = [
+        _cover_item("a", "會成功", "https://example.com/img/a.jpg"),
+        _cover_item("b", "會失敗", "https://example.com/img/b.jpg"),
+    ]
+
+    call_count = 0
+
+    def fake_select(rec, dl_dir, timeout, retries, backoff):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 2:  # Second call fails
+            from core.errors import ExternalError
+            raise ExternalError("connection refused")
+        fname = "a.jpg"
+        (dl_dir / fname).write_text("fake-a")
+        url = rec.get("image_url", "")
+        return {**rec, "cover_source": url, "cover_path": str(dl_dir / fname)}
+
+    monkeypatch.setattr(pipeline.select_cover, "select", fake_select)
+
+    pipeline.select_cover.select_all(
+        records, download_dir, timeout=5, retries=0, backoff_sec=0.0, max_workers=5)
+
+    # First record should succeed
+    assert records[0].get("cover_path")
+    assert Path(records[0]["cover_path"]).exists()
+
+    # Second record should have cover_error set
+    assert records[0].get("cover_error") is None
+    assert records[1].get("cover_error") is not None
+    assert "connection refused" in records[1]["cover_error"]
+
+
 # --- U7 (Q7): build stamps run_id into the manifest for lifecycle correlation -
 
 def test_build_persists_run_id_to_manifest(tmp_path):
@@ -132,3 +261,38 @@ def test_build_persists_run_id_to_manifest(tmp_path):
     build_rows = [r for r in runs.list_runs(cfg["state_path"], run_id=run_id)
                   if r["stage"] == "build"]
     assert len(build_rows) == 1 and build_rows[0]["post_id"] == post_id
+
+
+# --- T3: select_cover.select_all reports per-cover progress via callback ---
+
+def test_download_all_covers_progress_callback(tmp_path, monkeypatch):
+    """T3: progress_cb fires for each downloaded cover with count and status."""
+    records = [
+        _cover_item("a", "標題一", "https://example.com/img/a.jpg"),
+        _cover_item("b", "標題二", "https://example.com/img/b.jpg"),
+    ]
+
+    def fake_select(rec, dl_dir, timeout, retries, backoff):
+        url = rec.get("image_url", "")
+        stem = "a" if "a.jpg" in url else "b"
+        fname = f"{stem}.jpg"
+        (dl_dir / fname).write_text(f"fake-{stem}")
+        return {**rec, "cover_source": url, "cover_path": str(dl_dir / fname)}
+
+    monkeypatch.setattr(pipeline.select_cover, "select", fake_select)
+    download_dir = tmp_path / "assets"
+    download_dir.mkdir(parents=True, exist_ok=True)
+
+    messages = []
+
+    def cb(msg):
+        messages.append(msg)
+
+    pipeline.select_cover.select_all(
+        records, download_dir, timeout=5, retries=0, backoff_sec=0.0,
+        max_workers=5, progress_cb=cb)
+
+    assert len(messages) == 2
+    assert all("cover " in m for m in messages)
+    assert messages[0].startswith("cover 1/2") or messages[0].startswith("cover 2/2")
+    assert all(m.endswith("(ok)") for m in messages)

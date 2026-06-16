@@ -17,6 +17,7 @@ class Job:
         self.id = job_id
         self.status = "pending"   # pending | running | done | failed
         self.progress = []        # list of human-readable step messages
+        self.current = ""         # live status line (overwritten, not appended)
         self.result = None
         self.error = None
 
@@ -25,6 +26,7 @@ class Job:
             "id": self.id,
             "status": self.status,
             "progress": list(self.progress),
+            "current": self.current,
             "result": self.result,
             "error": self.error,
         }
@@ -62,3 +64,12 @@ def get(job_id):
 def report(job, message: str) -> None:
     """Append a progress message (safe to call from the worker thread)."""
     job.progress.append(message)
+
+
+def set_current(job, message: str) -> None:
+    """Set the live status line (safe to call from the worker thread).
+
+    Unlike ``report()``, this *overwrites* rather than appends — the front-end
+    renders ``current`` as a single, continuously-updating row during crawl.
+    """
+    job.current = message

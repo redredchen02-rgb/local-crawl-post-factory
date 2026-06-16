@@ -8,7 +8,7 @@ WebUI and the CLI share one implementation. crawl stays in its own subprocess
 from pathlib import Path
 
 from core import state, runs
-from core.errors import ValidationError
+from core.errors import ExternalError, ValidationError
 from src import (
     normalize_items,
     dedupe_posts,
@@ -22,8 +22,13 @@ from src import (
 COVER_TIMEOUT_SEC = 20
 
 
-def crawl_items(webui_cfg: dict) -> list:
-    """Crawl the configured start_url and return raw crawled items."""
+def crawl_items(webui_cfg: dict, progress_cb=None) -> list:
+    """Crawl the configured start_url and return raw crawled items.
+
+    When *progress_cb* is given, the subprocess crawl calls it during
+    execution with ``{responses, items, last_url, last_title}`` snapshots
+    (every ~0.5 s while the child is alive).
+    """
     opts = dict(crawl_posts.CONFIG_DEFAULTS)
     opts.update({
         "item_regex": webui_cfg.get("item_regex", ""),
@@ -34,7 +39,7 @@ def crawl_items(webui_cfg: dict) -> list:
         "source_id": webui_cfg.get("source_id", ""),
         "start_urls": [webui_cfg["start_url"]],
     })
-    return crawl_posts.crawl_items(opts)
+    return crawl_posts.crawl_items(opts, progress_cb=progress_cb)
 
 
 def run_pipeline(items, webui_cfg: dict, progress_cb=None) -> dict:
@@ -59,6 +64,7 @@ def run_pipeline(items, webui_cfg: dict, progress_cb=None) -> dict:
     audit_log = webui_cfg["audit_log"]
     cover_retries = int(webui_cfg.get("cover_retries", 0))
     cover_backoff = float(webui_cfg.get("cover_backoff_sec", 0.0))
+    cover_concurrency = int(webui_cfg.get("cover_download_concurrency", 5))
 
     run_id = runs.new_run_id()  # correlates every record of this run (R9)
     built, failed = [], []
@@ -91,13 +97,20 @@ def run_pipeline(items, webui_cfg: dict, progress_cb=None) -> dict:
     skipped = before - len(deduped)
     _report(f"deduped: {len(deduped)} new, {skipped} skipped")
 
-    # Stages 3-6: caption → cover → watermark → build, per item.
+    # Stage 3: batch cover download (parallel).  Done before caption so the
+    # per-item loop below is unmodified — just the select_cover call is removed.
+    select_cover.select_all(deduped, download_dir, COVER_TIMEOUT_SEC,
+                            cover_retries, cover_backoff,
+                            max_workers=cover_concurrency, progress_cb=_report)
+
+    # Stages 4-6: caption → (cover already done) → watermark → build, per item.
     for rec in deduped:
         title = rec.get("title", "")
         try:
             rec = render_caption.render_record(rec, template_cfg)
-            rec = select_cover.select(rec, download_dir, COVER_TIMEOUT_SEC,
-                                      cover_retries, cover_backoff)
+            cover_err = rec.get("cover_error")
+            if cover_err:
+                raise ExternalError(cover_err)
             rec = watermark_cover.watermark(rec, wm_cfg)
             rec["run_id"] = run_id  # Q7: persist into manifest.backend.run_id (publish reads it back)
             manifest_path = build_manifest.build(rec, out_dir, audit_log)

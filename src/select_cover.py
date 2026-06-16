@@ -21,6 +21,7 @@ import argparse
 import time
 import urllib.error
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 from core import cli, filesystem, io_ndjson, url_utils
@@ -143,12 +144,65 @@ def select(record: dict, download_dir: Path, timeout: int,
 _select = select  # deprecated: remove in vNEXT (use select)
 
 
+def select_all(records: list, download_dir: Path, timeout: int,
+               retries: int = DEFAULT_RETRIES, backoff_sec: float = DEFAULT_BACKOFF_SEC,
+               max_workers: int = 1, progress_cb=None) -> list:
+    """Download covers for all records that have an image_url, in parallel.
+
+    Mutates *records* in-place for downloaded items and returns the same list
+    for chaining.  Records without ``image_url`` are never touched.  On failure
+    the record gets a ``cover_error`` key instead of raising.
+    When *progress_cb* is provided it is called after each cover finishes.
+    """
+    workers = max(1, int(max_workers))
+
+    to_download = [
+        (idx, rec) for idx, rec in enumerate(records)
+        if rec.get("image_url")
+    ]
+    if not to_download:
+        return records
+
+    total = len(to_download)
+
+    def _do_one(idx, rec):
+        try:
+            return idx, select(rec, download_dir, timeout, retries, backoff_sec), None
+        except Exception as exc:
+            return idx, rec, str(exc)
+
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        fut_map = {pool.submit(_do_one, idx, rec): idx for idx, rec in to_download}
+        done = 0
+        for fut in as_completed(fut_map):
+            idx, result_rec, err = fut.result()
+            if err:
+                records[idx]["cover_error"] = err
+            else:
+                records[idx] = result_rec
+            done += 1
+            if progress_cb:
+                title = records[idx].get("title", f"item {idx}")
+                status = "ok" if not err else "error"
+                progress_cb(f"cover {done}/{total}: {title} ({status})")
+
+    return records
+
+
 def _run_factory(download_dir: Path, timeout: int,
-                 retries: int = DEFAULT_RETRIES, backoff_sec: float = DEFAULT_BACKOFF_SEC):
+                 retries: int = DEFAULT_RETRIES, backoff_sec: float = DEFAULT_BACKOFF_SEC,
+                 parallel: int = 1):
     def _run():
         filesystem.ensure_dir(download_dir)
-        for obj in io_ndjson.read_lines():
-            io_ndjson.write_line(select(obj, download_dir, timeout, retries, backoff_sec))
+        if parallel > 1:
+            records = list(io_ndjson.read_lines())
+            updated = select_all(records, download_dir, timeout, retries, backoff_sec,
+                                 max_workers=parallel)
+            for rec in updated:
+                io_ndjson.write_line(rec)
+        else:
+            for obj in io_ndjson.read_lines():
+                io_ndjson.write_line(select(obj, download_dir, timeout, retries, backoff_sec))
 
     return _run
 
@@ -164,9 +218,12 @@ def main():
                         help="extra retry attempts on transient download failure")
     parser.add_argument("--backoff-sec", type=float, default=DEFAULT_BACKOFF_SEC,
                         help="linear backoff seconds between retries")
+    parser.add_argument("-p", "--parallel", type=int, default=1, dest="parallel",
+                        help="parallel download concurrency (default: 1 = sequential)")
     args = parser.parse_args()
     cli.main_wrapper(_run_factory(Path(args.download_dir), args.timeout_sec,
-                                  args.retries, args.backoff_sec))
+                                  args.retries, args.backoff_sec,
+                                  parallel=args.parallel))
 
 
 if __name__ == "__main__":

@@ -1,6 +1,7 @@
 {% if job.status in ('pending', 'running') %}
 <div hx-get="/jobs/{{ job_id }}" hx-trigger="every 1s" hx-swap="outerHTML">
   <p>狀態：{{ job.status }}…</p>
+  {% if job.current %}<p class="current">{{ job.current }}</p>{% endif %}
   <ul>{% for step in job.progress %}<li>{{ step }}</li>{% endfor %}</ul>
 </div>
 {% elif job.status == 'done' %}
