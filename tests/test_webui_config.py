@@ -101,3 +101,37 @@ def test_storage_state_inside_out_dir_rejected(tmp_path):
     p = _write(tmp_path, "out_dir: ./out\nstorage_state: ./out/ss.json\n")
     with pytest.raises(ValidationError):
         webui_config.load(str(p))
+
+
+# --- auto_pipeline bool field ---
+
+def test_auto_pipeline_defaults_false(tmp_path):
+    cfg = webui_config.load(str(tmp_path / "nope.yaml"))
+    assert cfg["auto_pipeline"] is False
+
+
+def test_auto_pipeline_roundtrip_true(tmp_path):
+    p = str(tmp_path / "webui.yaml")
+    saved = webui_config.save(p, {"auto_pipeline": True})
+    assert saved["auto_pipeline"] is True
+    loaded = webui_config.load(p)
+    assert loaded["auto_pipeline"] is True
+
+
+def test_auto_pipeline_form_on_coerced_to_true(tmp_path):
+    p = str(tmp_path / "webui.yaml")
+    saved = webui_config.save(p, {"auto_pipeline": "on"})
+    assert saved["auto_pipeline"] is True
+
+
+def test_auto_pipeline_form_absent_coerced_to_false(tmp_path):
+    # Unchecked checkbox sends nothing; we pass "" to simulate absent field
+    p = str(tmp_path / "webui.yaml")
+    saved = webui_config.save(p, {"auto_pipeline": ""})
+    assert saved["auto_pipeline"] is False
+
+
+def test_auto_pipeline_yaml_native_bool(tmp_path):
+    p = _write(tmp_path, "auto_pipeline: true\n")
+    cfg = webui_config.load(str(p))
+    assert cfg["auto_pipeline"] is True
