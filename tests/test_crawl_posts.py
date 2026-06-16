@@ -6,16 +6,20 @@ subprocess so Scrapy's Twisted reactor stays fully isolated and captured stdout
 is guaranteed free of Scrapy log noise.
 """
 
-import http.server
-import json
-import socket
-import subprocess
-import sys
-import threading
-from functools import partial
-from pathlib import Path
+import pytest  # noqa: E402
 
-import pytest
+pytestmark = pytest.mark.slow  # subprocess + embedded HTTP server; excluded from fast-run
+
+import http.server  # noqa: E402
+import json  # noqa: E402
+import socket  # noqa: E402
+import subprocess  # noqa: E402
+import sys  # noqa: E402
+import threading  # noqa: E402
+from functools import partial  # noqa: E402
+from pathlib import Path  # noqa: E402
+
+import pytest  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 FIXTURE_DIR = ROOT / "tests" / "fixtures" / "site"

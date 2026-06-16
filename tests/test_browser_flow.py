@@ -7,10 +7,12 @@ transitions, the publish receipt, and the SQLite 'published' write (R9).
 import json
 
 import pytest
-import yaml
 
-from core import cli, state as state_mod, url_utils
-from tests.mock_admin import MockAdmin
+pytestmark = pytest.mark.browser  # Playwright end-to-end; excluded from fast-run
+import yaml  # noqa: E402
+
+from core import cli, state as state_mod, url_utils  # noqa: E402
+from tests.mock_admin import MockAdmin  # noqa: E402
 
 playwright = pytest.importorskip("playwright.sync_api")
 from src import draft_post, verify_draft, publish_post  # noqa: E402
