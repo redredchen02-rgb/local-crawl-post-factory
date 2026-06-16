@@ -132,6 +132,52 @@ def test_old_db_migrated_idempotently(tmp_path):
     assert runs.list_runs(db, severity="info")[0]["run_id"] == "r9"
 
 
+# --- P1: open_run_conn batching -------------------------------------------
+
+def test_open_run_conn_batch_write(tmp_path):
+    """Batched writes via open_run_conn persist all rows after scope exits."""
+    db = _db(tmp_path)
+    with runs.open_run_conn(db) as conn:
+        runs.record_run(db, stage="build", post_id="p1", status="ok", conn=conn)
+        runs.record_run(db, stage="build", post_id="p2", status="ok", conn=conn)
+    out = runs.list_runs(db)
+    assert len(out) == 2
+    assert {r["post_id"] for r in out} == {"p1", "p2"}
+
+
+def test_open_run_conn_backward_compat_no_conn(tmp_path):
+    """record_run with no conn= arg behaves exactly as before."""
+    db = _db(tmp_path)
+    runs.record_run(db, stage="build", post_id="p1", status="ok")
+    out = runs.list_runs(db)
+    assert len(out) == 1
+    assert out[0]["post_id"] == "p1"
+
+
+def test_open_run_conn_per_row_commit(tmp_path):
+    """Each record_run(conn=conn) commits immediately; prior rows survive exception."""
+    db = _db(tmp_path)
+    try:
+        with runs.open_run_conn(db) as conn:
+            runs.record_run(db, stage="build", post_id="p1", status="ok", conn=conn)
+            # First row committed already; second raises before insert
+            raise RuntimeError("mid-batch failure")
+    except RuntimeError:
+        pass
+    out = runs.list_runs(db)
+    # First row must be durable despite the exception
+    assert len(out) == 1
+    assert out[0]["post_id"] == "p1"
+
+
+def test_open_run_conn_readable_after_scope(tmp_path):
+    """Rows written inside open_run_conn are visible to list_runs outside."""
+    db = _db(tmp_path)
+    with runs.open_run_conn(db) as conn:
+        runs.record_run(db, stage="skip", post_id="p1", status="skipped", conn=conn)
+    assert len(runs.list_runs(db)) == 1
+
+
 def test_fresh_and_migrated_schema_match(tmp_path):
     """Fresh DB (via _SCHEMA) and migrated DB (via ALTER) end with same columns."""
     fresh = _db(tmp_path)
