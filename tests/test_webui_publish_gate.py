@@ -6,7 +6,8 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from webui.app import create_app, check_publish_gates
+from webui._helpers import check_publish_gates
+from webui.app import create_app
 from core import webui_config
 from src import publish_post
 

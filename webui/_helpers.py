@@ -13,7 +13,22 @@ __all__ = [
     "_move_to_trash",
     "_scan_trash",
     "_restore_from_trash",
+    "check_publish_gates",
 ]
+
+
+def check_publish_gates(stored_cid, current_cid, status, submitted_title, manifest_title):
+    """Pure publish-gate decision (R6/Q9). Returns a rejection message, or None
+    if all three gates pass. Order is fixed and security-critical:
+    ① reviewed AND content unchanged (fail-closed) → ② draft_verified → ③ title.
+    """
+    if stored_cid is None or stored_cid != current_cid:
+        return "請先開啟審核頁再發布（或內容已變更，需重新審核）"
+    if status != "draft_verified":
+        return "尚未驗證，不可發布"
+    if (submitted_title or "").strip() != (manifest_title or "").strip():
+        return "標題不符，發布取消"
+    return None
 
 
 def _safe_pkg_dir(out_dir: str, post_id: str):

@@ -1,13 +1,22 @@
 import html
+import json
+from types import SimpleNamespace
 
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse
 
-from core import runs
+from browser import backend_driver
+from core import jobs as _jobs, reviewed, runs
 from core.errors import SessionExpiredError
-from src import draft_post, verify_draft
+from src import draft_post, publish_post, verify_draft
 from webui._auto_pipeline import _action_ns
-from webui._helpers import _filter_packages, _safe_pkg_dir, _scan_packages
+from webui._helpers import (
+    _filter_packages,
+    _move_to_trash,
+    _safe_pkg_dir,
+    _scan_packages,
+    check_publish_gates,
+)
 from webui.routers._ctx import (
     cfg_from_request,
     note_session_expiry,
@@ -33,10 +42,6 @@ def action_verify(request: Request, post_id: str):
 
 @router.post("/packages/{post_id}/publish", response_class=HTMLResponse)
 def action_publish(request: Request, post_id: str, title: str = Form("")):
-    import json
-    from core import reviewed
-    from webui.app import check_publish_gates
-
     cfg = cfg_from_request(request)
     pkg = _safe_pkg_dir(cfg["out_dir"], post_id)
     if pkg is None or not (pkg / "manifest.json").exists():
@@ -51,9 +56,6 @@ def action_publish(request: Request, post_id: str, title: str = Form("")):
     if msg:
         return HTMLResponse(f'<p class="error">{msg}</p>', status_code=400)
 
-    from types import SimpleNamespace
-    from browser import backend_driver
-    from src import publish_post
     ns = SimpleNamespace(
         manifest=str(pkg / "manifest.json"), backend=cfg["backend_config"],
         storage_state=cfg["storage_state"], headless=True,
@@ -69,7 +71,6 @@ def batch_delete(request: Request, post_ids: list[str] = Form(default=[])):
     if not post_ids:
         return HTMLResponse('<p class="hint">未選取任何貼文。</p>')
     cfg = cfg_from_request(request)
-    from webui._helpers import _move_to_trash
     deleted, skipped = [], []
     for pid in post_ids:
         pkg = _safe_pkg_dir(cfg["out_dir"], pid)
@@ -105,7 +106,6 @@ def batch_action(request: Request, stage: str, post_ids: list[str] = Form(defaul
     runner = {"draft": draft_post._run, "verify": verify_draft._run}[stage]
 
     def _work(job):
-        from core import jobs as _jobs
         label = {"draft": "建草稿", "verify": "驗證"}.get(stage, stage)
         _jobs.set_current(job, f"批量{label}中…")
         _jobs.report(job, f"開始批量{label}，共 {len(post_ids)} 篇")
@@ -136,7 +136,6 @@ def batch_action(request: Request, stage: str, post_ids: list[str] = Form(defaul
         return {"stage": stage, "batch": True, "run_id": run_id,
                 "ok": ok, "failed": failed}
 
-    from core import jobs as _jobs
     job_id = _jobs.submit(_work)
     return templates.TemplateResponse(
         request, "_job_status.html", {"job": _jobs.get(job_id), "job_id": job_id})

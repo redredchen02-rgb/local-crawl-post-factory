@@ -8,6 +8,7 @@ from typing import Any
 
 from browser import backend_driver
 from core import jobs, runs, reviewed
+from core.errors import SessionExpiredError
 from src import draft_post, verify_draft, publish_post
 from webui._helpers import _safe_pkg_dir
 
@@ -83,6 +84,8 @@ def _run_auto_pipeline(job, cfg: dict, built: list[dict], *, note_expiry=None) -
             runs.record_run(cfg["state_path"], stage="draft", post_id=pid,
                             status="ok", run_id=run_id, severity="info")
         else:
+            if note_expiry is not None and isinstance(exc, SessionExpiredError):
+                note_expiry(cfg)
             failed.append({"post_id": pid, "stage": "draft", "error": str(exc)})
             runs.record_run(cfg["state_path"], stage="draft", post_id=pid,
                             status="failed", error=str(exc), run_id=run_id, severity="error")
@@ -105,6 +108,8 @@ def _run_auto_pipeline(job, cfg: dict, built: list[dict], *, note_expiry=None) -
             runs.record_run(cfg["state_path"], stage="verify", post_id=pid,
                             status="ok", run_id=run_id, severity="info")
         else:
+            if note_expiry is not None and isinstance(exc, SessionExpiredError):
+                note_expiry(cfg)
             failed.append({"post_id": pid, "stage": "verify", "error": str(exc)})
             runs.record_run(cfg["state_path"], stage="verify", post_id=pid,
                             status="failed", error=str(exc), run_id=run_id, severity="error")
@@ -146,13 +151,14 @@ def _run_auto_pipeline(job, cfg: dict, built: list[dict], *, note_expiry=None) -
         if exc is None:
             publish_ok += 1
         else:
+            if note_expiry is not None and isinstance(exc, SessionExpiredError):
+                note_expiry(cfg)
             failed.append({"post_id": pid, "stage": "publish", "error": str(exc)})
             runs.record_run(cfg["state_path"], stage="publish", post_id=pid,
                             status="failed", error=str(exc), run_id=run_id, severity="error")
 
-    skip_count = verify_fail_count
     jobs.report(
         job,
         f"自動發布完成：成功 {publish_ok} / 失敗 {len(failed)} / "
-        f"跳過 {skip_count}（驗證失敗 {verify_fail_count}）"
+        f"跳過 {verify_fail_count}（驗證失敗 {verify_fail_count}）"
     )

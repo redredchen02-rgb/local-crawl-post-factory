@@ -40,20 +40,6 @@ def create_app(config_path: str = WEBUI_CONFIG_PATH) -> FastAPI:
     return app
 
 
-def check_publish_gates(stored_cid, current_cid, status, submitted_title, manifest_title):
-    """Pure publish-gate decision (R6/Q9). Returns a rejection message, or None
-    if all three gates pass. Order is fixed and security-critical:
-    ① reviewed AND content unchanged (fail-closed) → ② draft_verified → ③ title.
-    Kept pure (no I/O) so the gate logic is unit-testable without the app.
-    """
-    if stored_cid is None or stored_cid != current_cid:
-        return "請先開啟審核頁再發布（或內容已變更，需重新審核）"
-    if status != "draft_verified":
-        return "尚未驗證，不可發布"
-    if (submitted_title or "").strip() != (manifest_title or "").strip():
-        return "標題不符，發布取消"
-    return None
-
 
 def run():  # console-script entry point
     import uvicorn
