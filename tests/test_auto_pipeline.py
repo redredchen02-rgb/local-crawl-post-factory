@@ -4,7 +4,7 @@ import json
 from unittest.mock import MagicMock, patch
 
 
-from webui.app import _retry, _run_auto_pipeline
+from webui._auto_pipeline import _retry, _run_auto_pipeline
 
 
 # ---------------------------------------------------------------------------
@@ -95,11 +95,11 @@ def _make_job():
     return _FakeJob()
 
 
-@patch("webui.app.runs.record_run")
-@patch("webui.app.reviewed.mark")
-@patch("webui.app.publish_post._run")
-@patch("webui.app.verify_draft._run")
-@patch("webui.app.draft_post._run")
+@patch("webui._auto_pipeline.runs.record_run")
+@patch("webui._auto_pipeline.reviewed.mark")
+@patch("webui._auto_pipeline.publish_post._run")
+@patch("webui._auto_pipeline.verify_draft._run")
+@patch("webui._auto_pipeline.draft_post._run")
 def test_happy_path_all_succeed(mock_draft, mock_verify, mock_publish,
                                 mock_mark, mock_record, tmp_path):
     cfg = _make_cfg(tmp_path)
@@ -118,11 +118,11 @@ def test_happy_path_all_succeed(mock_draft, mock_verify, mock_publish,
     assert "失敗 0" in summary
 
 
-@patch("webui.app.runs.record_run")
-@patch("webui.app.reviewed.mark")
-@patch("webui.app.publish_post._run")
-@patch("webui.app.verify_draft._run")
-@patch("webui.app.draft_post._run")
+@patch("webui._auto_pipeline.runs.record_run")
+@patch("webui._auto_pipeline.reviewed.mark")
+@patch("webui._auto_pipeline.publish_post._run")
+@patch("webui._auto_pipeline.verify_draft._run")
+@patch("webui._auto_pipeline.draft_post._run")
 def test_empty_built_early_return(mock_draft, mock_verify, mock_publish,
                                   mock_mark, mock_record, tmp_path):
     cfg = _make_cfg(tmp_path)
@@ -137,11 +137,11 @@ def test_empty_built_early_return(mock_draft, mock_verify, mock_publish,
     assert any("無新稿件" in m for m in job.progress)
 
 
-@patch("webui.app.runs.record_run")
-@patch("webui.app.reviewed.mark")
-@patch("webui.app.publish_post._run")
-@patch("webui.app.verify_draft._run")
-@patch("webui.app.draft_post._run")
+@patch("webui._auto_pipeline.runs.record_run")
+@patch("webui._auto_pipeline.reviewed.mark")
+@patch("webui._auto_pipeline.publish_post._run")
+@patch("webui._auto_pipeline.verify_draft._run")
+@patch("webui._auto_pipeline.draft_post._run")
 def test_draft_fail_all_retries_skips_verify_and_publish(
         mock_draft, mock_verify, mock_publish, mock_mark, mock_record, tmp_path):
     cfg = _make_cfg(tmp_path)
@@ -158,11 +158,11 @@ def test_draft_fail_all_retries_skips_verify_and_publish(
     assert "失敗 1" in summary
 
 
-@patch("webui.app.runs.record_run")
-@patch("webui.app.reviewed.mark")
-@patch("webui.app.publish_post._run")
-@patch("webui.app.verify_draft._run")
-@patch("webui.app.draft_post._run")
+@patch("webui._auto_pipeline.runs.record_run")
+@patch("webui._auto_pipeline.reviewed.mark")
+@patch("webui._auto_pipeline.publish_post._run")
+@patch("webui._auto_pipeline.verify_draft._run")
+@patch("webui._auto_pipeline.draft_post._run")
 def test_verify_fail_skips_publish_counted_as_verify_fail(
         mock_draft, mock_verify, mock_publish, mock_mark, mock_record, tmp_path):
     cfg = _make_cfg(tmp_path)
@@ -179,11 +179,11 @@ def test_verify_fail_skips_publish_counted_as_verify_fail(
     assert "驗證失敗 1" in summary
 
 
-@patch("webui.app.runs.record_run")
-@patch("webui.app.reviewed.mark")
-@patch("webui.app.publish_post._run")
-@patch("webui.app.verify_draft._run")
-@patch("webui.app.draft_post._run")
+@patch("webui._auto_pipeline.runs.record_run")
+@patch("webui._auto_pipeline.reviewed.mark")
+@patch("webui._auto_pipeline.publish_post._run")
+@patch("webui._auto_pipeline.verify_draft._run")
+@patch("webui._auto_pipeline.draft_post._run")
 def test_one_draft_fails_others_continue(
         mock_draft, mock_verify, mock_publish, mock_mark, mock_record, tmp_path):
     cfg = _make_cfg(tmp_path)
@@ -203,11 +203,11 @@ def test_one_draft_fails_others_continue(
     assert "失敗 1" in summary
 
 
-@patch("webui.app.runs.record_run")
-@patch("webui.app.reviewed.mark")
-@patch("webui.app.publish_post._run")
-@patch("webui.app.verify_draft._run")
-@patch("webui.app.draft_post._run")
+@patch("webui._auto_pipeline.runs.record_run")
+@patch("webui._auto_pipeline.reviewed.mark")
+@patch("webui._auto_pipeline.publish_post._run")
+@patch("webui._auto_pipeline.verify_draft._run")
+@patch("webui._auto_pipeline.draft_post._run")
 def test_reviewed_mark_called_before_publish(
         mock_draft, mock_verify, mock_publish, mock_mark, mock_record, tmp_path):
     cfg = _make_cfg(tmp_path)
@@ -223,11 +223,11 @@ def test_reviewed_mark_called_before_publish(
     mock_mark.assert_called_once()
 
 
-@patch("webui.app.runs.record_run")
-@patch("webui.app.reviewed.mark")
-@patch("webui.app.publish_post._run")
-@patch("webui.app.verify_draft._run")
-@patch("webui.app.draft_post._run")
+@patch("webui._auto_pipeline.runs.record_run")
+@patch("webui._auto_pipeline.reviewed.mark")
+@patch("webui._auto_pipeline.publish_post._run")
+@patch("webui._auto_pipeline.verify_draft._run")
+@patch("webui._auto_pipeline.draft_post._run")
 def test_reviewed_mark_failure_skips_publish(
         mock_draft, mock_verify, mock_publish, mock_mark, mock_record, tmp_path):
     cfg = _make_cfg(tmp_path)
@@ -266,17 +266,17 @@ def test_auto_pipeline_wired_into_crawl(tmp_path):
     client = TestClient(app, raise_server_exceptions=False)
 
     built = [{"post_id": "p1", "title": "T", "manifest_path": "/tmp/p1/manifest.json"}]
-    with (_patch("webui.app.pipeline.crawl_items", return_value=[]),
-          _patch("webui.app.pipeline.run_pipeline",
+    with (_patch("webui.routers.crawl.pipeline.crawl_items", return_value=[]),
+          _patch("webui.routers.crawl.pipeline.run_pipeline",
                  return_value={"built": built, "failed": [], "skipped": 0}),
-          _patch("webui.app._run_auto_pipeline") as mock_auto):
+          _patch("webui.routers.crawl._run_auto_pipeline") as mock_auto):
         response = client.post("/crawl")
         assert response.status_code == 200
         # Give the background thread time to run
         import time
         time.sleep(0.3)
         mock_auto.assert_called_once()
-        _, call_cfg, call_built = mock_auto.call_args[0]
+        call_job, call_cfg, call_built = mock_auto.call_args[0]
         assert call_built == built
 
 
@@ -299,10 +299,10 @@ def test_auto_pipeline_not_called_when_disabled(tmp_path):
     app = create_app(config_path)
     client = TestClient(app, raise_server_exceptions=False)
 
-    with (_patch("webui.app.pipeline.crawl_items", return_value=[]),
-          _patch("webui.app.pipeline.run_pipeline",
+    with (_patch("webui.routers.crawl.pipeline.crawl_items", return_value=[]),
+          _patch("webui.routers.crawl.pipeline.run_pipeline",
                  return_value={"built": [], "failed": [], "skipped": 0}),
-          _patch("webui.app._run_auto_pipeline") as mock_auto):
+          _patch("webui.routers.crawl._run_auto_pipeline") as mock_auto):
         client.post("/crawl")
         import time
         time.sleep(0.3)
@@ -313,11 +313,11 @@ def test_auto_pipeline_not_called_when_disabled(tmp_path):
 # Gap-fill: defensive branches
 # ---------------------------------------------------------------------------
 
-@patch("webui.app.runs.record_run")
-@patch("webui.app.reviewed.mark")
-@patch("webui.app.publish_post._run")
-@patch("webui.app.verify_draft._run")
-@patch("webui.app.draft_post._run")
+@patch("webui._auto_pipeline.runs.record_run")
+@patch("webui._auto_pipeline.reviewed.mark")
+@patch("webui._auto_pipeline.publish_post._run")
+@patch("webui._auto_pipeline.verify_draft._run")
+@patch("webui._auto_pipeline.draft_post._run")
 def test_action_ns_none_skips_item(mock_draft, mock_verify, mock_publish,
                                    mock_mark, mock_record, tmp_path):
     """If _action_ns returns None (missing pkg dir), item is counted as failed."""
@@ -334,11 +334,11 @@ def test_action_ns_none_skips_item(mock_draft, mock_verify, mock_publish,
     assert "失敗 1" in summary
 
 
-@patch("webui.app.runs.record_run")
-@patch("webui.app.reviewed.mark")
-@patch("webui.app.publish_post._run")
-@patch("webui.app.verify_draft._run")
-@patch("webui.app.draft_post._run")
+@patch("webui._auto_pipeline.runs.record_run")
+@patch("webui._auto_pipeline.reviewed.mark")
+@patch("webui._auto_pipeline.publish_post._run")
+@patch("webui._auto_pipeline.verify_draft._run")
+@patch("webui._auto_pipeline.draft_post._run")
 def test_manifest_missing_at_publish_skips(mock_draft, mock_verify, mock_publish,
                                            mock_mark, mock_record, tmp_path):
     """If manifest.json disappears after verify, publish is skipped as failure."""
@@ -387,13 +387,13 @@ def test_auto_pipeline_wired_empty_built(tmp_path):
     app = create_app(config_path)
     client = TestClient(app, raise_server_exceptions=False)
 
-    with (_patch("webui.app.pipeline.crawl_items", return_value=[]),
-          _patch("webui.app.pipeline.run_pipeline",
+    with (_patch("webui.routers.crawl.pipeline.crawl_items", return_value=[]),
+          _patch("webui.routers.crawl.pipeline.run_pipeline",
                  return_value={"built": [], "failed": [], "skipped": 0}),
-          _patch("webui.app._run_auto_pipeline") as mock_auto):
+          _patch("webui.routers.crawl._run_auto_pipeline") as mock_auto):
         client.post("/crawl")
         import time
         time.sleep(0.3)
         mock_auto.assert_called_once()
-        _, _, call_built = mock_auto.call_args[0]
+        call_job, call_cfg, call_built = mock_auto.call_args[0]
         assert call_built == []
