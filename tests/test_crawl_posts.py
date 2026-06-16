@@ -6,7 +6,7 @@ subprocess so Scrapy's Twisted reactor stays fully isolated and captured stdout
 is guaranteed free of Scrapy log noise.
 """
 
-import pytest
+import pytest  # noqa: E402
 
 pytestmark = pytest.mark.slow  # subprocess + embedded HTTP server; excluded from fast-run
 
