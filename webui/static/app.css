@@ -130,6 +130,7 @@ tbody tr:hover { background: var(--accent-weak); }
 .pill.published { background: var(--accent-weak); color: var(--accent); }
 .pill.error, .pill.failed { background: var(--error-weak); color: var(--error); }
 .pill.draft, .pill.pending { background: var(--pending-weak); color: var(--pending); }
+.pill.package_built { background: #fff3e0; color: #b45309; border: 1px solid #f59e0b; }
 
 /* ---- code / preview blocks ---- */
 pre {
@@ -218,6 +219,28 @@ button.sm {
 .toast.ok  { background: var(--ok-weak);    color: var(--ok);    border: 1px solid var(--ok); }
 .toast.err { background: var(--error-weak); color: var(--error); border: 1px solid var(--error); }
 @keyframes slide-in { from { opacity: 0; transform: translateX(1rem); } to { opacity: 1; } }
+
+/* failure box on detail page */
+.failure-box {
+  background: var(--error-weak); border: 1px solid var(--error);
+  border-radius: var(--radius); padding: .85rem 1rem; margin: 1.25rem 0;
+}
+.failure-box h2 { margin-top: 0; color: var(--error); }
+
+/* inline edit form (detail page title/caption) */
+.inline-edit-form { display: flex; gap: .5rem; align-items: flex-start; margin-top: .5rem; }
+.inline-edit-form textarea { flex: 1; font: inherit; font-size: .9rem; padding: .4rem .6rem;
+  border: 1px solid var(--line); border-radius: 8px; resize: vertical; min-height: 5rem; }
+.inline-edit-form input[type=text] { flex: 1; width: auto; }
+.inline-edit-form button { margin-top: 0; }
+
+/* page footer */
+footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--line);
+  font-size: .8rem; color: var(--muted); text-align: center; }
+
+/* diagnostics section */
+.diag-table { font-size: .85rem; }
+.diag-table td:first-child { color: var(--muted); padding-right: 1rem; white-space: nowrap; }
 
 @media (max-width: 600px) {
   body { padding: 1rem .75rem 3rem; }

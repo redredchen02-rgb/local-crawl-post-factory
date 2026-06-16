@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Form, Request
 from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse
 
 from core import reviewed
@@ -60,6 +60,27 @@ def package_detail(request: Request, post_id: str):
         "failure": _read_failure(pkg),
         "backend_config": cfg["backend_config"],
     })
+
+
+@router.post("/packages/{post_id}/edit", response_class=HTMLResponse)
+def edit_package(request: Request, post_id: str,
+                 title: str = Form(""), caption: str = Form("")):
+    cfg = cfg_from_request(request)
+    pkg = _safe_pkg_dir(cfg["out_dir"], post_id)
+    if pkg is None or not (pkg / "manifest.json").exists():
+        return HTMLResponse('<p class="error">找不到此貼文包</p>', status_code=404)
+    title = title.strip()
+    caption = caption.strip()
+    if not title and not caption:
+        return HTMLResponse('<p class="error">標題與文案不可同時為空</p>', status_code=400)
+    m = json.loads((pkg / "manifest.json").read_text(encoding="utf-8"))
+    if title:
+        m.setdefault("content", {})["title"] = title
+    if caption:
+        (pkg / "caption.txt").write_text(caption, encoding="utf-8")
+    (pkg / "manifest.json").write_text(
+        json.dumps(m, ensure_ascii=False, indent=2), encoding="utf-8")
+    return HTMLResponse('<p class="ok">已儲存 ✓</p>')
 
 
 @router.get("/packages/{post_id}/failure-image")

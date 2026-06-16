@@ -8,11 +8,25 @@ from webui.routers._ctx import auth_light, cfg_from_request, templates
 router = APIRouter()
 
 
+def _diag(cfg: dict, config_path: str) -> dict:
+    from pathlib import Path as _P
+    return {
+        "config_path": config_path,
+        "state_path": cfg.get("state_path", ""),
+        "state_exists": _P(cfg.get("state_path", "")).exists() if cfg.get("state_path") else False,
+        "storage_state": cfg.get("storage_state", ""),
+        "ss_exists": _P(cfg.get("storage_state", "")).exists() if cfg.get("storage_state") else False,
+        "out_dir": cfg.get("out_dir", ""),
+        "out_exists": _P(cfg.get("out_dir", "")).exists() if cfg.get("out_dir") else False,
+    }
+
+
 @router.get("/settings", response_class=HTMLResponse)
 def settings_page(request: Request):
     cfg = cfg_from_request(request)
     return templates.TemplateResponse(
-        request, "settings.html", {"cfg": cfg, "saved": False})
+        request, "settings.html", {"cfg": cfg, "saved": False,
+                                   "diag": _diag(cfg, request.app.state.config_path)})
 
 
 @router.post("/settings", response_class=HTMLResponse)
@@ -39,7 +53,8 @@ def save_settings(request: Request,
     except CliError as exc:
         return HTMLResponse(f'<p class="error">{exc.message}</p>', status_code=400)
     return templates.TemplateResponse(
-        request, "settings.html", {"cfg": cfg, "saved": True})
+        request, "settings.html", {"cfg": cfg, "saved": True,
+                                   "diag": _diag(cfg, request.app.state.config_path)})
 
 
 @router.get("/auth-status", response_class=HTMLResponse)

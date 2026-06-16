@@ -59,6 +59,16 @@
 </form>
 
 <hr>
+<h2>診斷</h2>
+<table class="diag-table">
+  <tr><td>Config 路徑</td><td><code>{{ diag.config_path }}</code></td></tr>
+  <tr><td>State DB</td><td><code>{{ diag.state_path }}</code>{% if diag.state_exists %} ✓{% else %} <span class="hint">（尚未建立）</span>{% endif %}</td></tr>
+  <tr><td>Storage-state</td><td><code>{{ diag.storage_state }}</code>{% if diag.ss_exists %} ✓{% else %} <span class="hint">（尚未建立）</span>{% endif %}</td></tr>
+  <tr><td>Output 目錄</td><td><code>{{ diag.out_dir }}</code>{% if diag.out_exists %} ✓{% else %} <span class="hint">（尚未建立）</span>{% endif %}</td></tr>
+  <tr><td>版本</td><td><code>v{{ app_version }}</code></td></tr>
+</table>
+
+<hr>
 <h2>爬取並上膛</h2>
 {% if cfg.auto_pipeline %}
 <p class="hint">自動發布模式：按下後將自動執行「爬取 → 建草稿 → 驗證 → 發布」全流程。</p>
