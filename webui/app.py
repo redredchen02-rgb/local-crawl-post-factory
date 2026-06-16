@@ -71,6 +71,10 @@ def _run_auto_pipeline(job, cfg: dict, built: list[dict]) -> None:
     Gate ① (reviewed) is bypassed by calling reviewed.mark() before publish.
     Gates ② (draft_verified status) and ③ (title match) remain enforced.
     Each stage retries up to 3 times with 1s delay on failure.
+
+    Note: reviewed.mark() is called before the publish attempt. If publish fails all
+    retries the reviewed record persists — intentional for a single-user tool (the
+    user can re-publish manually without re-reviewing unchanged, already-verified content).
     """
     if not built:
         jobs.report(job, "無新稿件，跳過自動發布")
@@ -146,7 +150,6 @@ def _run_auto_pipeline(job, cfg: dict, built: list[dict]) -> None:
         except Exception as exc:  # noqa: BLE001
             failed.append({"post_id": pid, "stage": "publish", "error": f"reviewed.mark 失敗：{exc}"})
             continue
-        manifest_title = m.get("content", {}).get("title", "")
         ns = SimpleNamespace(
             manifest=str(pkg / "manifest.json"),
             backend=cfg["backend_config"],

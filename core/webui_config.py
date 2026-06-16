@@ -166,5 +166,9 @@ def _coerce(cfg: dict) -> None:
             pass
         elif isinstance(val, str):
             cfg[field] = val.lower() == "on"
+        elif isinstance(val, (int, float)):
+            cfg[field] = bool(val)
+        elif val is None:
+            cfg[field] = False
         else:
-            cfg[field] = bool(val) if val is not None else False
+            raise ValidationError(f"{field} must be a boolean value, got {type(val).__name__}")

@@ -135,3 +135,21 @@ def test_auto_pipeline_yaml_native_bool(tmp_path):
     p = _write(tmp_path, "auto_pipeline: true\n")
     cfg = webui_config.load(str(p))
     assert cfg["auto_pipeline"] is True
+
+
+def test_auto_pipeline_int_truthy_coerced_to_true(tmp_path):
+    p = str(tmp_path / "webui.yaml")
+    saved = webui_config.save(p, {"auto_pipeline": 1})
+    assert saved["auto_pipeline"] is True
+
+
+def test_auto_pipeline_int_falsy_coerced_to_false(tmp_path):
+    p = str(tmp_path / "webui.yaml")
+    saved = webui_config.save(p, {"auto_pipeline": 0})
+    assert saved["auto_pipeline"] is False
+
+
+def test_auto_pipeline_invalid_type_rejected(tmp_path):
+    p = str(tmp_path / "webui.yaml")
+    with pytest.raises(ValidationError, match="auto_pipeline"):
+        webui_config.save(p, {"auto_pipeline": ["oops"]})
