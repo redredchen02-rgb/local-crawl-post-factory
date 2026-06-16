@@ -48,6 +48,13 @@ def test_dot_dir_post_id_blocked(tmp_path):
     assert c.post("/packages/.trash/publish", data={"title": "x"}).status_code == 404
 
 
+def test_batch_delete_traversal_skipped(tmp_path):
+    """Traversal post_id in batch/delete must be treated as not-found, not crash."""
+    r = _client(tmp_path).post("/batch/delete", data={"post_ids": [_TRAVERSAL]})
+    assert r.status_code == 200
+    assert "移入垃圾桶：0 篇" in r.text  # deleted 0
+
+
 def test_trash_restore_traversal_blocked(tmp_path):
     """Traversal post_id on restore endpoint must be rejected."""
     assert _client(tmp_path).post(f"/trash/{_TRAVERSAL}/restore").status_code == 404

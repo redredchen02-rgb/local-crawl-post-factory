@@ -117,3 +117,26 @@ def test_history_filter_no_match_shows_empty(tmp_path):
     r = client.get("/history?post_id=nope")
     assert r.status_code == 200
     assert "尚無運行紀錄" in r.text
+
+
+def test_history_filter_by_run_id(tmp_path):
+    client, tp = _client(tmp_path)
+    from core import runs as runs_mod
+    rid = runs_mod.new_run_id()
+    runs.record_run(str(tp / "state.sqlite"), stage="draft", post_id="p1",
+                    status="ok", run_id=rid)
+    runs.record_run(str(tp / "state.sqlite"), stage="draft", post_id="p2",
+                    status="ok", run_id="other-run-id")
+    r = client.get(f"/history?run_id={rid}")
+    assert "p1" in r.text
+    assert "p2" not in r.text
+
+
+def test_audit_post_id_links_to_detail(tmp_path):
+    """audit table post_id cell should render a link to /packages/{post_id}."""
+    client, tp = _client(tmp_path)
+    (tp / "audit.jsonl").write_text(
+        '{"ts":"t","stage":"draft-post","status":"ok","post_id":"20260615_abc"}\n',
+        encoding="utf-8")
+    r = client.get("/audit")
+    assert '/packages/20260615_abc' in r.text

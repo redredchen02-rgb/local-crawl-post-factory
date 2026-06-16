@@ -4,7 +4,9 @@ Localhost-only by design. Manual mode automates up to build-manifest; publishing
 stays a manual CLI action with --approve unless auto_pipeline is enabled in settings.
 """
 
+import html
 import json
+import shutil
 import time
 from pathlib import Path
 from types import SimpleNamespace
@@ -298,7 +300,7 @@ def create_app(config_path: str = WEBUI_CONFIG_PATH) -> FastAPI:
             "caption": caption,
             "has_cover": has_cover,
             "failure": _read_failure(pkg),
-            "backend_config": "configs/backend.yaml",
+            "backend_config": cfg["backend_config"],
         })
 
     @app.get("/packages/{post_id}/failure-image")
@@ -358,7 +360,8 @@ def create_app(config_path: str = WEBUI_CONFIG_PATH) -> FastAPI:
         rows = _filter_packages(_scan_packages(cfg["out_dir"]), "", "")
         msg = f'<p class="ok">已移入垃圾桶：{len(deleted)} 篇</p>'
         if skipped:
-            msg += f'<p class="error">找不到（已略過）：{", ".join(skipped)}</p>'
+            escaped = ", ".join(html.escape(p) for p in skipped)
+            msg += f'<p class="error">找不到（已略過）：{escaped}</p>'
         return msg + templates.TemplateResponse(
             request, "_packages_table.html", {"packages": rows, "q": "", "status": ""}
         ).body.decode()
@@ -498,8 +501,6 @@ def create_app(config_path: str = WEBUI_CONFIG_PATH) -> FastAPI:
 
     @app.post("/trash/empty", response_class=HTMLResponse)
     def empty_trash(request: Request):
-        import shutil
-
         cfg = _cfg()
         trash = Path(cfg["out_dir"]) / ".trash"
         if trash.exists():
@@ -578,19 +579,31 @@ def _read_failure(pkg):
 
 
 def _tail_audit(audit_log: str, limit: int):
-    """Return the last ``limit`` parsed audit lines (newest first); skip bad lines."""
+    """Return the last ``limit`` parsed audit lines (newest first); skip bad lines.
+
+    Reads at most 64 KB from the end of the file so large logs don't bloat memory.
+    """
     p = Path(audit_log)
     if not p.exists():
         return []
+    size = p.stat().st_size
+    chunk = 65536  # 64 KB — enough for ~200 typical audit lines
+    with p.open("rb") as f:
+        f.seek(max(0, size - chunk))
+        tail = f.read().decode("utf-8", errors="replace")
+    # drop the first (possibly partial) line when we didn't start from offset 0
+    lines = tail.splitlines()
+    if size > chunk:
+        lines = lines[1:]
     parsed = []
-    for raw in p.read_text(encoding="utf-8").splitlines():
+    for raw in lines:
         raw = raw.strip()
         if not raw:
             continue
         try:
             parsed.append(json.loads(raw))
         except json.JSONDecodeError:
-            continue  # skip broken line, never crash the view
+            continue
     return list(reversed(parsed))[:limit]
 
 
@@ -618,8 +631,6 @@ def _filter_packages(rows, q: str, status: str):
 
 def _move_to_trash(out_dir: str, pkg):
     """Move a package dir into out_dir/.trash/ — reversible delete (never hard-remove)."""
-    import shutil
-
     trash = Path(out_dir) / ".trash"
     trash.mkdir(parents=True, exist_ok=True)
     dest = trash / pkg.name
@@ -654,8 +665,6 @@ def _restore_from_trash(out_dir: str, post_id: str) -> str:
 
     Returns "ok" | "not_found" | "conflict".
     """
-    import shutil
-
     if not post_id or post_id.startswith(".") or "/" in post_id or "\\" in post_id:
         return "not_found"
     trash = Path(out_dir) / ".trash"

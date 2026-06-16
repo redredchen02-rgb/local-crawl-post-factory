@@ -10,7 +10,8 @@
         <td>{{ r.ts }}</td><td>{{ r.stage }}</td>
         <td>{% if r.post_id %}<a href="/packages/{{ r.post_id }}">{{ r.post_id }}</a>{% endif %}</td>
         <td><span class="pill {{ r.status }}">{{ r.status }}</span></td>
-        <td>{{ r.severity or '' }}</td><td class="hint">{{ r.run_id or '' }}</td>
+        <td>{{ r.severity or '' }}</td>
+        <td class="hint">{% if r.run_id %}<a href="/history?run_id={{ r.run_id }}" style="color:inherit">{{ r.run_id }}</a>{% endif %}</td>
         <td>{{ r.error or r.detail or '' }}</td>
       </tr>
     {% endfor %}
