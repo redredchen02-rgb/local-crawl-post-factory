@@ -1,7 +1,6 @@
 """Shared request-aware context for all webui routers."""
 
 import logging
-import time
 from pathlib import Path
 from typing import Any
 

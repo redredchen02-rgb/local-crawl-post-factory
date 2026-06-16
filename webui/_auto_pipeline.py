@@ -2,7 +2,6 @@
 
 import json
 import time
-from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
@@ -147,15 +146,15 @@ def _run_auto_pipeline(job, cfg: dict, built: list[dict], *, note_expiry=None) -
             approve=True,
             expected_content_id=cid,
         )
-        _, exc = _retry(lambda ns=ns: publish_post._run(ns))
-        if exc is None:
+        _, err = _retry(lambda ns=ns: publish_post._run(ns))
+        if err is None:
             publish_ok += 1
         else:
-            if note_expiry is not None and isinstance(exc, SessionExpiredError):
+            if note_expiry is not None and isinstance(err, SessionExpiredError):
                 note_expiry(cfg)
-            failed.append({"post_id": pid, "stage": "publish", "error": str(exc)})
+            failed.append({"post_id": pid, "stage": "publish", "error": str(err)})
             runs.record_run(cfg["state_path"], stage="publish", post_id=pid,
-                            status="failed", error=str(exc), run_id=run_id, severity="error")
+                            status="failed", error=str(err), run_id=run_id, severity="error")
 
     jobs.report(
         job,
