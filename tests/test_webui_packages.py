@@ -207,3 +207,38 @@ def test_publish_endpoint_is_gated_not_absent(tmp_path):
     app = create_app(str(tmp_path / "webui.yaml"))
     paths = [r.path for r in app.routes]
     assert "/packages/{post_id}/publish" in paths
+
+
+def test_default_view_hides_published(tmp_path):
+    """Default (status='') excludes published; only actionable packages shown."""
+    out = tmp_path / "out"
+    _pkg(out, "20260615_a", "未發布文", status="package_built")
+    _pkg(out, "20260615_b", "已發布文", status="published")
+    client = _client(tmp_path, out)
+    r = client.get("/packages")
+    assert "未發布文" in r.text
+    assert "已發布文" not in r.text
+
+
+def test_all_status_shows_published(tmp_path):
+    """status='all' reveals published packages too."""
+    out = tmp_path / "out"
+    _pkg(out, "20260615_a", "未發布文", status="package_built")
+    _pkg(out, "20260615_b", "已發布文", status="published")
+    client = _client(tmp_path, out)
+    r = client.get("/packages?status=all")
+    assert "未發布文" in r.text
+    assert "已發布文" in r.text
+
+
+def test_batch_delete_moves_selected_to_trash(tmp_path):
+    """POST /batch/delete moves checked items to .trash; unchecked remain."""
+    out = tmp_path / "out"
+    _pkg(out, "20260615_a", "甲文")
+    _pkg(out, "20260615_b", "乙文")
+    client = _client(tmp_path, out)
+    r = client.post("/batch/delete", data={"post_ids": ["20260615_a"]})
+    assert r.status_code == 200
+    assert not (out / "20260615_a").exists()
+    assert (out / ".trash" / "20260615_a").exists()
+    assert (out / "20260615_b").exists()  # untouched

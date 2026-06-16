@@ -7,6 +7,9 @@
             hx-target="#batch-result" hx-swap="innerHTML">批量建草稿</button>
     <button type="button" hx-post="/batch/verify" hx-include="#batch-form"
             hx-target="#batch-result" hx-swap="innerHTML">批量驗證</button>
+    <button type="button" class="danger" hx-post="/batch/delete" hx-include="#batch-form"
+            hx-target="#pkg-list" hx-swap="innerHTML"
+            hx-confirm="確定移入垃圾桶？可至 out/.trash/ 復原">批量刪除</button>
     <span class="hint">（發布請點入貼文於審核頁確認；已啟用自動發布模式時爬取後自動執行）</span>
   </div>
   <div id="batch-result"></div>

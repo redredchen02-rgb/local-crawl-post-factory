@@ -341,6 +341,28 @@ def create_app(config_path: str = WEBUI_CONFIG_PATH) -> FastAPI:
         runner = {"draft": draft_post._run, "verify": verify_draft._run}[stage]
         return _submit_job(request, stage, post_id, cfg, lambda: runner(ns))
 
+    @app.post("/batch/delete", response_class=HTMLResponse)
+    def batch_delete(request: Request, post_ids: list[str] = Form(default=[])):
+        """Move selected packages to .trash — reversible bulk delete."""
+        if not post_ids:
+            return HTMLResponse('<p class="hint">未選取任何貼文。</p>')
+        cfg = _cfg()
+        deleted, skipped = [], []
+        for pid in post_ids:
+            pkg = _safe_pkg_dir(cfg["out_dir"], pid)
+            if pkg is None:
+                skipped.append(pid)
+                continue
+            _move_to_trash(cfg["out_dir"], pkg)
+            deleted.append(pid)
+        rows = _filter_packages(_scan_packages(cfg["out_dir"]), "", "")
+        msg = f'<p class="ok">已移入垃圾桶：{len(deleted)} 篇</p>'
+        if skipped:
+            msg += f'<p class="error">找不到（已略過）：{", ".join(skipped)}</p>'
+        return msg + templates.TemplateResponse(
+            request, "_packages_table.html", {"packages": rows, "q": "", "status": ""}
+        ).body.decode()
+
     @app.post("/batch/{stage}", response_class=HTMLResponse)
     def batch_action(request: Request, stage: str, post_ids: list[str] = Form(default=[])):
         """Batch draft/verify over selected packages (R8).
@@ -542,12 +564,21 @@ def _tail_audit(audit_log: str, limit: int):
 
 
 def _filter_packages(rows, q: str, status: str):
-    """Filter scanned packages by case-insensitive query (title or post_id) and status."""
+    """Filter scanned packages by case-insensitive query (title or post_id) and status.
+
+    status="" (default) hides published packages so the list stays actionable.
+    status="all" shows everything including published.
+    Any other value filters to that exact status.
+    """
     q = (q or "").strip().lower()
     status = (status or "").strip()
     out = rows
-    if status:
+    if status == "all":
+        pass  # show everything
+    elif status:
         out = [r for r in out if r.get("status") == status]
+    else:
+        out = [r for r in out if r.get("status") != "published"]
     if q:
         out = [r for r in out
                if q in str(r.get("title", "")).lower() or q in str(r.get("post_id", "")).lower()]

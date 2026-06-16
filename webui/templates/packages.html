@@ -7,11 +7,12 @@
          hx-trigger="keyup changed delay:300ms" hx-include="[name='status']">
   <select name="status" hx-get="/packages" hx-target="#pkg-list" hx-swap="innerHTML"
           hx-trigger="change" hx-include="[name='q']">
-    <option value="">全部狀態</option>
+    <option value=""{% if status == '' %} selected{% endif %}>進行中（未發布）</option>
     <option value="package_built"{% if status == 'package_built' %} selected{% endif %}>package_built</option>
     <option value="draft_verified"{% if status == 'draft_verified' %} selected{% endif %}>draft_verified</option>
     <option value="published"{% if status == 'published' %} selected{% endif %}>published</option>
     <option value="error"{% if status == 'error' %} selected{% endif %}>error</option>
+    <option value="all"{% if status == 'all' %} selected{% endif %}>全部（含已發布）</option>
   </select>
 </div>
 

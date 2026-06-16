@@ -42,6 +42,11 @@
     <input type="checkbox" name="auto_pipeline"{% if cfg.auto_pipeline %} checked{% endif %}>
     自動發布模式（爬取完自動建草稿 → 驗證 → 發布，不需手動確認）
   </label>
+  <p class="hint" style="margin:.4em 0 0 1.6em">
+    啟用後，上方「並行下載數」、「重試次數」、「重試間隔」仍生效；
+    封面下載完成後每篇各獨立執行三個階段，任一失敗最多重試 3 次。
+    停用時爬取只上膛（建包），後續步驟須手動執行。
+  </p>
 
   {% if cfg.auto_pipeline %}
   <div style="background:#fff3cd;border:1px solid #ffc107;border-radius:4px;padding:.75em 1em;margin-top:.5em;color:#856404">
