@@ -19,6 +19,7 @@ DEFAULTS = {
     "concurrency": 8,
     "cover_retries": 0,
     "cover_backoff_sec": 0.0,
+    "cover_download_concurrency": 5,
     "source_id": "",
     "template_path": "./templates/fixed-format.zh.yaml",
     "watermark_config": "./configs/watermark.yaml",
@@ -30,7 +31,7 @@ DEFAULTS = {
     "storage_state": "./auth/storage-state.json",
 }
 
-_INT_FIELDS = ("limit", "concurrency", "cover_retries")
+_INT_FIELDS = ("limit", "concurrency", "cover_retries", "cover_download_concurrency")
 _FLOAT_FIELDS = ("download_delay", "cover_backoff_sec")
 
 # Output/runtime path fields resolved relative to the config file's directory
@@ -129,6 +130,12 @@ def validate(cfg: dict) -> None:
         raise ValidationError("download_delay must be >= 0")
     if int(cfg.get("concurrency", 1)) < 1:
         raise ValidationError("concurrency must be >= 1")
+    if int(cfg.get("cover_retries", 0)) < 0:
+        raise ValidationError("cover_retries must be >= 0")
+    if float(cfg.get("cover_backoff_sec", 0)) < 0:
+        raise ValidationError("cover_backoff_sec must be >= 0")
+    if int(cfg.get("cover_download_concurrency", 1)) < 1:
+        raise ValidationError("cover_download_concurrency must be >= 1")
 
 
 def _coerce(cfg: dict) -> None:

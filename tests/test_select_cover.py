@@ -1,5 +1,6 @@
 import io
 import json
+from pathlib import Path
 
 import pytest
 
@@ -140,3 +141,148 @@ def test_fetch_validation_error_not_retried(tmp_path, monkeypatch):
     with pytest.raises(ValidationError):
         _fetch("https://x/c.jpg", tmp_path / "c", 20, retries=3, backoff_sec=0)
     assert calls["n"] == 1
+
+
+# --- select_all: batch parallel cover download -------------------------------
+
+def _select_all_item(slug_title, image_url=None):
+    slug, title = slug_title
+    item = {"source_id": "site", "canonical_url": f"https://x.test/{slug}",
+            "title": title}
+    if image_url:
+        item["image_url"] = image_url
+    return item
+
+
+def test_select_all_happy_path(tmp_path, monkeypatch):
+    """All covers downloaded, records mutated in-place, original list returned."""
+    dl_dir = tmp_path / "assets"
+    dl_dir.mkdir()
+
+    def fake_select(rec, dd, to, re, ba):
+        ext = ".jpg" if "a" in rec.get("image_url", "") else ".png"
+        fname = f"{'a' if ext == '.jpg' else 'b'}{ext}"
+        (dl_dir / fname).write_text("img")
+        return {**rec, "cover_source": rec["image_url"],
+                "cover_path": str(dl_dir / fname)}
+
+    monkeypatch.setattr(select_cover, "select", fake_select)
+
+    records = [
+        _select_all_item(("a", "A"), "https://x.test/a.jpg"),
+        _select_all_item(("b", "B"), "https://x.test/b.png"),
+    ]
+    original_id = id(records)
+    result = select_cover.select_all(records, dl_dir, timeout=5)
+
+    assert id(result) == original_id  # same list, mutated in-place
+    assert result[0]["cover_path"].endswith(".jpg")
+    assert result[1]["cover_path"].endswith(".png")
+    assert dl_dir / "a.jpg"
+    assert dl_dir / "b.png"
+
+
+def test_select_all_skips_no_image_url(tmp_path, monkeypatch):
+    """Records without image_url pass through untouched."""
+    dl_dir = tmp_path / "assets"
+    dl_dir.mkdir()
+
+    touched = []
+
+    def fake_select(rec, *a, **k):
+        touched.append(rec.get("title"))
+        return {**rec, "cover_path": "/fake"}
+
+    monkeypatch.setattr(select_cover, "select", fake_select)
+
+    records = [
+        {"title": "no-img-1"},  # no image_url
+        {"title": "has-img", "image_url": "https://x.test/c.jpg"},
+        {"title": "no-img-2", "image_url": ""},  # empty string
+    ]
+    select_cover.select_all(records, dl_dir, timeout=5)
+    assert touched == ["has-img"]
+    assert records[0].get("cover_path") is None
+    assert records[1].get("cover_path") == "/fake"
+    assert records[2].get("cover_path") is None
+
+
+def test_select_all_partial_failure(tmp_path, monkeypatch):
+    """Some downloads fail → cover_error set, others still succeed."""
+    dl_dir = tmp_path / "assets"
+    dl_dir.mkdir()
+
+    call = {"n": 0}
+
+    def flaky(rec, *a, **k):
+        call["n"] += 1
+        if call["n"] == 2:
+            raise ExternalError("broken pipe")
+        fname = f"{call['n']}.jpg"
+        (dl_dir / fname).write_text("img")
+        return {**rec, "cover_path": str(dl_dir / fname)}
+
+    monkeypatch.setattr(select_cover, "select", flaky)
+
+    records = [
+        {"image_url": "https://x.test/1.jpg"},
+        {"image_url": "https://x.test/2.jpg"},
+        {"image_url": "https://x.test/3.jpg"},
+    ]
+    select_cover.select_all(records, dl_dir, timeout=5)
+
+    assert records[0].get("cover_path")  # succeeded
+    assert records[0].get("cover_error") is None
+    assert records[1].get("cover_error") is not None  # failed
+    assert "broken pipe" in records[1]["cover_error"]
+    assert records[2].get("cover_path")  # succeeded
+
+
+def test_select_all_progress_callback(tmp_path, monkeypatch):
+    """progress_cb fires for each cover with count and status."""
+    dl_dir = tmp_path / "assets"
+    dl_dir.mkdir()
+
+    def fake_select(rec, *a, **k):
+        fname = "x.jpg"
+        (dl_dir / fname).write_text("img")
+        return {**rec, "cover_path": str(dl_dir / fname)}
+
+    monkeypatch.setattr(select_cover, "select", fake_select)
+
+    msgs = []
+
+    select_cover.select_all(
+        [{"image_url": "https://x.test/1.jpg"}, {"image_url": "https://x.test/2.jpg"}],
+        dl_dir, timeout=5, progress_cb=msgs.append)
+
+    assert len(msgs) == 2
+    assert all("cover " in m for m in msgs)
+    assert all(m.endswith("(ok)") for m in msgs)
+
+
+def test_select_all_clamps_workers(tmp_path, monkeypatch):
+    """max_workers=0 or negative is clamped to 1."""
+    dl_dir = tmp_path / "assets"
+    dl_dir.mkdir()
+
+    def fake_select(rec, *a, **k):
+        fname = "x.jpg"
+        (dl_dir / fname).write_text("img")
+        return {**rec, "cover_path": str(dl_dir / fname)}
+
+    monkeypatch.setattr(select_cover, "select", fake_select)
+
+    records = [{"image_url": "https://x.test/1.jpg"}]
+    # Should not raise
+    select_cover.select_all(records, dl_dir, timeout=5, max_workers=0)
+    assert records[0].get("cover_path")
+    # Negative also fine
+    select_cover.select_all(
+        [{"image_url": "https://x.test/2.jpg"}], dl_dir, timeout=5, max_workers=-3)
+
+
+def test_select_all_empty_records(tmp_path):
+    """Empty record list returns immediately."""
+    result = select_cover.select_all([], tmp_path, timeout=5)
+    assert result == []

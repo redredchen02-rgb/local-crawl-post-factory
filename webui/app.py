@@ -50,10 +50,15 @@ def create_app(config_path: str = WEBUI_CONFIG_PATH) -> FastAPI:
                       limit: str = Form("30"),
                       download_delay: str = Form("0"),
                       concurrency: str = Form("8"),
-                      source_id: str = Form("")):
+                      source_id: str = Form(""),
+                      cover_download_concurrency: str = Form("5"),
+                      cover_retries: str = Form("0"),
+                      cover_backoff_sec: str = Form("0")):
         incoming = {"start_url": start_url.strip(), "item_regex": item_regex,
                     "deny_regex": deny_regex, "limit": limit, "source_id": source_id,
-                    "download_delay": download_delay, "concurrency": concurrency}
+                    "download_delay": download_delay, "concurrency": concurrency,
+                    "cover_download_concurrency": cover_download_concurrency,
+                    "cover_retries": cover_retries, "cover_backoff_sec": cover_backoff_sec}
         try:
             cfg = webui_config.save(app.state.config_path, {**_cfg(), **incoming})
         except CliError as exc:
@@ -68,10 +73,20 @@ def create_app(config_path: str = WEBUI_CONFIG_PATH) -> FastAPI:
             return HTMLResponse('<p class="error">請先在設定填入 start_url</p>', status_code=400)
 
         def _work(job):
-            jobs.report(job, "crawling…")
-            items = pipeline.crawl_items(cfg)
-            jobs.report(job, f"crawled {len(items)} item(s)")
-            return pipeline.run_pipeline(items, cfg, progress_cb=lambda m: jobs.report(job, m))
+            jobs.set_current(job, "準備爬取…")
+            jobs.report(job, "爬取中…")
+
+            def _crawl_cb(snap):
+                parts = [f"爬取進度 {snap['responses']} 頁"]
+                if snap.get("last_title"):
+                    parts.append(snap["last_title"])
+                jobs.set_current(job, " — ".join(parts))
+
+            items = pipeline.crawl_items(cfg, progress_cb=_crawl_cb)
+            jobs.report(job, f"爬取完成：{len(items)} 篇")
+            jobs.set_current(job, "建包中…")
+            result = pipeline.run_pipeline(items, cfg, progress_cb=lambda m: jobs.report(job, m))
+            return result
 
         job_id = jobs.submit(_work)
         return templates.TemplateResponse(
@@ -202,8 +217,12 @@ def create_app(config_path: str = WEBUI_CONFIG_PATH) -> FastAPI:
         runner = {"draft": draft_post._run, "verify": verify_draft._run}[stage]
 
         def _work(job):
+            label = {"draft": "建草稿", "verify": "驗證"}.get(stage, stage)
+            jobs.set_current(job, f"批量{label}中…")
+            jobs.report(job, f"開始批量{label}，共 {len(post_ids)} 篇")
             ok, failed = [], []
-            for pid in post_ids:
+            for i, pid in enumerate(post_ids):
+                jobs.set_current(job, f"批量{label}中…（{i + 1}/{len(post_ids)}）")
                 prepared = _action_ns(pid, stage)
                 if prepared is None:  # invalid / traversal post_id -> skip, isolate
                     failed.append({"post_id": pid, "error": "找不到此貼文包"})
@@ -243,8 +262,12 @@ def create_app(config_path: str = WEBUI_CONFIG_PATH) -> FastAPI:
         run_id = runs.new_run_id()
 
         def _work(job):
+            label = {"draft": "建草稿", "verify": "驗證", "publish": "發布"}.get(stage, stage)
+            jobs.set_current(job, f"{label}中…")
+            jobs.report(job, f"開始{label}…")
             try:
                 call()
+                jobs.report(job, f"{label}完成")
                 if stage != "publish":
                     runs.record_run(cfg["state_path"], stage=stage, post_id=post_id,
                                     status="ok", run_id=run_id, severity="info")
@@ -253,6 +276,7 @@ def create_app(config_path: str = WEBUI_CONFIG_PATH) -> FastAPI:
                 expired = isinstance(exc, SessionExpiredError)
                 if expired:
                     _note_session_expiry(cfg)
+                jobs.report(job, f"{label}失敗：{exc}")
                 runs.record_run(cfg["state_path"], stage=stage, post_id=post_id,
                                 status="failed", error=str(exc), run_id=run_id,
                                 severity="warning" if expired else "error")

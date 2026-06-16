@@ -11,7 +11,7 @@ from core.errors import ValidationError
 
 def test_download_delay_passed_to_crawler(tmp_path, monkeypatch):
     captured = {}
-    monkeypatch.setattr(pipeline.crawl_posts, "crawl_items", lambda opts: captured.update(opts) or [])
+    monkeypatch.setattr(pipeline.crawl_posts, "crawl_items", lambda opts, **kw: captured.update(opts) or [])
     cfg = {"start_url": "https://example.com/news", "download_delay": 1.5, "concurrency": 3, "limit": 10}
     pipeline.crawl_items(cfg)
     assert captured["download_delay"] == 1.5

@@ -57,6 +57,17 @@ nav a {
 nav a:hover { background: var(--accent-weak); color: var(--accent); }
 nav .auth-light { margin-left: auto; font-size: .85rem; color: var(--muted); }
 
+p.current {
+  background: var(--accent-weak);
+  padding: .55rem .85rem;
+  border-radius: 8px;
+  font-weight: 500;
+  font-size: .9rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* ---- headings & text ---- */
 h1 { font-size: 1.6rem; margin: .25rem 0 1.25rem; letter-spacing: -.01em; }
 h2 { font-size: 1.15rem; margin: 1.75rem 0 .5rem; }

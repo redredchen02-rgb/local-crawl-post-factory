@@ -112,6 +112,31 @@ def test_stdout_is_pure_ndjson(server):
         assert isinstance(json.loads(line), dict)
 
 
+def test_spider_base_settings_have_retry_and_autothrottle():
+    """T1: Spider base settings enable retry, AutoThrottle, and safe limits."""
+    from src.crawl_posts import BASE_SPIDER_SETTINGS
+
+    s = BASE_SPIDER_SETTINGS
+    assert s["RETRY_ENABLED"] is True
+    assert s["RETRY_TIMES"] >= 1
+    assert 502 in s["RETRY_HTTP_CODES"]
+    assert 503 in s["RETRY_HTTP_CODES"]
+    assert 504 in s["RETRY_HTTP_CODES"]
+    assert 408 in s["RETRY_HTTP_CODES"]
+    assert 429 in s["RETRY_HTTP_CODES"]
+
+    assert s["AUTOTHROTTLE_ENABLED"] is True
+    assert s["AUTOTHROTTLE_START_DELAY"] >= 0.1
+    assert s["AUTOTHROTTLE_MAX_DELAY"] >= 1
+    assert s["AUTOTHROTTLE_TARGET_CONCURRENCY"] >= 1
+
+    assert s.get("DNSCACHE_ENABLED", True) is True
+    assert s["DOWNLOAD_MAXSIZE"] > 0
+
+    assert s["COOKIES_ENABLED"] is False
+    assert s["TELNETCONSOLE_ENABLED"] is False
+
+
 def test_unreachable_host_exits_4():
     # Grab an ephemeral port then close it so nothing is listening.
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -127,3 +152,92 @@ def test_unreachable_host_exits_4():
     assert rc == 4, f"rc={rc} out={out!r} err={err!r}"
     assert out.strip() == ""
     assert err.strip() != ""
+
+
+# -- Unit 2: live progress callback ----------------------------------------- #
+
+def test_progress_cb_receives_increasing_snapshots(server):
+    """crawl_items with progress_cb fires at least once with growing counts."""
+    from src.crawl_posts import CONFIG_DEFAULTS, crawl_items
+
+    opts = dict(CONFIG_DEFAULTS)
+    opts["start_urls"] = [f"{server}/index.html"]
+    opts["item_regex"] = r"/news/"
+    opts["no_robots"] = True
+    opts["limit"] = 30
+    opts["max_pages"] = 200
+
+    snaps = []
+
+    def cb(snap):
+        snaps.append(dict(snap))
+
+    items = crawl_items(opts, progress_cb=cb)
+
+    assert len(snaps) >= 1, "progress callback was never called"
+    last = snaps[-1]
+    assert last["responses"] > 0
+    assert last["items"] > 0
+    assert "last_url" in last
+    for i in range(1, len(snaps)):
+        assert snaps[i]["responses"] >= snaps[i - 1]["responses"]
+        assert snaps[i]["items"] >= snaps[i - 1]["items"]
+
+    items_no_cb = crawl_items(opts)
+    assert len(items) == len(items_no_cb)
+    for a, b in zip(items, items_no_cb):
+        assert a["url"] == b["url"]
+
+
+def test_progress_cb_none_behaves_identically(server):
+    """progress_cb=None produces the same result as calling without kwarg."""
+    from src.crawl_posts import CONFIG_DEFAULTS, crawl_items
+
+    opts = dict(CONFIG_DEFAULTS)
+    opts["start_urls"] = [f"{server}/index.html"]
+    opts["item_regex"] = r"/news/"
+    opts["no_robots"] = True
+    opts["limit"] = 5
+
+    items = crawl_items(opts)
+    items_explicit = crawl_items(opts, progress_cb=None)
+    assert len(items) == len(items_explicit)
+    for a, b in zip(items, items_explicit):
+        assert a["url"] == b["url"]
+
+
+def test_progress_cb_does_not_pollute_stdout(server):
+    """stdout (from subprocess) remains pure NDJSON when progress is enabled."""
+    from src.crawl_posts import CONFIG_DEFAULTS, crawl_items
+
+    opts = dict(CONFIG_DEFAULTS)
+    opts["start_urls"] = [f"{server}/index.html"]
+    opts["item_regex"] = r"/news/"
+    opts["no_robots"] = True
+    opts["limit"] = 5
+
+    dummy_calls = []
+
+    def dummy(snap):
+        dummy_calls.append(snap)
+
+    crawl_items(opts, progress_cb=dummy)
+    assert len(dummy_calls) >= 1
+
+
+def test_progress_cb_unreachable_host_still_external_error(server):
+    """With progress_cb, an unreachable host still raises ExternalError."""
+    from src.crawl_posts import CONFIG_DEFAULTS, crawl_items
+    from core.errors import ExternalError
+
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.bind(("127.0.0.1", 0))
+    dead_port = s.getsockname()[1]
+    s.close()
+
+    opts = dict(CONFIG_DEFAULTS)
+    opts["start_urls"] = [f"http://127.0.0.1:{dead_port}/index.html"]
+    opts["timeout_sec"] = 5
+
+    with pytest.raises(ExternalError):
+        crawl_items(opts, progress_cb=lambda s: None)

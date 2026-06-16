@@ -24,6 +24,7 @@ import os
 import re
 import sys
 import tempfile
+import time
 from datetime import datetime, timezone
 
 from core import cli
@@ -48,22 +49,65 @@ CONFIG_DEFAULTS = {
     "no_robots": False,
 }
 
+BASE_SPIDER_SETTINGS = {
+    "RETRY_ENABLED": True,
+    "RETRY_TIMES": 2,
+    "RETRY_HTTP_CODES": [502, 503, 504, 408, 429],
+    "AUTOTHROTTLE_ENABLED": True,
+    "AUTOTHROTTLE_START_DELAY": 0.5,
+    "AUTOTHROTTLE_MAX_DELAY": 5.0,
+    "AUTOTHROTTLE_TARGET_CONCURRENCY": 4.0,
+    "DNSCACHE_ENABLED": True,
+    "DOWNLOAD_MAXSIZE": 5 * 1024 * 1024,
+    "COOKIES_ENABLED": False,
+    "TELNETCONSOLE_ENABLED": False,
+}
+
 
 def _utcnow_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _read_progress(progress_path: str) -> dict | None:
+    """Read a progress snapshot from *progress_path*.
+
+    Returns ``None`` when the file does not exist or contains invalid JSON
+    (the parent skips that poll cycle instead of crashing).
+    """
+    try:
+        with open(progress_path, encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
 # --------------------------------------------------------------------------- #
 # Child-process crawl worker (runs in a fresh interpreter via spawn).
 # --------------------------------------------------------------------------- #
-def _crawl_worker(opts: dict, out_path: str, status_path: str) -> None:
+def _crawl_worker(opts: dict, out_path: str, status_path: str,
+                  progress_path: str | None = None) -> None:
     """Run the Scrapy crawl. Writes items to ``out_path`` (NDJSON).
 
     Writes a small JSON status file to ``status_path`` describing whether any
     response was received and any fatal error, so the parent can map failures
     to the right exit code. All Scrapy logging is forced to stderr.
+
+    When *progress_path* is given, the worker also writes a live progress
+    snapshot (``{responses, items, last_url, last_title}``) atomically after
+    each response so the parent can poll for real-time status.
     """
     status = {"responses": 0, "items": 0, "error": None}
+
+    def _write_progress():
+        if not progress_path:
+            return
+        tmp = progress_path + ".tmp"
+        try:
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(status, f, ensure_ascii=False)
+            os.replace(tmp, progress_path)
+        except OSError:
+            pass
     try:
         import logging
 
@@ -91,6 +135,7 @@ def _crawl_worker(opts: dict, out_path: str, status_path: str) -> None:
         class _Spider(Spider):
             name = "crawl_posts"
             custom_settings = {
+                **BASE_SPIDER_SETTINGS,
                 "USER_AGENT": opts["user_agent"],
                 "ROBOTSTXT_OBEY": not opts["no_robots"],
                 "DOWNLOAD_TIMEOUT": opts["timeout_sec"],
@@ -98,9 +143,6 @@ def _crawl_worker(opts: dict, out_path: str, status_path: str) -> None:
                 "DOWNLOAD_DELAY": opts.get("download_delay", 0.0),
                 "DEPTH_LIMIT": opts["depth"],
                 "LOG_ENABLED": True,
-                "TELNETCONSOLE_ENABLED": False,
-                "RETRY_ENABLED": False,
-                "COOKIES_ENABLED": False,
             }
 
             async def start(self):
@@ -114,12 +156,19 @@ def _crawl_worker(opts: dict, out_path: str, status_path: str) -> None:
 
             def parse(self, response):
                 status["responses"] += 1
+                status["last_url"] = response.url
+                title = (response.css("title::text").get() or "").strip()
+                if not title:
+                    title = (response.css("h1::text").get() or "").strip()
+                status["last_title"] = title
+
                 # Only handle HTML responses.
                 content_type = response.headers.get("Content-Type", b"").decode(
                     "latin-1", "ignore"
                 )
                 is_html = "html" in content_type.lower() or content_type == ""
                 if not is_html:
+                    _write_progress()
                     return
 
                 url = response.url
@@ -135,6 +184,8 @@ def _crawl_worker(opts: dict, out_path: str, status_path: str) -> None:
                             json.dumps(item, ensure_ascii=False, sort_keys=True) + "\n"
                         )
                         status["items"] += 1
+
+                _write_progress()
 
                 if status["items"] >= opts["limit"]:
                     return
@@ -274,12 +325,16 @@ def _run(args) -> int:
     return 0
 
 
-def crawl_items(opts: dict) -> list:
+def crawl_items(opts: dict, progress_cb=None) -> list:
     """Run the crawl in a fresh child process and return the items as a list.
 
     Shared by the CLI (`_run`) and the in-process pipeline orchestrator so both
     use one crawl implementation. Same contracts: DependencyError if Scrapy is
     missing, ExternalError if the site is unreachable/timed out.
+
+    When *progress_cb* is given, the parent polls a side-channel progress file
+    ~every 0.5 s while the child is alive and calls ``progress_cb(snapshot)``
+    with ``{responses, items, last_url, last_title}``.
     """
     try:
         import scrapy  # noqa: F401
@@ -289,10 +344,29 @@ def crawl_items(opts: dict) -> list:
     tmpdir = tempfile.mkdtemp(prefix="crawl_posts_")
     out_path = os.path.join(tmpdir, "items.ndjson")
     status_path = os.path.join(tmpdir, "status.json")
+    progress_path = os.path.join(tmpdir, "progress.json") if progress_cb else None
 
     ctx = mp.get_context("spawn")
-    proc = ctx.Process(target=_crawl_worker, args=(opts, out_path, status_path))
+    proc = ctx.Process(
+        target=_crawl_worker,
+        args=(opts, out_path, status_path, progress_path),
+    )
     proc.start()
+
+    if progress_cb:
+        _last_progress = None
+        while proc.is_alive():
+            snap = _read_progress(progress_path)
+            if snap is not None and snap != _last_progress:
+                _last_progress = snap
+                progress_cb(snap)
+            time.sleep(0.5)
+        # One final read in case the child wrote progress between the last
+        # poll and process exit.
+        snap = _read_progress(progress_path)
+        if snap is not None and snap != _last_progress:
+            progress_cb(snap)
+
     proc.join()
 
     status = {"responses": 0, "items": 0, "error": None}
