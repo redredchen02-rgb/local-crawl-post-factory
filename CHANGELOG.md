@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.3.0] - 2026-06-18
+
+### Added
+- **AI 生成文章**：package 詳情頁「文案」區新增「AI 生成文章」按鈕 — 讀取爬取全文（`source_text.txt`，無則退回現有文案）→ 套用自訂排版規範（`configs/article_prompt.zh.md`）作為 system prompt → 經 OpenAI 相容端點生成成品文章，寫回 `caption.txt` 與 manifest `content.body`（兩者同步，發布用的 body 與顯示文案一致）。新增 `core/llm.py`（stdlib `urllib` client，零執行期依賴）與 `configs/llm.yaml`（端點/模型/逾時設定）。同步路由走 FastAPI 執行緒池，LLM 延遲不阻塞事件迴圈。
+- **金鑰本機載入**：啟動器 `啟動本地服務.command` 啟動時自動 source `auth/llm.env`（`auth/` 已被 `.gitignore` 忽略），API key 一律從環境變數 `CPOST_LLM_API_KEY` 讀取，永不進版控。
+- **生成功能測試**（`tests/test_webui_generate.py`，6 項）：覆蓋寫回 caption/body、素材來源優先序、未知 package 404、空素材 400、LLM 失敗 502、設定/金鑰載入。
+
+### Changed
+- **登入態指示燈移除**：導覽列移除每 10 秒輪詢 `/auth-status` 的登入態指示燈，畫面更簡潔（目前流程為「爬取 → 生成文章」，暫不發布到後台）；`/auth-status` 路由、`_auth_status.html` 與 `_ctx.auth_light()` 保留休眠，發布流程與其按鈕不受影響，日後可直接接回。
+
+### Notes
+- LLM 端點在 Cloudflare 後，預設 Python User-Agent 會被擋（HTTP 403 / error 1010），故 client 帶瀏覽器 User-Agent（已寫入 `configs/llm.yaml` 與 `core/llm.py` 預設值）。
+
 ## [0.2.2.1] - 2026-06-18
 
 ### Fixed

@@ -43,6 +43,13 @@
 <h2>文案
   <button type="button" class="sm secondary" style="margin-left:.5rem"
           onclick="this.closest('h2').nextElementSibling.toggleAttribute('hidden')">編輯</button>
+  <button class="sm" style="margin-left:.25rem"
+          hx-post="/packages/{{ post_id }}/generate"
+          hx-target="#generate-area" hx-swap="innerHTML" hx-indicator="this"
+          hx-confirm="用 AI 依素材生成文章，將覆蓋現有文案。確定？"
+          hx-on::after-request="if(event.detail.successful) setTimeout(function(){window.location.reload();}, 1000)">
+    <span class="htmx-indicator btn-spinner">⟳</span>AI 生成文章
+  </button>
 </h2>
 <div hidden>
   <form class="inline-edit-form" hx-post="/packages/{{ post_id }}/edit"
@@ -51,6 +58,7 @@
     <button type="submit" class="sm">儲存</button>
   </form>
 </div>
+<div id="generate-area"></div>
 <pre class="preview">{{ caption }}</pre>
 
 {% if failure %}
