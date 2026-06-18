@@ -30,6 +30,7 @@ DEFAULTS = {
     "storage_state": "./auth/storage-state.json",
     "llm_config": "./configs/llm.yaml",
     "scoring_config": "./configs/scoring.yaml",
+    "scoop_prompt": "./configs/scoop_prompt.zh.md",
     # /today scoop list default filters. min_confidence is the minimum number of
     # independent sources (source_count); 0 = no minimum, so a single-source
     # library is never filtered to empty. min_score gates the combined score.

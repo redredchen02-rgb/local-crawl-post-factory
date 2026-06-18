@@ -24,8 +24,6 @@ from src import (
     score_scoops,
 )
 
-DEFAULT_SCOOP_PROMPT = "./configs/scoop_prompt.zh.md"
-
 
 def _utcnow() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -105,8 +103,7 @@ def run_generation_pipeline(selected_cluster_ids: list[str], webui_cfg: dict,
 
     now = _utcnow()
     llm_cfg = llm.load_config(webui_cfg["llm_config"])
-    prompt = Path(webui_cfg.get("scoop_prompt") or DEFAULT_SCOOP_PROMPT).read_text(
-        encoding="utf-8")
+    prompt = Path(webui_cfg["scoop_prompt"]).read_text(encoding="utf-8")
     out_dir = webui_cfg["out_dir"]
     audit_log = webui_cfg["audit_log"]
 

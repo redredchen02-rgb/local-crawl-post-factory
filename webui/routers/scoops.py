@@ -17,7 +17,7 @@ from webui.routers._ctx import cfg_from_request, templates
 router = APIRouter()
 
 
-def _scoops(cfg: dict, min_confidence: int, min_score: float):
+def _scoops(cfg: dict, min_confidence: int, min_score: float) -> tuple[list[dict], bool]:
     """Return (rows, single_source): score-sorted clusters, filtered, with sources.
 
     ``min_confidence`` filters on source_count (number of independent sources);

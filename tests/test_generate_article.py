@@ -61,6 +61,45 @@ def test_unknown_cluster_raises(tmp_path):
                                       "2026-06-15T13:00:00Z", _chat=lambda *a: "x")
 
 
+def test_malformed_cluster_id_rejected(tmp_path):
+    # Form-supplied ids that aren't the c_<hex> shape are rejected before they
+    # reach the synthetic URL (defense in depth).
+    with library.connect(str(tmp_path / "s.sqlite")) as conn:
+        with pytest.raises(ValidationError):
+            generate_article.generate(conn, "../etc/passwd", {"model": "m"}, "sp",
+                                      "t", _chat=lambda *a: "x")
+
+
+def test_title_only_output_raises(tmp_path):
+    # LLM returns a single title line with no body -> fail rather than duplicate
+    # the title into the body / cache an empty article.
+    with library.connect(str(tmp_path / "s.sqlite")) as conn:
+        _seed_cluster(conn)
+        with pytest.raises(ValidationError):
+            generate_article.generate(conn, "c1", {"model": "m"}, "sp", "t",
+                                      _chat=lambda c, sp, uc: "只有一行標題沒有正文")
+
+
+def test_whitespace_output_raises(tmp_path):
+    with library.connect(str(tmp_path / "s.sqlite")) as conn:
+        _seed_cluster(conn)
+        with pytest.raises(ValidationError):
+            generate_article.generate(conn, "c1", {"model": "m"}, "sp", "t",
+                                      _chat=lambda c, sp, uc: "   \n\n  \n")
+
+
+def test_empty_members_raises(tmp_path):
+    with library.connect(str(tmp_path / "s.sqlite")) as conn:
+        library.assign_clusters(conn, [{
+            "cluster_id": "c_empty", "members": [], "member_count": 0,
+            "source_count": 0, "representative_url": None,
+            "representative_title": "空瓜", "earliest_published": None,
+            "latest_published": None}], "2026-06-15T00:00:00Z")
+        with pytest.raises(ValidationError):
+            generate_article.generate(conn, "c_empty", {"model": "m"}, "sp", "t",
+                                      _chat=lambda *a: "x")
+
+
 def test_cache_hit_skips_llm(tmp_path):
     calls = {"n": 0}
 

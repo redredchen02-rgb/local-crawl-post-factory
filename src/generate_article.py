@@ -20,6 +20,7 @@ empty/unknown cluster -> ValidationError (exit 2).
 
 import argparse
 import hashlib
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -29,12 +30,15 @@ from core.io_ndjson import write_line
 
 _PROMPT_VERSION = "scoop-v1"
 SCOOP_SOURCE_ID = "scoop"
+# Real cluster ids are ``c_<12 hex>`` (core.cluster._cluster_id); this guard
+# rejects malformed form-supplied ids before they reach the synthetic URL.
+_CLUSTER_ID_RE = re.compile(r"[A-Za-z0-9_-]+")
 
 
-def cache_key(members: list[dict], model: str, prompt_version: str) -> str:
-    """Hash member content + model + prompt version (membership change -> new key)."""
+def cache_key(members: list[dict], model: str, prompt_key: str) -> str:
+    """Hash member content + model + prompt (membership/prompt change -> new key)."""
     h = hashlib.sha256()
-    h.update(prompt_version.encode("utf-8"))
+    h.update(prompt_key.encode("utf-8"))
     h.update(b"\x00")
     h.update((model or "").encode("utf-8"))
     for m in sorted(members, key=lambda r: r["canonical_url"]):
@@ -70,28 +74,36 @@ def split_title_body(article: str, fallback_title: str) -> tuple[str, str]:
             break
     body = "\n".join(lines[body_start:]).strip()
     # No clean title line (empty or implausibly long) -> use the cluster title
-    # and keep the whole article as body so content.body is never empty.
+    # and keep the whole article as body. When a title parses cleanly, return the
+    # remaining body as-is (which may be empty -- the caller rejects empty bodies
+    # rather than duplicating the title into the body).
     if not title or len(title) > 80:
         return (fallback_title or "未命名瓜"), article.strip()
-    return title, (body or article.strip())
+    return title, body
 
 
 def generate(conn, cluster_id: str, llm_cfg: dict, system_prompt: str, now: str,
              *, _chat=llm.chat) -> dict:
     """Synthesize one article for ``cluster_id``; return a normalized item dict."""
+    if not _CLUSTER_ID_RE.fullmatch(cluster_id or ""):
+        raise ValidationError(f"invalid cluster_id: {cluster_id!r}")
     cluster = library.get_cluster(conn, cluster_id)
     members = library.get_cluster_members(conn, cluster_id)
     if not cluster or not members:
         raise ValidationError(f"unknown or empty cluster: {cluster_id!r}")
 
     model = str(llm_cfg.get("model") or "")
-    key = cache_key(members, model, _PROMPT_VERSION)
+    key = cache_key(members, model, _PROMPT_VERSION + system_prompt)
     cached = library.get_generation(conn, key)
     if cached:
         title, body = cached["title"], cached["body"]
     else:
         article = _chat(llm_cfg, system_prompt, build_material(members))
         title, body = split_title_body(article, cluster.get("representative_title") or "")
+        if not body.strip():
+            # LLM returned only a title or whitespace -> fail this scoop rather
+            # than cache an empty article that build-manifest would reject.
+            raise ValidationError("LLM 生成內容無正文")
         library.put_generation(conn, cache_key=key, cluster_id=cluster_id,
                                title=title, body=body, model=model, now=now)
 

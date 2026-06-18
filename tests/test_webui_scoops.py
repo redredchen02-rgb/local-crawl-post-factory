@@ -93,6 +93,41 @@ def test_prep_trigger_returns_job_view(tmp_path, monkeypatch):
     assert "today/jobs" in r.text or "備稿完成" in r.text or "狀態" in r.text
 
 
+def test_min_score_filters_low_scoring(tmp_path):
+    client, state = _client_and_state(tmp_path)
+    _seed(state, [
+        ("c_hi", "高分瓜內容", ["s1"], 0.9, 0.9),
+        ("c_lo", "低分瓜內容", ["s1"], 0.2, 0.2),
+    ])
+    r = client.get("/today/list", params={"min_score": 0.5})
+    assert "高分瓜內容" in r.text and "低分瓜內容" not in r.text
+
+
+def test_today_job_not_found_404(tmp_path):
+    client, _ = _client_and_state(tmp_path)
+    r = client.get("/today/jobs/nonexistent")
+    assert r.status_code == 404
+
+
+def test_null_score_cluster_does_not_crash(tmp_path):
+    # A cluster that was clustered but not yet scored has NULL score columns;
+    # the list filter must not crash on it (the `or 0` guards None).
+    client, state = _client_and_state(tmp_path)
+    now = "2026-06-15T00:00:00Z"
+    with library.connect(state) as conn:
+        u = "https://s1.example.com/unscored"
+        library.upsert(conn, canonical_url=u, title="未打分", now=now,
+                       source_id="s1", source_text="正文")
+        library.assign_clusters(conn, [{
+            "cluster_id": "c_unscored", "members": [u], "member_count": 1,
+            "source_count": 1, "representative_url": u,
+            "representative_title": "未打分的瓜", "earliest_published": now,
+            "latest_published": now}], now)  # no set_cluster_scores -> score NULL
+    r = client.get("/today/list")
+    assert r.status_code == 200
+    assert "未打分的瓜" in r.text
+
+
 def test_nav_has_today_link(tmp_path):
     client, _ = _client_and_state(tmp_path)
     r = client.get("/today")
