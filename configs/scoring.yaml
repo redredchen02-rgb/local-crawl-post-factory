@@ -1,0 +1,23 @@
+# 聚類 + 打分可調參數（plan 2026-06-18-004，U3/U4）。
+# 缺檔或缺鍵時程式回退 core/scoring_config.py 的 DEFAULTS。
+# 門檻/權重待有真實多源資料時校準——只改這裡，不必改碼。
+
+# --- 聚類（core.cluster）---
+ngram: 2                    # 標題字元 n-gram 大小（語言無關，適用中英）
+similarity_threshold: 0.5   # Jaccard 相似度門檻：>= 此值才視為同一件瓜
+time_window_hours: 72       # 兩筆都帶 published_at 時，須落在此時間窗內才聚合
+
+# --- 打分（core.scoring）---
+confidence_source_cap: 3        # 置信度封頂的獨立來源數（達此值即滿分 1.0）
+quality_full_text_chars: 1000   # 完整度正規化基準：正文達此字數視為「完整」
+quality_recency_window_hours: 168  # 時近度衰減窗（7 天內最高分）
+quality_material_cap: 3         # 素材量（成員數）正規化封頂
+
+# 品質三因子權重（會正規化，不必剛好相加=1）
+weight_completeness: 0.5
+weight_recency: 0.2
+weight_material: 0.3
+
+# 綜合分 = w_confidence*置信度 + w_quality*品質
+weight_confidence: 0.6
+weight_quality: 0.4

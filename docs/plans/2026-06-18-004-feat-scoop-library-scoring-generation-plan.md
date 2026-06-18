@@ -263,7 +263,7 @@ flowchart TB
 
 ---
 
-- [ ] **Unit 3：聚類引擎 + `cluster-scoops` CLI**
+- [x] **Unit 3：聚類引擎 + `cluster-scoops` CLI** ✅ 2026-06-18(feat/scoop-cluster-score；字元 n-gram Jaccard + 時間窗 + union-find；clusters 表用 cluster_id 關聯，未建獨立 cluster_members 表)
 
 **Goal：** 把庫中講同一件事的項目聚合成「瓜」(叢集)，以 view/標記層落地，永不刪庫資料。
 
@@ -297,7 +297,7 @@ flowchart TB
 
 ---
 
-- [ ] **Unit 4：打分引擎 + `score-scoops` CLI**
+- [x] **Unit 4：打分引擎 + `score-scoops` CLI** ✅ 2026-06-18(feat/scoop-cluster-score；置信度=獨立來源數/cap、品質=完整度+時近度+素材量加權；門檻/權重在 configs/scoring.yaml，真實資料校準留待 Phase 2 消費)
 
 **Goal：** 對每件瓜算出「品質」與「多源互證置信度」兩軸 + 綜合排序分，存可查詢的分數表。
 

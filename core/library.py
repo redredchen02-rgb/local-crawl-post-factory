@@ -6,8 +6,7 @@ reads. It lives in the same SQLite state file as a new table.
 
 Never drops data: ``upsert`` is keyed on ``canonical_url`` and preserves the
 first ``ingested_at``. ``cluster_id`` is written later by the clustering stage
-(plan U3); this module only declares the column. ``content_fingerprint`` is
-likewise reserved for later stages.
+(plan U3); this module only declares the column.
 """
 
 import sqlite3
@@ -27,11 +26,25 @@ CREATE TABLE IF NOT EXISTS library_items (
   published_at        TEXT,
   discovered_at       TEXT,
   ingested_at         TEXT NOT NULL,
-  content_fingerprint TEXT,
   cluster_id          TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_library_source ON library_items(source_id);
 CREATE INDEX IF NOT EXISTS idx_library_cluster ON library_items(cluster_id);
+
+CREATE TABLE IF NOT EXISTS clusters (
+  cluster_id           TEXT PRIMARY KEY,
+  member_count         INTEGER NOT NULL,
+  source_count         INTEGER NOT NULL,
+  representative_url   TEXT,
+  representative_title TEXT,
+  earliest_published   TEXT,
+  latest_published     TEXT,
+  confidence           REAL,
+  quality              REAL,
+  score                REAL,
+  updated_at           TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_clusters_score ON clusters(score);
 """
 
 
@@ -44,8 +57,7 @@ def connect(path: str) -> Generator[sqlite3.Connection, None, None]:
 def upsert(conn: sqlite3.Connection, *, canonical_url: str, title: str, now: str,
            source_id: str | None = None, url: str | None = None,
            source_text: str | None = None, description: str | None = None,
-           published_at: str | None = None, discovered_at: str | None = None,
-           content_fingerprint: str | None = None) -> None:
+           published_at: str | None = None, discovered_at: str | None = None) -> None:
     """Insert or update one library row, preserving ingested_at on conflict.
 
     Keyed on ``canonical_url``. On conflict the content fields are refreshed but
@@ -56,9 +68,8 @@ def upsert(conn: sqlite3.Connection, *, canonical_url: str, title: str, now: str
     conn.execute(
         """
         INSERT INTO library_items (canonical_url, source_id, url, title, source_text,
-                                   description, published_at, discovered_at,
-                                   ingested_at, content_fingerprint)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                   description, published_at, discovered_at, ingested_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(canonical_url) DO UPDATE SET
             source_id=COALESCE(excluded.source_id, library_items.source_id),
             url=COALESCE(excluded.url, library_items.url),
@@ -66,12 +77,10 @@ def upsert(conn: sqlite3.Connection, *, canonical_url: str, title: str, now: str
             source_text=COALESCE(excluded.source_text, library_items.source_text),
             description=COALESCE(excluded.description, library_items.description),
             published_at=COALESCE(excluded.published_at, library_items.published_at),
-            discovered_at=COALESCE(excluded.discovered_at, library_items.discovered_at),
-            content_fingerprint=COALESCE(excluded.content_fingerprint,
-                                         library_items.content_fingerprint)
+            discovered_at=COALESCE(excluded.discovered_at, library_items.discovered_at)
         """,
         (canonical_url, source_id, url, title, source_text, description,
-         published_at, discovered_at, now, content_fingerprint),
+         published_at, discovered_at, now),
     )
 
 
@@ -99,3 +108,75 @@ def list_items(conn: sqlite3.Connection, limit: int | None = None) -> list[dict]
 def count(conn: sqlite3.Connection) -> int:
     """Return the number of rows in the library."""
     return int(conn.execute("SELECT COUNT(*) FROM library_items").fetchone()[0])
+
+
+# --- clusters (scoops): a view layer over library_items, never drops rows ------
+
+def assign_clusters(conn: sqlite3.Connection, clusters: list[dict], now: str) -> None:
+    """Replace all cluster assignments with ``clusters`` (full recompute).
+
+    Idempotent rebuild: clears every item's ``cluster_id`` and the ``clusters``
+    table, then re-stamps members and inserts one summary row per cluster. Library
+    rows themselves are never deleted -- only the cluster_id *view* is rewritten,
+    so re-running over the same library yields identical assignments. Scores
+    (confidence/quality/score) are left NULL here and filled later by scoring.
+
+    All statements run inside the single transaction opened by ``connect`` and
+    commit together on success, so a concurrent reader sees either the old or the
+    new assignment (never the half-cleared middle) and a mid-rebuild failure
+    rolls the whole thing back.
+    """
+    conn.execute("UPDATE library_items SET cluster_id = NULL")
+    conn.execute("DELETE FROM clusters")
+    for c in clusters:
+        for url in c["members"]:
+            conn.execute(
+                "UPDATE library_items SET cluster_id = ? WHERE canonical_url = ?",
+                (c["cluster_id"], url),
+            )
+        conn.execute(
+            """
+            INSERT INTO clusters (cluster_id, member_count, source_count,
+                                  representative_url, representative_title,
+                                  earliest_published, latest_published, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (c["cluster_id"], c["member_count"], c["source_count"],
+             c.get("representative_url"), c.get("representative_title"),
+             c.get("earliest_published"), c.get("latest_published"), now),
+        )
+
+
+def list_clusters(conn: sqlite3.Connection, *, by_score: bool = False,
+                  limit: int | None = None) -> list[dict]:
+    """Return cluster summary rows as dicts (by score desc when ``by_score``)."""
+    conn.row_factory = sqlite3.Row
+    order = ("score DESC, confidence DESC, cluster_id" if by_score
+             else "cluster_id")
+    sql = f"SELECT * FROM clusters ORDER BY {order}"
+    params: tuple = ()
+    if limit is not None:
+        sql += " LIMIT ?"
+        params = (limit,)
+    return [dict(r) for r in conn.execute(sql, params).fetchall()]
+
+
+def get_cluster_members(conn: sqlite3.Connection, cluster_id: str) -> list[dict]:
+    """Return the library items belonging to ``cluster_id`` (for scoring/generation)."""
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute(
+        "SELECT * FROM library_items WHERE cluster_id = ? ORDER BY canonical_url",
+        (cluster_id,),
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def set_cluster_scores(conn: sqlite3.Connection, cluster_id: str, *,
+                       confidence: float, quality: float, score: float,
+                       now: str) -> None:
+    """Write the two score axes + combined score onto a cluster (idempotent)."""
+    conn.execute(
+        "UPDATE clusters SET confidence = ?, quality = ?, score = ?, updated_at = ? "
+        "WHERE cluster_id = ?",
+        (confidence, quality, score, now, cluster_id),
+    )

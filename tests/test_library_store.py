@@ -104,7 +104,7 @@ def test_schema_has_expected_columns_and_reopen_idempotent(tmp_path):
     db = _db(tmp_path)
     expected = {"canonical_url", "source_id", "url", "title", "source_text",
                 "description", "published_at", "discovered_at", "ingested_at",
-                "content_fingerprint", "cluster_id"}
+                "cluster_id"}
     with library.connect(db) as conn:
         cols = {r[1] for r in conn.execute("PRAGMA table_info(library_items)").fetchall()}
         assert expected <= cols
