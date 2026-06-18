@@ -46,7 +46,6 @@ _CREATE_FORM = """
 <form method="POST" action="/admin/posts/create" enctype="multipart/form-data">
   <input name="title" type="text">
   <textarea name="content"></textarea>
-  <input name="cover" type="file">
   <select name="category"><option value="">-</option><option value="news">news</option></select>
   <input name="tags" type="text">
   <button type="submit">儲存草稿</button>
@@ -157,7 +156,6 @@ class MockAdmin:
             "selectors": {
                 "title": 'input[name="title"]',
                 "body": 'textarea[name="content"]',
-                "cover": 'input[type="file"][name="cover"]',
                 "category": 'select[name="category"]',
                 "tags": 'input[name="tags"]',
                 "save_draft": 'button:has-text("儲存草稿")',

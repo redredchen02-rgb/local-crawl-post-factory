@@ -10,8 +10,6 @@ from src import (
     normalize_items,
     dedupe_posts,
     render_caption,
-    select_cover,
-    watermark_cover,
     build_manifest,
 )
 
@@ -21,8 +19,6 @@ def test_aliases_are_same_object():
     assert normalize_items._normalize is normalize_items.normalize_one
     assert dedupe_posts._dedupe is dedupe_posts.dedupe
     assert render_caption._render is render_caption.render
-    assert select_cover._select is select_cover.select
-    assert watermark_cover._watermark is watermark_cover.watermark
     assert build_manifest._build is build_manifest.build
 
 
@@ -42,8 +38,6 @@ def test_full_pipeline_parity(tmp_path):
 
     cfg = {
         "template_path": "./templates/fixed-format.zh.yaml",
-        "watermark_config": "./configs/watermark.yaml",
-        "download_dir": str(tmp_path / "assets"),
         "out_dir": str(tmp_path / "out"),
         "state_path": str(tmp_path / "state.sqlite"),
         "audit_log": str(tmp_path / "audit.jsonl"),

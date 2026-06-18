@@ -27,13 +27,11 @@ def _setup(tmp_path, mock):
     out = tmp_path / "out"
     pkg = out / "20260615_demo"
     pkg.mkdir(parents=True)
-    from PIL import Image
-    Image.new("RGB", (16, 16), "white").save(pkg / "watermarked_cover.jpg")
     (pkg / "manifest.json").write_text(json.dumps({
         "post_id": "20260615_demo",
         "source": {"canonical_url": "https://example.com/news/a"},
         "content": {"title": "動作測試", "body": "內文", "tags": [], "category": None},
-        "media": {"watermarked_cover_path": "./watermarked_cover.jpg"},
+        "media": {},
         "backend": {"status": "package_built", "draft_url": None,
                     "published_url": None, "remote_id": None},
         "audit": {},

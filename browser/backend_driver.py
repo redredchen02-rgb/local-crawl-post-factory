@@ -122,15 +122,6 @@ def session(storage_state=None, headless=True, timeout_ms=DEFAULT_TIMEOUT_MS):
             browser.close()
 
 
-def _resolve_media(manifest_path, rel_path):
-    if not rel_path:
-        return None
-    p = Path(rel_path)
-    if not p.is_absolute():
-        p = Path(manifest_path).parent / rel_path
-    return str(p) if p.exists() else None
-
-
 def create_draft(page, cfg, manifest, manifest_path, *,
                  retries=DEFAULT_RETRIES, backoff_sec=DEFAULT_BACKOFF_SEC, pkg_dir=None):
     """Fill the create form and save a draft. Returns {'draft_url': ...}."""
@@ -142,11 +133,6 @@ def create_draft(page, cfg, manifest, manifest_path, *,
         _check_session(cfg, page)
         page.fill(get_selector(cfg, "title"), content["title"] or "")
         page.fill(get_selector(cfg, "body"), content.get("body") or "")
-
-        cover = _resolve_media(manifest_path, manifest["media"].get("watermarked_cover_path")
-                               or manifest["media"].get("cover_path"))
-        if cover:
-            page.set_input_files(get_selector(cfg, "cover"), cover)
 
         if content.get("category") and "category" in cfg["selectors"]:
             page.select_option(get_selector(cfg, "category"), content["category"])

@@ -15,7 +15,7 @@ def _client(tmp_path, out_dir):
     return TestClient(create_app(str(cfgp)))
 
 
-def _pkg(out_dir, post_id, title, status="package_built", caption="文案內容", cover=False):
+def _pkg(out_dir, post_id, title, status="package_built", caption="文案內容"):
     d = Path(out_dir) / post_id
     d.mkdir(parents=True)
     (d / "manifest.json").write_text(json.dumps(
@@ -24,9 +24,6 @@ def _pkg(out_dir, post_id, title, status="package_built", caption="文案內容"
          "backend": {"status": status}}),
         encoding="utf-8")
     (d / "caption.txt").write_text(caption, encoding="utf-8")
-    if cover:
-        from PIL import Image
-        Image.new("RGB", (16, 16), "white").save(d / "watermarked_cover.jpg")
 
 
 def test_lists_packages(tmp_path):
@@ -61,7 +58,7 @@ def test_broken_manifest_does_not_crash(tmp_path):
 
 def test_detail_page_shows_caption_and_source(tmp_path):
     out = tmp_path / "out"
-    _pkg(out, "20260615_a", "甲文", caption="這是甲文的文案", cover=True)
+    _pkg(out, "20260615_a", "甲文", caption="這是甲文的文案")
     client = _client(tmp_path, out)
     r = client.get("/packages/20260615_a")
     assert r.status_code == 200
@@ -72,13 +69,28 @@ def test_detail_page_shows_caption_and_source(tmp_path):
     assert "publish-post" in r.text and "--approve" in r.text
 
 
-def test_detail_cover_served(tmp_path):
+def test_detail_renders_legacy_manifest_with_media(tmp_path):
+    """R5 backward-compat: an OLD package whose manifest still carries a media
+    section (cover_path/watermarked_cover_path) must still load and render the
+    detail page without error — reviewed.content_id + template must not depend
+    on the removed fields — and no cover is served."""
     out = tmp_path / "out"
-    _pkg(out, "20260615_a", "甲文", cover=True)
+    d = out / "20230317_legacy"
+    d.mkdir(parents=True)
+    (d / "manifest.json").write_text(json.dumps({
+        "post_id": "20230317_legacy",
+        "content": {"title": "舊文", "body": "舊文案"},
+        "source": {"canonical_url": "https://example.com/legacy"},
+        "media": {"cover_path": "./cover.jpg",
+                  "watermarked_cover_path": "./watermarked_cover.jpg"},
+        "backend": {"status": "package_built"},
+    }), encoding="utf-8")
+    (d / "caption.txt").write_text("舊文案", encoding="utf-8")
     client = _client(tmp_path, out)
-    r = client.get("/packages/20260615_a/cover")
+    r = client.get("/packages/20230317_legacy")
     assert r.status_code == 200
-    assert r.headers["content-type"].startswith("image/")
+    assert "舊文案" in r.text
+    assert "/packages/20230317_legacy/cover" not in r.text  # no cover URL emitted
 
 
 def test_detail_unknown_404(tmp_path):
@@ -389,19 +401,3 @@ def test_rollback_non_published_rejected(tmp_path):
 def test_rollback_unknown_404(tmp_path):
     client = _client(tmp_path, tmp_path / "out")
     assert client.post("/packages/nope/rollback").status_code == 404
-
-
-def test_cover_rejects_symlink(tmp_path):
-    """Symlink cover.jpg outside pkg dir must NOT be served (U7.3)."""
-    import os
-    out = tmp_path / "out"
-    _pkg(out, "20260615_a", "甲文", cover=False)
-    pkg_dir = out / "20260615_a"
-    ext = tmp_path / "external.png"
-    from PIL import Image
-    Image.new("RGB", (16, 16), "red").save(ext)
-    sym = pkg_dir / "watermarked_cover.jpg"
-    os.symlink(str(ext), str(sym))
-    client = _client(tmp_path, out)
-    r = client.get("/packages/20260615_a/cover")
-    assert r.status_code == 404 or "no cover" in r.text

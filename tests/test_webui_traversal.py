@@ -24,10 +24,6 @@ def _client(tmp_path):
     return TestClient(create_app(str(cfgp)))
 
 
-def test_cover_traversal_blocked(tmp_path):
-    assert _client(tmp_path).get(f"/packages/{_TRAVERSAL}/cover").status_code == 404
-
-
 def test_draft_traversal_blocked(tmp_path):
     assert _client(tmp_path).post(f"/packages/{_TRAVERSAL}/draft").status_code == 404
 
@@ -44,7 +40,7 @@ def test_publish_traversal_blocked(tmp_path):
 def test_dot_dir_post_id_blocked(tmp_path):
     # dot-dirs (e.g. .trash) must never resolve as a package on a post_id route
     c = _client(tmp_path)
-    assert c.get("/packages/.trash/cover").status_code == 404
+    assert c.get("/packages/.trash/failure-image").status_code == 404
     assert c.post("/packages/.trash/publish", data={"title": "x"}).status_code == 404
 
 

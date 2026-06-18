@@ -51,15 +51,10 @@ def save_settings(request: Request,
                   download_delay: str = Form("0"),
                   concurrency: str = Form("8"),
                   source_id: str = Form(""),
-                  cover_download_concurrency: str = Form("5"),
-                  cover_retries: str = Form("0"),
-                  cover_backoff_sec: str = Form("0"),
                   auto_pipeline: str = Form("")):
     incoming = {"start_url": start_url.strip(), "item_regex": item_regex,
                 "deny_regex": deny_regex, "limit": limit, "source_id": source_id,
                 "download_delay": download_delay, "concurrency": concurrency,
-                "cover_download_concurrency": cover_download_concurrency,
-                "cover_retries": cover_retries, "cover_backoff_sec": cover_backoff_sec,
                 "auto_pipeline": auto_pipeline}
     config_path = request.app.state.config_path
     try:

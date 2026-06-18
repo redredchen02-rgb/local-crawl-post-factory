@@ -44,7 +44,6 @@ def test_newest_first_and_limit(tmp_path):
 def test_pipeline_records_build_runs(tmp_path):
     cfg = {
         "template_path": "./templates/fixed-format.zh.yaml",
-        "watermark_config": "./configs/watermark.yaml",
         "download_dir": str(tmp_path / "assets"),
         "out_dir": str(tmp_path / "out"),
         "state_path": _db(tmp_path),
@@ -98,7 +97,6 @@ def test_filter_by_run_id(tmp_path):
 def test_pipeline_runs_share_one_run_id(tmp_path):
     cfg = {
         "template_path": "./templates/fixed-format.zh.yaml",
-        "watermark_config": "./configs/watermark.yaml",
         "download_dir": str(tmp_path / "assets"), "out_dir": str(tmp_path / "out"),
         "state_path": _db(tmp_path), "audit_log": str(tmp_path / "audit.jsonl"),
         "limit": 30,

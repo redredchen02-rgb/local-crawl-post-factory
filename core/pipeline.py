@@ -24,12 +24,8 @@ from src import (
     normalize_items,
     publish_post,
     render_caption,
-    select_cover,
     verify_draft,
-    watermark_cover,
 )
-
-COVER_TIMEOUT_SEC = 20
 
 
 def crawl_items(webui_cfg: dict,
@@ -92,7 +88,7 @@ def crawl_all_sources(webui_cfg: dict,
 
 def run_pipeline(items: list[dict], webui_cfg: dict,
                  progress_cb: Callable[[str], object] | None = None) -> PipelineResult:
-    """Run normalize→dedupe→caption→cover→watermark→build over ``items``.
+    """Run normalize→dedupe→caption→build over ``items``.
 
     A single bad item is recorded under ``result["failed"]`` and never aborts
     the batch.
@@ -106,17 +102,9 @@ def run_pipeline(items: list[dict], webui_cfg: dict,
         # an unexpected system fault worth distinguishing for observability.
         return "validation" if isinstance(exc, ValidationError) else "system"
 
-    cover_enabled = bool(webui_cfg.get("cover_enabled", True))
     template_cfg = render_caption.load_template(webui_cfg["template_path"])
-    # Watermark config is only needed when covers are on; loading it unconditionally
-    # would make a cover-less deployment still depend on watermark.yaml existing.
-    wm_cfg = watermark_cover.load_config(webui_cfg["watermark_config"]) if cover_enabled else None
-    download_dir = Path(webui_cfg["download_dir"])
     out_dir = webui_cfg["out_dir"]
     audit_log = webui_cfg["audit_log"]
-    cover_retries = int(webui_cfg.get("cover_retries", select_cover.DEFAULT_RETRIES))
-    cover_backoff = float(webui_cfg.get("cover_backoff_sec", select_cover.DEFAULT_BACKOFF_SEC))
-    cover_concurrency = int(webui_cfg.get("cover_download_concurrency", 5))
 
     run_id = runs.new_run_id()  # correlates every record of this run (R9)
     built: list[PipelineItem] = []
@@ -146,16 +134,7 @@ def run_pipeline(items: list[dict], webui_cfg: dict,
     skipped = before - len(deduped)
     _report(f"deduped: {len(deduped)} new, {skipped} skipped")
 
-    # Stage 3: batch cover download (parallel).  Done before caption so the
-    # per-item loop below is unmodified — just the select_cover call is removed.
-    # Skipped entirely when covers are disabled (records carry no cover_path,
-    # which build_manifest already treats as "no cover").
-    if cover_enabled:
-        select_cover.select_all(deduped, download_dir, COVER_TIMEOUT_SEC,
-                                cover_retries, cover_backoff,
-                                max_workers=cover_concurrency, progress_cb=_report)
-
-    # Stages 4-6: caption → (cover already done) → watermark → build, per item.
+    # Stages 3-4: caption → build, per item.
     # A single open_run_conn reuses one SQLite connection for all record_run
     # calls below, amortising open/schema-check cost across the batch. Each
     # call still commits immediately (per-row durability).
@@ -170,16 +149,6 @@ def run_pipeline(items: list[dict], webui_cfg: dict,
             title = rec.get("title", "")
             try:
                 rec = render_caption.render_record(rec, template_cfg)
-                cover_err = rec.get("cover_error")
-                if cover_err:
-                    rec["cover_source"] = None
-                    rec["cover_path"] = None
-                # Gate on cover_enabled too: when covers are off, select_all was
-                # skipped so there is no cover_error, but watermark must not run.
-                # The explicit wm_cfg check also narrows the type (wm_cfg is loaded
-                # iff cover_enabled), so no -O-strippable assert is needed.
-                if cover_enabled and wm_cfg is not None and not cover_err:
-                    rec = watermark_cover.watermark(rec, wm_cfg)
                 rec["run_id"] = run_id  # Q7: persist into manifest.backend.run_id (publish reads it back)
                 manifest_path = build_manifest.build(rec, out_dir, audit_log)
                 post_id = Path(manifest_path).parent.name

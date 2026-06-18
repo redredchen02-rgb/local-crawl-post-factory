@@ -6,7 +6,7 @@
 
 ## 本版範圍
 
-- **Phase 1-3 資料/媒體管線**：`crawl-posts`、`normalize-items`、`dedupe-posts`、`render-caption`、`select-cover`、`watermark-cover`、`build-manifest`。
+- **Phase 1-3 資料管線**：`crawl-posts`、`normalize-items`、`dedupe-posts`、`render-caption`、`build-manifest`。
 - **Phase 4-5 後台自動化（Playwright，已實作）**：`draft-post`、`verify-draft`、`publish-post`。選擇器全來自 `backend.yaml`（零硬編碼），登入態用 Playwright `storage_state`（不存密碼），`publish-post` 雙重閘門（`--approve` + 狀態 `draft_verified`）。以本地 mock admin 做端到端測試。
 
 安裝瀏覽器（首次）：`python3 -m playwright install chromium`
@@ -14,7 +14,7 @@
 ## 安裝
 
 ```bash
-python3 -m pip install -e .          # 核心 (Scrapy / Pillow / PyYAML)
+python3 -m pip install -e .          # 核心 (Scrapy / PyYAML)
 python3 -m pip install -e '.[dev]'   # 加 pytest / ruff / mypy / pre-commit
 ```
 
@@ -48,12 +48,10 @@ crawl-posts "https://example.com/news" \
 | normalize-items \
 | dedupe-posts --state ./state/published.sqlite \
 | render-caption --template ./templates/fixed-format.zh.yaml \
-| select-cover --download-dir ./out/assets \
-| watermark-cover --config ./configs/watermark.yaml \
 | build-manifest --out ./out
 ```
 
-產出 `out/<post_id>/`：`manifest.json`、`caption.txt`、`cover.jpg`、`watermarked_cover.jpg`、`preview.html`。
+產出 `out/<post_id>/`：`manifest.json`、`caption.txt`、`preview.html`。
 
 先產生登入態（手動登入一次，偵測到登入成功 URL 後存檔；不存密碼）：
 
@@ -119,7 +117,6 @@ make webui              # 啟動 → http://127.0.0.1:8000
 - **運行歷史**：`/history` 查 `runs` 表、`/audit` 查 `audit.jsonl`，跨重啟保留；`runs` 帶 `run_id`（同一次運行的關聯）與 `severity`，`/history` 可按 `post_id`/`severity` 篩選，便於回查整條生命週期。
 - **爬取禮貌**：設定頁可調 `download_delay` 與 `concurrency`。
 - **配置可移植**：輸出路徑（state/out/download/audit/storage_state）相對設定檔目錄解析；可用 `CPOST_STATE_PATH`/`CPOST_OUT_DIR`/`CPOST_DOWNLOAD_DIR` 環境變數覆蓋。
-- **封面下載重試**：`select-cover --retries/--backoff-sec`，或 WebUI 設定 `cover_retries`/`cover_backoff_sec`。
 
 ## 排程 / Agent 自動化
 

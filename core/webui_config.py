@@ -1,6 +1,6 @@
 """WebUI settings (configs/webui.yaml) — shared by the WebUI and the CLI.
 
-Holds only WebUI-level fields; the crawler/watermark/template configs continue
+Holds only WebUI-level fields; the crawler/template configs continue
 to live in their own existing yaml files, referenced here by path.
 """
 
@@ -20,13 +20,8 @@ DEFAULTS = {
     "download_delay": 0.0,
     "concurrency": 8,
     "max_text_chars": 20000,
-    "cover_retries": 0,
-    "cover_backoff_sec": 0.0,
-    "cover_download_concurrency": 5,
-    "cover_enabled": True,
     "source_id": "",
     "template_path": "./templates/fixed-format.zh.yaml",
-    "watermark_config": "./configs/watermark.yaml",
     "download_dir": "./out/assets",
     "out_dir": "./out",
     "state_path": "./state/published.sqlite",
@@ -37,17 +32,14 @@ DEFAULTS = {
     "auto_pipeline": False,
 }
 
-_INT_FIELDS = ("limit", "max_pages", "concurrency", "max_text_chars", "cover_retries", "cover_download_concurrency")
-_FLOAT_FIELDS = ("download_delay", "cover_backoff_sec")
+_INT_FIELDS = ("limit", "max_pages", "concurrency", "max_text_chars")
+_FLOAT_FIELDS = ("download_delay",)
 # Checkbox fields: form POST sends "on" when checked, absent when unchecked.
-# cover_enabled is YAML-driven (not a settings-form field yet); default True keeps
-# old configs unchanged, while configs/webui.yaml ships it false. The save flow
-# (load_raw -> merge form -> save) carries the YAML value through untouched.
-_BOOL_FIELDS = ("cover_enabled", "auto_pipeline")
+_BOOL_FIELDS = ("auto_pipeline",)
 
 # Output/runtime path fields resolved relative to the config file's directory
 # (R7) so the WebUI writes to the same place regardless of launch directory.
-# Asset-config paths (template_path/watermark_config/backend_config) are
+# Asset-config paths (template_path/backend_config) are
 # deliberately NOT resolved here: their defaults reference repo-shipped files
 # relative to the run directory; rewriting them against the config dir would
 # break the shipped defaults.
@@ -161,13 +153,6 @@ def validate(cfg: dict) -> None:
         raise ValidationError("concurrency must be >= 1")
     if int(cfg.get("max_text_chars", 0)) < 0:
         raise ValidationError("max_text_chars must be >= 0")
-    if int(cfg.get("cover_retries", 0)) < 0:
-        raise ValidationError("cover_retries must be >= 0")
-    if float(cfg.get("cover_backoff_sec", 0)) < 0:
-        raise ValidationError("cover_backoff_sec must be >= 0")
-    cdc = int(cfg.get("cover_download_concurrency", 1))
-    if not 1 <= cdc <= 16:
-        raise ValidationError(f"cover_download_concurrency must be between 1 and 16, got {cdc}")
 
 
 def _coerce(cfg: dict) -> None:

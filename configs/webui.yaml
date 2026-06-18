@@ -2,9 +2,6 @@ audit_log: ../logs/audit.jsonl
 auto_pipeline: false
 backend_config: ./configs/backend.yaml
 concurrency: 8
-cover_backoff_sec: 0.0
-cover_enabled: false
-cover_retries: 0
 deny_regex: login|admin|tag|category|search|author|page/[0-9]+
 download_delay: 0.0
 download_dir: ../out/assets
@@ -17,4 +14,3 @@ start_url: https://51cg1.com/
 state_path: ../state/published.sqlite
 storage_state: ../auth/storage-state.json
 template_path: ./templates/fixed-format.zh.yaml
-watermark_config: ./configs/watermark.yaml

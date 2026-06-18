@@ -37,20 +37,6 @@
   <input type="text" name="source_id" value="{{ cfg.source_id }}">
   {{ field_err('source_id') }}
 
-  <h3 style="margin-top:1.5em">封面下載</h3>
-
-  <label>並行下載數（cover_download_concurrency）</label>
-  <input type="number" name="cover_download_concurrency" value="{{ cfg.cover_download_concurrency }}" min="1" step="1">
-  {{ field_err('cover_download_concurrency') }}
-
-  <label>重試次數（cover_retries）</label>
-  <input type="number" name="cover_retries" value="{{ cfg.cover_retries }}" min="0" step="1">
-  {{ field_err('cover_retries') }}
-
-  <label>重試間隔秒數（cover_backoff_sec）</label>
-  <input type="number" name="cover_backoff_sec" value="{{ cfg.cover_backoff_sec }}" min="0" step="0.5">
-  {{ field_err('cover_backoff_sec') }}
-
   <h3 style="margin-top:1.5em">自動化</h3>
 
   <label style="display:flex;align-items:center;gap:.5em;cursor:pointer">
@@ -58,8 +44,7 @@
     自動發布模式（爬取完自動建草稿 → 驗證 → 發布，不需手動確認）
   </label>
   <p class="hint" style="margin:.4em 0 0 1.6em">
-    啟用後，上方「並行下載數」、「重試次數」、「重試間隔」仍生效；
-    封面下載完成後每篇各獨立執行三個階段，任一失敗最多重試 3 次。
+    啟用後每篇各獨立執行三個階段（建草稿 → 驗證 → 發布），任一失敗最多重試 3 次。
     停用時爬取只上膛（建包），後續步驟須手動執行。
   </p>
 
