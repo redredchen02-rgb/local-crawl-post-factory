@@ -36,6 +36,16 @@ def test_content_id_ignores_audit_and_backend():
     assert noisy == base
 
 
+def test_content_id_ignores_source_text_path():
+    """Unit 3 invariant: adding content.source_text_path must NOT change the
+    content_id — persisting the full body never invalidates a review or perturbs
+    the reviewed gate. Only title + body(caption) + canonical_url are hashed."""
+    base = reviewed.content_id(_manifest())
+    with_src = _manifest()
+    with_src["content"]["source_text_path"] = "./source_text.txt"
+    assert reviewed.content_id(with_src) == base
+
+
 def test_mark_get_roundtrip(tmp_path):
     db = _db(tmp_path)
     reviewed.mark(db, "p1", "cid-A")

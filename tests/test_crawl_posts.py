@@ -90,6 +90,24 @@ def test_happy_path_crawls_news_excludes_login(server):
             assert field in it
 
 
+def test_extract_captures_nested_inline_text(server):
+    """Unit 2: text nested in inline markup (<strong>, <a>) inside a <p> is captured.
+
+    Article A has '<p>Nested <strong>BOLDWORD</strong> and <a ...>LINKWORD</a> inline.</p>'.
+    With the old direct-text-only selector these nested words were dropped.
+    """
+    rc, out, err = _run_crawl(
+        f"{server}/index.html", "--no-robots", "--item-regex", r"/news/a",
+    )
+    assert rc == 0, err
+    items = _parse_ndjson(out)
+    a = next(it for it in items if "news/a.html" in it["url"])
+    assert "BOLDWORD" in a["text"], a["text"]
+    assert "LINKWORD" in a["text"], a["text"]
+    # No duplication: descendant ::text must not emit the same direct text twice.
+    assert a["text"].count("BOLDWORD") == 1
+
+
 def test_limit_caps_items(server):
     rc, out, err = _run_crawl(
         f"{server}/index.html",

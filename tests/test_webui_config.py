@@ -195,6 +195,53 @@ def test_auto_pipeline_invalid_type_rejected(tmp_path):
         webui_config.save(p, {"auto_pipeline": ["oops"]})
 
 
+# --- max_text_chars knob (Unit 2, R3) ---
+
+def test_max_text_chars_defaults_20000(tmp_path):
+    cfg = webui_config.load(str(tmp_path / "nope.yaml"))
+    assert cfg["max_text_chars"] == 20000
+
+
+def test_max_text_chars_roundtrip(tmp_path):
+    p = str(tmp_path / "webui.yaml")
+    saved = webui_config.save(p, {"max_text_chars": 0})  # 0 = no clamp
+    assert saved["max_text_chars"] == 0
+    assert webui_config.load(p)["max_text_chars"] == 0
+
+
+def test_max_text_chars_negative_rejected(tmp_path):
+    with pytest.raises(ValidationError, match="max_text_chars"):
+        webui_config.save(str(tmp_path / "webui.yaml"), {"max_text_chars": -1})
+
+
+# --- cover_enabled bool field (Unit 1, R1) ---
+
+def test_cover_enabled_defaults_true(tmp_path):
+    """Backward-compat: a config without cover_enabled keeps covers on."""
+    cfg = webui_config.load(str(tmp_path / "nope.yaml"))
+    assert cfg["cover_enabled"] is True
+
+
+def test_cover_enabled_yaml_false_roundtrip(tmp_path):
+    """The shipped webui.yaml turns covers off; the false value must survive load."""
+    p = _write(tmp_path, "cover_enabled: false\n")
+    assert webui_config.load(str(p))["cover_enabled"] is False
+
+
+def test_cover_enabled_false_survives_settings_save(tmp_path):
+    """A settings save (load_raw + form merge) must not flip the YAML-only flag back on."""
+    p = _write(tmp_path, "start_url: https://example.com/news\ncover_enabled: false\n")
+    # cover_enabled is not a form field, so it is absent from the incoming form dict.
+    webui_config.save(str(p), {**webui_config.load_raw(str(p)),
+                               "start_url": "https://example.com/changed"})
+    assert webui_config.load(str(p))["cover_enabled"] is False
+
+
+def test_cover_enabled_form_on_coerced_to_true(tmp_path):
+    saved = webui_config.save(str(tmp_path / "webui.yaml"), {"cover_enabled": "on"})
+    assert saved["cover_enabled"] is True
+
+
 def test_cover_concurrency_upper_bound_rejected(tmp_path):
     with pytest.raises(ValidationError, match="cover_download_concurrency"):
         webui_config.save(str(tmp_path / "webui.yaml"),

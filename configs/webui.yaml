@@ -3,12 +3,14 @@ auto_pipeline: false
 backend_config: ./configs/backend.yaml
 concurrency: 8
 cover_backoff_sec: 0.0
+cover_enabled: false
 cover_retries: 0
 deny_regex: login|admin|tag|category|search|author|page/[0-9]+
 download_delay: 0.0
 download_dir: ../out/assets
 item_regex: archives/\d+
 limit: 30
+max_text_chars: 20000
 out_dir: ../out
 source_id: ''
 start_url: https://51cg1.com/

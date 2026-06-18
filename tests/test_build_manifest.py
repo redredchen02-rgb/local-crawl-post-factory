@@ -55,6 +55,49 @@ def test_happy_path_builds_folder(tmp_path):
     assert "Hello World" in (folder / "preview.html").read_text()
 
 
+# --- Unit 3 (R2/R4): full body text persisted to source_text.txt + pointer ---
+
+def test_source_text_persisted_and_body_untouched(tmp_path):
+    out = tmp_path / "out"
+    log = tmp_path / "logs" / "audit.jsonl"
+    full_body = "完整内文第一段。\n第二段更多内容。" * 3
+    rec = _record(tmp_path, text=full_body)
+
+    _build(rec, str(out), str(log))
+    folder = out / "20260615_https_example_com_post_1"
+
+    # Raw body lands in its own file + pointer.
+    assert (folder / "source_text.txt").read_text(encoding="utf-8") == full_body
+    manifest = json.loads((folder / "manifest.json").read_text())
+    assert manifest["content"]["source_text_path"] == "./source_text.txt"
+    # R4: the published body (caption) is NOT touched by the new field.
+    assert manifest["content"]["body"] == rec["caption"]
+
+
+def test_no_source_text_when_text_absent(tmp_path):
+    out = tmp_path / "out"
+    log = tmp_path / "logs" / "audit.jsonl"
+    rec = _record(tmp_path)  # no "text"
+
+    _build(rec, str(out), str(log))
+    folder = out / "20260615_https_example_com_post_1"
+
+    assert not (folder / "source_text.txt").exists()
+    manifest = json.loads((folder / "manifest.json").read_text())
+    assert manifest["content"]["source_text_path"] is None
+
+
+def test_empty_text_treated_as_absent(tmp_path):
+    out = tmp_path / "out"
+    log = tmp_path / "logs" / "audit.jsonl"
+    rec = _record(tmp_path, text="   ")  # whitespace-only -> no file
+
+    _build(rec, str(out), str(log))
+    folder = out / "20260615_https_example_com_post_1"
+    assert not (folder / "source_text.txt").exists()
+    assert json.loads((folder / "manifest.json").read_text())["content"]["source_text_path"] is None
+
+
 def test_rerun_idempotent_stable(tmp_path):
     out = tmp_path / "out"
     log = tmp_path / "logs" / "audit.jsonl"

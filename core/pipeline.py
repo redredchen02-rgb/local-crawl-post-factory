@@ -50,6 +50,13 @@ def crawl_items(webui_cfg: dict,
         "download_delay": float(webui_cfg.get("download_delay", 0.0)),
         "concurrency": int(webui_cfg.get("concurrency", 8)),
         "source_id": webui_cfg.get("source_id", ""),
+        # Wire the text-length knobs through to the crawl subprocess; without these
+        # the config field is silently ignored and the crawler falls back to its
+        # own CONFIG_DEFAULTS. max_text_chars=0 means "no clamp".
+        "max_text_chars": int(webui_cfg.get(
+            "max_text_chars", crawl_posts.CONFIG_DEFAULTS["max_text_chars"])),
+        "min_text_chars": int(webui_cfg.get(
+            "min_text_chars", crawl_posts.CONFIG_DEFAULTS["min_text_chars"])),
         "start_urls": [webui_cfg["start_url"]],
     })
     return crawl_posts.crawl_items(opts, progress_cb=progress_cb, poll_sec=poll_sec)
@@ -71,8 +78,11 @@ def run_pipeline(items: list[dict], webui_cfg: dict,
         # an unexpected system fault worth distinguishing for observability.
         return "validation" if isinstance(exc, ValidationError) else "system"
 
+    cover_enabled = bool(webui_cfg.get("cover_enabled", True))
     template_cfg = render_caption.load_template(webui_cfg["template_path"])
-    wm_cfg = watermark_cover.load_config(webui_cfg["watermark_config"])
+    # Watermark config is only needed when covers are on; loading it unconditionally
+    # would make a cover-less deployment still depend on watermark.yaml existing.
+    wm_cfg = watermark_cover.load_config(webui_cfg["watermark_config"]) if cover_enabled else None
     download_dir = Path(webui_cfg["download_dir"])
     out_dir = webui_cfg["out_dir"]
     audit_log = webui_cfg["audit_log"]
@@ -110,9 +120,12 @@ def run_pipeline(items: list[dict], webui_cfg: dict,
 
     # Stage 3: batch cover download (parallel).  Done before caption so the
     # per-item loop below is unmodified — just the select_cover call is removed.
-    select_cover.select_all(deduped, download_dir, COVER_TIMEOUT_SEC,
-                            cover_retries, cover_backoff,
-                            max_workers=cover_concurrency, progress_cb=_report)
+    # Skipped entirely when covers are disabled (records carry no cover_path,
+    # which build_manifest already treats as "no cover").
+    if cover_enabled:
+        select_cover.select_all(deduped, download_dir, COVER_TIMEOUT_SEC,
+                                cover_retries, cover_backoff,
+                                max_workers=cover_concurrency, progress_cb=_report)
 
     # Stages 4-6: caption → (cover already done) → watermark → build, per item.
     # A single open_run_conn reuses one SQLite connection for all record_run
@@ -133,7 +146,11 @@ def run_pipeline(items: list[dict], webui_cfg: dict,
                 if cover_err:
                     rec["cover_source"] = None
                     rec["cover_path"] = None
-                if not cover_err:
+                # Gate on cover_enabled too: when covers are off, select_all was
+                # skipped so there is no cover_error, but watermark must not run.
+                # The explicit wm_cfg check also narrows the type (wm_cfg is loaded
+                # iff cover_enabled), so no -O-strippable assert is needed.
+                if cover_enabled and wm_cfg is not None and not cover_err:
                     rec = watermark_cover.watermark(rec, wm_cfg)
                 rec["run_id"] = run_id  # Q7: persist into manifest.backend.run_id (publish reads it back)
                 manifest_path = build_manifest.build(rec, out_dir, audit_log)
