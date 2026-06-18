@@ -96,12 +96,13 @@ deepened: 2026-06-18
 - **要不要现在就把全文塞进发布文案?** → 不要;本期只留底。
 - **要不要预建多源配置 hook?** → 不要;硬编码 51cg1,等第二来源再说(无投机抽象)。
 
-### Resolved by Unit 0 (Go/No-Go,实作起点,不是中途)
+### Resolved by Unit 0 (实测 3 篇 51cg1 真实页面,2026-06-18 → **Go**)
 
-- **来源页 HTML 到底有没有完整正文?** 还是只有 teaser、正文在「查看完整內容」下一跳?
-- **`text` 比已发布的 `description` 富多少?** 若近乎重复,Unit 3 只是存副本 → 需重新评估甚至砍掉。
-- **51cg1 正文的稳定容器选择器**(`article` / `.entry-content` / `#content`?)与**实测正文长度**(决定 `max_text_chars` 是否要动)。
-- **抽样 5-10 篇的 `og:image` 是否真的相同?**(为关闭封面的理由补证;不影响开关可逆性。)
+- **页面含完整正文?** → **是**。`text` ≈ 930-999 字,`description` 固定 150 字(meta 截断),比值 **~6.5x**;`teaser_mark=False`(正文无「查看完整」)。非 teaser、非下一跳。
+- **`text` 比 `description` 富多少?** → **~6.5 倍**,绝非近似副本 → Unit 3 保留全文确有价值(对抗审查的「重复」担忧被数据证伪)。
+- **`max_text_chars` 要不要动?** → **不动,维持 20000**。实测正文 ~1000 字,远未触及上限;提到 50000 属臆测。
+- **`og:image` 是否相同?** → **是**,3 篇全为 `…/themes/Mirages/images/social-default.jpg`(主题默认社交图,1 distinct)→ 坐实「封面千篇一律」,Unit 1 关闭正确。
+- **容器选择器?** → **不需要**。现有 `body p/h1/h2/li` 已抓全正文(~1000 字、无噪声迹象);**不做 `<body>` 全量灌取**(避免 chrome 噪声)。Unit 2 因此缩到最小。
 
 ### Deferred to Implementation
 
@@ -137,7 +138,7 @@ flowchart TB
 
 ## Implementation Units
 
-- [ ] **Unit 0(阻断式前置):实测来源页,决定 body-capture 是否值得做**
+- [x] **Unit 0(阻断式前置):实测来源页,决定 body-capture 是否值得做** —— ✅ Go(见上「Resolved by Unit 0」)
 
 **Goal:** 用一次真实抓取证实/证伪整个 body-capture 的承重前提,产出 Go/No-Go。
 
@@ -164,7 +165,7 @@ flowchart TB
 
 ---
 
-- [ ] **Unit 1:以 `cover_enabled` 开关关闭封面抓取与水印**
+- [x] **Unit 1:以 `cover_enabled` 开关关闭封面抓取与水印** —— ✅ 已实作并提交(304 tests green)
 
 **Goal:** 提供可逆开关;关闭后 pipeline 跳过下载封面与盖水印,且草稿/发布/预览/manifest 全部正常(无封面)。
 
@@ -213,10 +214,9 @@ flowchart TB
 - Modify: `configs/webui.yaml`(落 `max_text_chars` 值——若 U0 显示无需调整则维持 20000)
 - Test: `tests/test_crawl_posts.py`(用本地 HTML fixture,**不连网**)
 
-**Approach:**
-- 抽取改为「**正文容器为主**」:对 U0 定出的容器(对 51cg1 **硬编码**,不做 per-source 配置)取**全部后代文本**(容器 `::text` 全量 `getall()`,覆盖嵌套行内标签);命不中容器才回退 `<body>` 并**记录**该 record 供复查。沿用现有 `re.sub(r"\s+"," ")` 归一与 `max_text_chars` 截断。
-- `crawl_items` 在 `opts.update` 补 `max_text_chars`/`min_text_chars`,使 WebUI 能控完整度。⚠️ `min_text_chars` 调高会在 `parse` 阶段**整条丢弃**短文,影响 U3 的留底数量——保持默认 0 或在配置旁注明。
-- `max_text_chars`:U0 数据若显示正文远低于 20000,则**不动**;确有需要再调(或设 0=不限,`_extract` 第 237 行已支持 0 语义)。
+**Approach(经 U0 数据缩到最小):** U0 显示现有 `body p/h1/h2/li` 已抓全正文(~1000 字、无噪声),故**不做 `<body>` 全量灌取、不引入容器选择器**(避免 chrome 噪声、避免投机抽象)。只做两件小事:
+- **补抓嵌套行内文字**:`body p::text …` → `body p ::text …`(后代文本),让 `<strong>`/`<a>`/`<em>` 内的字不被漏掉。仍用现有 `re.sub(r"\s+"," ")` 归一与 `max_text_chars` 截断。
+- **接通 `max_text_chars` 旋钮**:`crawl_items` 的 `opts.update` 补 `max_text_chars`/`min_text_chars`(修既有静默失效),`webui_config` 加 `max_text_chars`(默认 **20000**,U0 证明无需提高)。⚠️ `min_text_chars` 调高会在 `parse` 阶段整条丢弃短文 → 默认 0 并在配置旁注明。
 
 **Patterns to follow:** `_extract` 现有 Scrapy CSS 抽取与归一;`CONFIG_DEFAULTS`→opts→子进程 的既有透传链。
 
