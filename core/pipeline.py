@@ -148,8 +148,9 @@ def run_pipeline(items: list[dict], webui_cfg: dict,
                     rec["cover_path"] = None
                 # Gate on cover_enabled too: when covers are off, select_all was
                 # skipped so there is no cover_error, but watermark must not run.
-                if cover_enabled and not cover_err:
-                    assert wm_cfg is not None  # loaded whenever cover_enabled is True
+                # The explicit wm_cfg check also narrows the type (wm_cfg is loaded
+                # iff cover_enabled), so no -O-strippable assert is needed.
+                if cover_enabled and wm_cfg is not None and not cover_err:
                     rec = watermark_cover.watermark(rec, wm_cfg)
                 rec["run_id"] = run_id  # Q7: persist into manifest.backend.run_id (publish reads it back)
                 manifest_path = build_manifest.build(rec, out_dir, audit_log)

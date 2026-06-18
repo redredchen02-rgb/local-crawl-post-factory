@@ -3,7 +3,10 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from core import pipeline, state, url_utils, runs
+from core.errors import ValidationError
 from src import normalize_items
 
 
@@ -156,6 +159,43 @@ def test_cover_disabled_does_not_require_watermark_config(tmp_path):
     cfg["watermark_config"] = str(tmp_path / "no-such-watermark.yaml")
     result = pipeline.run_pipeline([_item("a", "標題一")], cfg)
     assert len(result["built"]) == 1 and result["failed"] == []
+
+
+def test_cover_enabled_missing_watermark_config_fails_fast(tmp_path):
+    """cover_enabled=true (default) + missing watermark.yaml: fail fast at load_config,
+    before any item is processed (unchanged from pre-flag behavior)."""
+    cfg = _cfg(tmp_path)  # cover_enabled defaults True
+    cfg["watermark_config"] = str(tmp_path / "no-such-watermark.yaml")
+    with pytest.raises(ValidationError):
+        pipeline.run_pipeline([_item("a", "標題一")], cfg)
+
+
+def test_cover_error_skips_watermark_but_still_builds(tmp_path, monkeypatch):
+    """cover_enabled=true but a download error sets cover_error: watermark is skipped,
+    the item still builds with null cover paths, batch is not aborted."""
+    cfg = _cfg(tmp_path)  # cover_enabled defaults True
+
+    def fake_select_all(records, *a, **k):
+        for r in records:
+            r["cover_error"] = "boom"
+        return records
+
+    def boom_watermark(*a, **k):
+        raise AssertionError("watermark must not run when cover_error is set")
+
+    monkeypatch.setattr(pipeline.select_cover, "select_all", fake_select_all)
+    monkeypatch.setattr(pipeline.watermark_cover, "watermark", boom_watermark)
+
+    item = _item("a", "標題一")
+    item["image_url"] = "https://example.com/img/a.jpg"
+    result = pipeline.run_pipeline([item], cfg)
+
+    assert len(result["built"]) == 1 and result["failed"] == []
+    manifest = json.loads(
+        (tmp_path / "out" / result["built"][0]["post_id"] / "manifest.json")
+        .read_text(encoding="utf-8"))
+    assert manifest["media"]["cover_path"] is None
+    assert manifest["media"]["watermarked_cover_path"] is None
 
 
 # --- T2: parallel cover download (select_cover.select_all) -------------------

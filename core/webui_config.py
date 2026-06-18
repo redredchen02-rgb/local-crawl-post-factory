@@ -42,7 +42,7 @@ _FLOAT_FIELDS = ("download_delay", "cover_backoff_sec")
 # cover_enabled is YAML-driven (not a settings-form field yet); default True keeps
 # old configs unchanged, while configs/webui.yaml ships it false. The save flow
 # (load_raw -> merge form -> save) carries the YAML value through untouched.
-_BOOL_FIELDS = ("auto_pipeline", "cover_enabled")
+_BOOL_FIELDS = ("cover_enabled", "auto_pipeline")
 
 # Output/runtime path fields resolved relative to the config file's directory
 # (R7) so the WebUI writes to the same place regardless of launch directory.

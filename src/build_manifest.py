@@ -90,10 +90,10 @@ def build(record: dict, out_dir: str, log_path: str) -> str:
     # NOT the published caption: it lands in its own file + manifest pointer and
     # never touches content.body (which feeds publishing and the reviewed
     # content_id fingerprint). Records without text leave source_text_path None.
-    source_text = record.get("text")
-    has_source_text = bool(source_text and str(source_text).strip())
+    source_text = str(record.get("text") or "")
+    has_source_text = bool(source_text.strip())
     if has_source_text:
-        write_text_no_overwrite(folder / "source_text.txt", str(source_text))
+        write_text_no_overwrite(folder / "source_text.txt", source_text)
 
     manifest = empty_manifest(post_id, record)
     manifest["content"]["body"] = caption
