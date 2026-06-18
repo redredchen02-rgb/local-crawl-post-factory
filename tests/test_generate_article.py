@@ -1,0 +1,112 @@
+"""generate-article: scoop -> synthesized original item (LLM stubbed, no network)."""
+
+import json
+
+import pytest
+
+from core import cli, library
+from core.errors import ValidationError
+from src import build_manifest, generate_article
+
+
+def _seed_cluster(conn, cluster_id="c1", sources=("src_a", "src_b")):
+    """Seed a scoop with one member per source; return the member urls."""
+    now = "2026-06-15T00:00:00Z"
+    urls = []
+    for i, sid in enumerate(sources):
+        u = f"https://{sid}.example.com/news/{i}"
+        urls.append(u)
+        library.upsert(conn, canonical_url=u, title=f"原始標題{i}", now=now,
+                       source_id=sid, source_text=f"{sid} 的正文內容片段。",
+                       published_at="2026-06-15T10:00:00+08:00")
+    library.assign_clusters(conn, [{
+        "cluster_id": cluster_id, "members": urls,
+        "member_count": len(urls), "source_count": len(set(sources)),
+        "representative_url": urls[0], "representative_title": "代表性瓜標題",
+        "earliest_published": "2026-06-15T10:00:00+08:00",
+        "latest_published": "2026-06-15T12:00:00+08:00",
+    }], now)
+    return urls
+
+
+def test_generate_synthesizes_item(tmp_path):
+    cfg = {"model": "test-model"}
+    chat = lambda c, sp, uc: "合成出的新標題\n\n这是综合多源后的正文内容。"
+    with library.connect(str(tmp_path / "s.sqlite")) as conn:
+        _seed_cluster(conn)
+        item = generate_article.generate(conn, "c1", cfg, "系统提示", "2026-06-15T13:00:00Z",
+                                         _chat=chat)
+    assert item["title"] == "合成出的新標題"
+    assert item["caption"] == "这是综合多源后的正文内容。"
+    assert item["canonical_url"] == "https://scoop.local/c1"
+    assert item["source_id"] == "scoop"
+
+
+def test_title_falls_back_to_representative(tmp_path):
+    cfg = {"model": "m"}
+    # No clean first-line title (single long blob) -> fall back to cluster title.
+    blob = "正" * 120
+    with library.connect(str(tmp_path / "s.sqlite")) as conn:
+        _seed_cluster(conn)
+        item = generate_article.generate(conn, "c1", cfg, "sp", "2026-06-15T13:00:00Z",
+                                         _chat=lambda c, sp, uc: blob)
+    assert item["title"] == "代表性瓜標題"
+    assert item["caption"] == blob          # whole blob kept as body, never empty
+
+
+def test_unknown_cluster_raises(tmp_path):
+    with library.connect(str(tmp_path / "s.sqlite")) as conn:
+        with pytest.raises(ValidationError):
+            generate_article.generate(conn, "nope", {"model": "m"}, "sp",
+                                      "2026-06-15T13:00:00Z", _chat=lambda *a: "x")
+
+
+def test_cache_hit_skips_llm(tmp_path):
+    calls = {"n": 0}
+
+    def chat(c, sp, uc):
+        calls["n"] += 1
+        return "標題行\n正文內容。"
+
+    with library.connect(str(tmp_path / "s.sqlite")) as conn:
+        _seed_cluster(conn)
+        generate_article.generate(conn, "c1", {"model": "m"}, "sp", "t", _chat=chat)
+        generate_article.generate(conn, "c1", {"model": "m"}, "sp", "t", _chat=chat)
+    assert calls["n"] == 1                   # second run hit the generations cache
+
+
+def test_missing_key_maps_to_validation_error(tmp_path, monkeypatch):
+    # Real core.llm.chat path: base_url+model present, API key env absent ->
+    # ValidationError (exit 2), NOT DependencyError(3). Message must not leak a key.
+    monkeypatch.delenv("CPOST_LLM_API_KEY", raising=False)
+    cfg = {"base_url": "https://llm.example.com/v1", "model": "m",
+           "api_key_env": "CPOST_LLM_API_KEY"}
+    with library.connect(str(tmp_path / "s.sqlite")) as conn:
+        _seed_cluster(conn)
+        with pytest.raises(ValidationError) as exc:
+            generate_article.generate(conn, "c1", cfg, "sp", "t")  # real llm.chat
+    assert "CPOST_LLM_API_KEY" in str(exc.value)
+
+
+def test_synthetic_item_feeds_build_manifest(tmp_path):
+    out_dir = str(tmp_path / "out")
+    log = str(tmp_path / "audit.jsonl")
+    chat = lambda c, sp, uc: "建包用標題\n\n建包用的正文內容。"
+    with library.connect(str(tmp_path / "s.sqlite")) as conn:
+        _seed_cluster(conn)
+        item = generate_article.generate(conn, "c1", {"model": "m"}, "sp", "t", _chat=chat)
+    manifest_path = build_manifest.build(item, out_dir, log)
+    manifest = json.loads(open(manifest_path, encoding="utf-8").read())
+    assert manifest["content"]["body"] == "建包用的正文內容。"   # caption -> content.body
+    assert manifest["content"]["body"]                          # non-empty
+
+
+def test_cli_run_unknown_cluster_exit_2(tmp_path):
+    # End-to-end CLI contract: unknown cluster -> ValidationError -> exit 2.
+    state = str(tmp_path / "s.sqlite")
+    with library.connect(state):
+        pass  # create the db/schema
+    args = type("A", (), {"state": state, "cluster_id": "missing",
+                          "llm_config": "./configs/llm.yaml",
+                          "prompt": "./configs/scoop_prompt.zh.md"})()
+    assert cli.run(lambda: generate_article._run(args)) == 2
