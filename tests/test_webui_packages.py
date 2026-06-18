@@ -389,3 +389,19 @@ def test_rollback_non_published_rejected(tmp_path):
 def test_rollback_unknown_404(tmp_path):
     client = _client(tmp_path, tmp_path / "out")
     assert client.post("/packages/nope/rollback").status_code == 404
+
+
+def test_cover_rejects_symlink(tmp_path):
+    """Symlink cover.jpg outside pkg dir must NOT be served (U7.3)."""
+    import os
+    out = tmp_path / "out"
+    _pkg(out, "20260615_a", "甲文", cover=False)
+    pkg_dir = out / "20260615_a"
+    ext = tmp_path / "external.png"
+    from PIL import Image
+    Image.new("RGB", (16, 16), "red").save(ext)
+    sym = pkg_dir / "watermarked_cover.jpg"
+    os.symlink(str(ext), str(sym))
+    client = _client(tmp_path, out)
+    r = client.get("/packages/20260615_a/cover")
+    assert r.status_code == 404 or "no cover" in r.text

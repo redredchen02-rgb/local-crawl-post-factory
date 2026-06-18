@@ -113,7 +113,7 @@ def package_cover(post_id: str, request: Request):
         return PlainTextResponse("not found", status_code=404)
     for name in ("watermarked_cover.jpg", "cover.jpg"):
         f = pkg / name
-        if f.exists():
+        if f.exists() and f.resolve().parent == pkg.resolve():
             return FileResponse(str(f))
     return PlainTextResponse("no cover", status_code=404)
 
