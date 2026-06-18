@@ -11,6 +11,7 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 - **倉庫衛生**：`.gitignore` 忽略工具目錄與備份（`*.bak`、`.omo/`、`.mimocode/`）並防止執行期產物再漏進 `configs/`；執行期狀態統一落在專案根 `state/`、`logs/`、`auth/`。
+- **依賴上限**：`pyproject.toml` 為 runtime/dev 依賴加上 major 上限（如 `fastapi>=0.110,<1`、`jinja2>=3.1,<4`、`pytest>=8.0,<10`），避免 `pip install` 拉到破壞性新版（如先前咬到的 Starlette 1.0）而破壞獨立安裝的可重現性。
 - **VERSION 對齊**：`VERSION` 檔與 `pyproject.toml` 同步至 `0.2.2.1`（先前 `VERSION` 落後）。
 
 ### Added
