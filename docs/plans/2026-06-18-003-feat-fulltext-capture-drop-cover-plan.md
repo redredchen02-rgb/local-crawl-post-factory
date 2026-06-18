@@ -1,10 +1,16 @@
 ---
 title: "feat: 完整抓取标题+内文、关闭千篇一律的封面"
 type: feat
-status: active
+status: completed
 date: 2026-06-18
 deepened: 2026-06-18
 ---
+
+<!-- Shipped this round: Unit 0 (Go verdict), Unit 1 (cover gate), Unit 2 (body extraction +
+     max_text_chars knob), Unit 3 (full body persisted to source_text.txt). Unit 4 (WebUI display
+     of 内文) is intentionally deferred as an optional follow-up. ce:review (9 personas) passed
+     with 5 safe_auto fixes applied; full suite 314 passed. -->
+
 
 # feat: 完整抓取标题+内文、关闭千篇一律的封面
 
@@ -199,7 +205,7 @@ flowchart TB
 
 ---
 
-- [ ] **Unit 2:容器优先抓取内文,并把 `max_text_chars` 暴露到 pipeline/配置**
+- [x] **Unit 2:容器优先抓取内文,并把 `max_text_chars` 暴露到 pipeline/配置** —— ✅ 已实作(descendant ::text + max_text_chars 透传,维持 20000)
 
 **Goal:** 让 `text` 抓到**完整正文**(容器内全部后代文本),长度上限可配,为「完整内文」打底。
 
@@ -231,7 +237,7 @@ flowchart TB
 
 ---
 
-- [ ] **Unit 3:把完整内文端到端保留进 manifest + 落档 `source_text.txt`**
+- [x] **Unit 3:把完整内文端到端保留进 manifest + 落档 `source_text.txt`** —— ✅ 已实作(content.source_text_path + source_text.txt;content_id 不变量有测试)
 
 **Goal:** 完整 `text` 不再被丢弃——写成包内 `source_text.txt`,并在 manifest 加 `content.source_text_path` 指针;**完全不动** `content.body`/caption/`content_id`。
 
