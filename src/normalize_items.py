@@ -49,7 +49,7 @@ def normalize_one(obj: dict) -> dict:
             del out[key]
 
     validators.require_url(out.get("canonical_url", ""), field="canonical_url")
-    validators.require_nonempty(out.get("title"), field="title")
+    validators.require_nonempty(out.get("title") or "", field="title")
 
     return out
 

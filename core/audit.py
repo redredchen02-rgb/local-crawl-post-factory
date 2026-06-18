@@ -2,10 +2,40 @@
 
 import json
 from pathlib import Path
+from typing import Any
+
+
+def purge_before(log_path: str, cutoff_iso: str) -> int:
+    """Remove audit entries older than ``cutoff_iso`` (UTC ISO 8601).
+
+    Rewrites the JSONL file in place. Returns the number of removed lines.
+    No-op if the file doesn't exist.
+    """
+    p = Path(log_path)
+    if not p.exists():
+        return 0
+    lines = p.read_text(encoding="utf-8").splitlines()
+    kept: list[str] = []
+    removed = 0
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            entry = json.loads(line)
+            if entry.get("ts", "") < cutoff_iso:
+                removed += 1
+                continue
+        except json.JSONDecodeError:
+            pass  # keep unparseable lines
+        kept.append(line)
+    p.write_text("\n".join(kept) + "\n", encoding="utf-8")
+    return removed
 
 
 def record(log_path: str, post_id: str, stage: str, status: str, ts: str,
-           *, severity: str = "info", run_id: str | None = None, **extra) -> None:
+           *, severity: str = "info", run_id: str | None = None,
+           **extra: Any) -> None:
     """Append one audit line to ``log_path``.
 
     ``severity`` defaults to "info" (backward compatible); ``run_id`` correlates

@@ -1,40 +1,55 @@
 {% extends "base.html" %}
 {% block heading %}設定 / Settings{% endblock %}
+{% macro field_err(name, cls="field-err") %}{% if field_error and field_error.get(name) %}<span class="{{ cls }}">{{ field_error[name] }}</span>{% endif %}{% endmacro %}
 {% block content %}
 {% if saved %}<p class="ok">已儲存 ✓</p>{% endif %}
 
 <form hx-post="/settings" hx-target="this" hx-swap="outerHTML">
   <label>來源 URL（start_url）</label>
   <input type="text" name="start_url" value="{{ cfg.start_url }}" placeholder="https://example.com/news">
+  {{ field_err('start_url') }}
 
   <label>內容頁 regex（item_regex）</label>
   <input type="text" name="item_regex" value="{{ cfg.item_regex }}">
+  {{ field_err('item_regex') }}
 
   <label>排除 regex（deny_regex）</label>
   <input type="text" name="deny_regex" value="{{ cfg.deny_regex }}">
+  {{ field_err('deny_regex') }}
 
   <label>數量上限（limit）</label>
   <input type="text" name="limit" value="{{ cfg.limit }}">
+  {{ field_err('limit') }}
+
+  <label>最大頁數（max_pages，爬取頁數上限）</label>
+  <input type="number" name="max_pages" value="{{ cfg.max_pages }}" min="1" step="1">
+  {{ field_err('max_pages') }}
 
   <label>下載延遲秒數（download_delay，禮貌爬取）</label>
   <input type="text" name="download_delay" value="{{ cfg.download_delay }}">
+  {{ field_err('download_delay') }}
 
   <label>並發上限（concurrency）</label>
   <input type="text" name="concurrency" value="{{ cfg.concurrency }}">
+  {{ field_err('concurrency') }}
 
   <label>來源代號（source_id，可空）</label>
   <input type="text" name="source_id" value="{{ cfg.source_id }}">
+  {{ field_err('source_id') }}
 
   <h3 style="margin-top:1.5em">封面下載</h3>
 
   <label>並行下載數（cover_download_concurrency）</label>
   <input type="number" name="cover_download_concurrency" value="{{ cfg.cover_download_concurrency }}" min="1" step="1">
+  {{ field_err('cover_download_concurrency') }}
 
   <label>重試次數（cover_retries）</label>
   <input type="number" name="cover_retries" value="{{ cfg.cover_retries }}" min="0" step="1">
+  {{ field_err('cover_retries') }}
 
   <label>重試間隔秒數（cover_backoff_sec）</label>
   <input type="number" name="cover_backoff_sec" value="{{ cfg.cover_backoff_sec }}" min="0" step="0.5">
+  {{ field_err('cover_backoff_sec') }}
 
   <h3 style="margin-top:1.5em">自動化</h3>
 

@@ -59,7 +59,7 @@ def test_publish_wrong_title_400(tmp_path):
 def test_publish_all_gates_pass_submits_job(tmp_path, monkeypatch):
     # Avoid a real browser: stub the publish command; gate is what we assert.
     called = {"n": 0}
-    monkeypatch.setattr(publish_post, "_run", lambda ns: called.__setitem__("n", called["n"] + 1))
+    monkeypatch.setattr(publish_post, "run", lambda ns: called.__setitem__("n", called["n"] + 1))
     client, _ = _client(tmp_path)
     _review(client)
     r = client.post("/packages/20260615_demo/publish", data={"title": "待發貼文"})
@@ -109,7 +109,7 @@ def test_publish_survives_lifecycle_save(tmp_path, monkeypatch):
     """Q9 mtime-trap guard: a manifest re-save that changes status/audit but NOT
     the content subtree keeps the review valid (gate ① still passes)."""
     called = {"n": 0}
-    monkeypatch.setattr(publish_post, "_run", lambda ns: called.__setitem__("n", called["n"] + 1))
+    monkeypatch.setattr(publish_post, "run", lambda ns: called.__setitem__("n", called["n"] + 1))
     client, pkg = _client(tmp_path)
     _review(client)
     m = json.loads((pkg / "manifest.json").read_text(encoding="utf-8"))
@@ -126,7 +126,7 @@ def test_review_persists_across_restart(tmp_path, monkeypatch):
     """Q9: the reviewed marker is persisted, so a fresh app (restart) still passes
     gate ① without re-opening the review page."""
     called = {"n": 0}
-    monkeypatch.setattr(publish_post, "_run", lambda ns: called.__setitem__("n", called["n"] + 1))
+    monkeypatch.setattr(publish_post, "run", lambda ns: called.__setitem__("n", called["n"] + 1))
     client, _ = _client(tmp_path)
     _review(client)
     client2 = TestClient(create_app(str(tmp_path / "webui.yaml")))  # 'restart'

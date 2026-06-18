@@ -5,8 +5,10 @@ from pathlib import Path
 
 import pytest
 
-from core.errors import SessionExpiredError, ExternalError, ValidationError
-from browser import backend_driver
+pytestmark = pytest.mark.browser  # Playwright; excluded from fast-run
+
+from core.errors import SessionExpiredError, ExternalError, ValidationError  # noqa: E402
+from browser import backend_driver  # noqa: E402
 
 playwright = pytest.importorskip("playwright.sync_api")
 PlaywrightTimeout = playwright.TimeoutError

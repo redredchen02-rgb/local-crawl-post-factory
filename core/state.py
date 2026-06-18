@@ -8,10 +8,10 @@ not a bug.
 """
 
 import sqlite3
+from collections.abc import Generator
 from contextlib import contextmanager
-from pathlib import Path
 
-from core.errors import DependencyError
+from core.db import connect as _db_connect
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS items (
@@ -35,23 +35,13 @@ PUBLISHED = "published"
 
 
 @contextmanager
-def connect(path: str):
-    p = Path(path)
-    p.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        conn = sqlite3.connect(str(p))
-    except sqlite3.Error as exc:  # pragma: no cover - environment dependent
-        raise DependencyError(f"sqlite unavailable: {exc}")
-    try:
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.executescript(_SCHEMA)
+def connect(path: str) -> Generator[sqlite3.Connection, None, None]:
+    with _db_connect(path, _SCHEMA) as conn:
         yield conn
-        conn.commit()
-    finally:
-        conn.close()
 
 
-def is_processed(conn, canonical_url: str, title_hash: str | None = None) -> bool:
+def is_processed(conn: sqlite3.Connection, canonical_url: str,
+                 title_hash: str | None = None) -> bool:
     """True only if a *published* row matches this canonical_url (Q6: URL-only).
 
     Dedup is URL-only: two different articles that share a title are NOT treated
@@ -65,7 +55,8 @@ def is_processed(conn, canonical_url: str, title_hash: str | None = None) -> boo
     return cur.fetchone() is not None
 
 
-def skip_reason(conn, canonical_url: str, title_hash: str | None = None):
+def skip_reason(conn: sqlite3.Connection, canonical_url: str,
+                title_hash: str | None = None) -> str | None:
     """Why an item would be skipped: 'url' or None (Q6: URL-only).
 
     Pure query (no writes). Only a published ``canonical_url`` match causes a
@@ -80,9 +71,12 @@ def skip_reason(conn, canonical_url: str, title_hash: str | None = None):
     return "url" if cur.fetchone() is not None else None
 
 
-def upsert(conn, *, canonical_url, title, title_hash, status, now,
-           content_hash=None, post_id=None, draft_url=None,
-           published_url=None, last_error=None) -> None:
+def upsert(conn: sqlite3.Connection, *, canonical_url: str, title: str,
+           title_hash: str, status: str, now: str,
+           content_hash: str | None = None, post_id: str | None = None,
+           draft_url: str | None = None,
+           published_url: str | None = None,
+           last_error: str | None = None) -> None:
     """Insert or update a row, preserving first_seen_at on conflict."""
     conn.execute(
         """

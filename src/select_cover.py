@@ -49,6 +49,13 @@ def _ext_from_url(url: str) -> str | None:
     return None
 
 
+_DOWNLOAD_UA = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/125.0.0.0 Safari/537.36"
+)
+
+
 def _download_once(url: str, timeout: int) -> tuple[bytes, str]:
     """Single network attempt: return (data, ext) or raise.
 
@@ -57,7 +64,8 @@ def _download_once(url: str, timeout: int) -> tuple[bytes, str]:
     """
     ext = _ext_from_url(url)
     try:
-        with urllib.request.urlopen(url, timeout=timeout) as resp:
+        req = urllib.request.Request(url, headers={"User-Agent": _DOWNLOAD_UA})
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
             content_type = (resp.headers.get("Content-Type") or "").split(";", 1)[0].strip().lower()
             if ext is None:
                 if content_type.startswith("image/"):

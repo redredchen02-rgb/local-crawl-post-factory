@@ -7,12 +7,13 @@ caller maps them to exit code 2.
 
 import json
 import sys
-from typing import Iterator
+from collections.abc import Iterator
+from typing import TextIO
 
 from core.errors import ValidationError
 
 
-def read_lines(stream=None) -> Iterator[dict]:
+def read_lines(stream: TextIO | None = None) -> Iterator[dict]:
     """Yield one parsed object per non-empty stdin line.
 
     Blank/whitespace-only lines are skipped. A line that is not valid JSON or
@@ -32,7 +33,7 @@ def read_lines(stream=None) -> Iterator[dict]:
         yield obj
 
 
-def write_line(obj: dict, stream=None) -> None:
+def write_line(obj: dict, stream: TextIO | None = None) -> None:
     """Write a single object as one compact NDJSON line."""
     stream = stream if stream is not None else sys.stdout
     stream.write(json.dumps(obj, ensure_ascii=False, sort_keys=True) + "\n")

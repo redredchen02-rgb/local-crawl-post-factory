@@ -1,7 +1,9 @@
 """Pure I/O helpers for the webui — no FastAPI or app-state dependencies."""
 
 import json
+import logging
 import shutil
+import time
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -17,6 +19,8 @@ __all__ = [
     "check_publish_gates",
     "_action_ns",
 ]
+
+_logger = logging.getLogger(__name__)
 
 
 def check_publish_gates(stored_cid, current_cid, status, submitted_title, manifest_title):
@@ -46,9 +50,11 @@ def _safe_pkg_dir(out_dir: str, post_id: str):
 
 def _scan_packages(out_dir: str):
     """Read every out/<post_id>/manifest.json; skip broken ones."""
+    t0 = time.perf_counter()
     rows: list[dict] = []
     base = Path(out_dir)
     if not base.exists():
+        _logger.debug("package scan latency %.1f ms (rows=0)", (time.perf_counter() - t0) * 1000)
         return rows
     for manifest_path in sorted(base.glob("*/manifest.json")):
         if manifest_path.parent.name.startswith("."):
@@ -65,6 +71,9 @@ def _scan_packages(out_dir: str):
             "status": m.get("backend", {}).get("status", "?"),
             "broken": False,
         })
+    _logger.debug(
+        "package scan latency %.1f ms (rows=%d)", (time.perf_counter() - t0) * 1000, len(rows)
+    )
     return rows
 
 

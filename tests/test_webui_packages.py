@@ -67,6 +67,7 @@ def test_detail_page_shows_caption_and_source(tmp_path):
     assert r.status_code == 200
     assert "這是甲文的文案" in r.text
     assert "https://example.com/20260615_a" in r.text
+    assert "/history?post_id=20260615_a" in r.text
     # publish guidance is shown as CLI text, not an action
     assert "publish-post" in r.text and "--approve" in r.text
 

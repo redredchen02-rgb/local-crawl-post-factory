@@ -37,6 +37,12 @@ packages = ["src", "core", "browser", "webui"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "slow: subprocess/network/real-timeout tests (excluded from fast-run)",
+    "browser: Playwright end-to-end browser tests",
+    "integration: multi-stage integration tests (pipeline orchestration)",
+    "subprocess: tests that spawn child processes (Scrapy crawl worker)",
+]
 
 [tool.ruff]
 target-version = "py311"
@@ -61,5 +67,6 @@ warn_unused_ignores = true
 # core/ is the correctness-critical zone -- hold it a notch higher than src/browser/webui.
 # Kept to high-signal flags that add zero noise today but raise the bar for new code.
 module = "core.*"
+disallow_untyped_defs = true
 warn_return_any = true
 warn_unreachable = true

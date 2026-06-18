@@ -62,7 +62,7 @@ def action_publish(request: Request, post_id: str, title: str = Form("")):
         timeout_ms=backend_driver.DEFAULT_TIMEOUT_MS, retries=None,
         state=cfg["state_path"], approve=True,
         expected_content_id=stored_cid)
-    return submit_job(request, "publish", post_id, cfg, lambda: publish_post._run(ns))
+    return submit_job(request, "publish", post_id, cfg, lambda: publish_post.run(ns))
 
 
 @router.post("/batch/delete", response_class=HTMLResponse)
@@ -103,7 +103,7 @@ def batch_action(request: Request, stage: str, post_ids: list[str] = Form(defaul
         return HTMLResponse('<p class="hint">未選取任何貼文。</p>')
     cfg = cfg_from_request(request)
     run_id = runs.new_run_id()
-    runner = {"draft": draft_post._run, "verify": verify_draft._run}[stage]
+    runner = {"draft": draft_post.run, "verify": verify_draft.run}[stage]
 
     def _work(job):
         label = {"draft": "建草稿", "verify": "驗證"}.get(stage, stage)

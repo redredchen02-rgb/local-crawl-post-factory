@@ -13,9 +13,10 @@ from core.validators import valid_url
 
 DEFAULTS = {
     "start_url": "",
-    "item_regex": "/news/|/article/|/post/",
-    "deny_regex": "login|admin|tag|category|search|page/[0-9]+",
+    "item_regex": "archives/\\d+",
+    "deny_regex": "login|admin|tag|category|search|author|page/[0-9]+",
     "limit": 30,
+    "max_pages": 200,
     "download_delay": 0.0,
     "concurrency": 8,
     "cover_retries": 0,
@@ -33,7 +34,7 @@ DEFAULTS = {
     "auto_pipeline": False,
 }
 
-_INT_FIELDS = ("limit", "concurrency", "cover_retries", "cover_download_concurrency")
+_INT_FIELDS = ("limit", "max_pages", "concurrency", "cover_retries", "cover_download_concurrency")
 _FLOAT_FIELDS = ("download_delay", "cover_backoff_sec")
 # Checkbox fields: form POST sends "on" when checked, absent when unchecked.
 _BOOL_FIELDS = ("auto_pipeline",)
@@ -54,7 +55,7 @@ _ENV_OVERRIDES = {
 }
 
 
-def load(path) -> dict:
+def load(path: str) -> dict:
     """Load settings, falling back to defaults for a missing file/keys."""
     try:
         import yaml
@@ -78,7 +79,7 @@ def load(path) -> dict:
     return cfg
 
 
-def _resolve_paths(cfg: dict, base) -> None:
+def _resolve_paths(cfg: dict, base: Path) -> None:
     """Resolve path fields to absolute paths (R7). Mutates ``cfg`` in place.
 
     Relative paths are resolved against ``base`` (the config file's directory);
@@ -113,7 +114,7 @@ def _resolve_paths(cfg: dict, base) -> None:
                 f"storage_state must not resolve inside {guard} (credential exposure)")
 
 
-def save(path, cfg: dict) -> dict:
+def save(path: str, cfg: dict) -> dict:
     """Validate and persist settings, merging over defaults."""
     import yaml
 
@@ -135,6 +136,8 @@ def validate(cfg: dict) -> None:
         raise ValidationError(f"invalid start_url: {cfg.get('start_url')!r}")
     if int(cfg.get("limit", 0)) < 0:
         raise ValidationError("limit must be >= 0")
+    if int(cfg.get("max_pages", 0)) < 1:
+        raise ValidationError("max_pages must be >= 1")
     if float(cfg.get("download_delay", 0)) < 0:
         raise ValidationError("download_delay must be >= 0")
     if int(cfg.get("concurrency", 1)) < 1:

@@ -5,14 +5,17 @@ WebUI and the CLI share one implementation. crawl stays in its own subprocess
 (Scrapy reactor cannot restart in-process) via crawl_posts.crawl_items.
 """
 
+from __future__ import annotations
+
 import json
 import time
+from collections.abc import Callable
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any
 
 from core import reviewed, runs, state
-from core.errors import ExternalError, SessionExpiredError, ValidationError
+from core.errors import SessionExpiredError, ValidationError
+from core.schema import AutoPipelineResult, PipelineFailed, PipelineItem, PipelineResult
 from src import (
     build_manifest,
     crawl_posts,
@@ -29,7 +32,8 @@ from src import (
 COVER_TIMEOUT_SEC = 20
 
 
-def crawl_items(webui_cfg: dict, progress_cb=None) -> list:
+def crawl_items(webui_cfg: dict,
+                progress_cb: Callable[[str], object] | None = None) -> list[dict]:
     """Crawl the configured start_url and return raw crawled items.
 
     When *progress_cb* is given, the subprocess crawl calls it during
@@ -41,6 +45,7 @@ def crawl_items(webui_cfg: dict, progress_cb=None) -> list:
         "item_regex": webui_cfg.get("item_regex", ""),
         "deny_regex": webui_cfg.get("deny_regex", ""),
         "limit": int(webui_cfg.get("limit", 30)),
+        "max_pages": int(webui_cfg.get("max_pages", 200)),
         "download_delay": float(webui_cfg.get("download_delay", 0.0)),
         "concurrency": int(webui_cfg.get("concurrency", 8)),
         "source_id": webui_cfg.get("source_id", ""),
@@ -49,17 +54,18 @@ def crawl_items(webui_cfg: dict, progress_cb=None) -> list:
     return crawl_posts.crawl_items(opts, progress_cb=progress_cb)
 
 
-def run_pipeline(items, webui_cfg: dict, progress_cb=None) -> dict:
+def run_pipeline(items: list[dict], webui_cfg: dict,
+                 progress_cb: Callable[[str], object] | None = None) -> PipelineResult:
     """Run normalize→dedupe→caption→cover→watermark→build over ``items``.
 
-    Returns {"built": [...], "failed": [...], "skipped": int}. A single bad item
-    is recorded under "failed" and never aborts the batch.
+    A single bad item is recorded under ``result["failed"]`` and never aborts
+    the batch.
     """
-    def _report(msg):
+    def _report(msg: str) -> None:
         if progress_cb:
             progress_cb(msg)
 
-    def _error_class(exc):
+    def _error_class(exc: Exception) -> str:
         # ValidationError = bad data (expected, skip the item); anything else is
         # an unexpected system fault worth distinguishing for observability.
         return "validation" if isinstance(exc, ValidationError) else "system"
@@ -74,7 +80,8 @@ def run_pipeline(items, webui_cfg: dict, progress_cb=None) -> dict:
     cover_concurrency = int(webui_cfg.get("cover_download_concurrency", 5))
 
     run_id = runs.new_run_id()  # correlates every record of this run (R9)
-    built, failed = [], []
+    built: list[PipelineItem] = []
+    failed: list[PipelineFailed] = []
 
     # Stage 1: normalize (per-item, so one bad record doesn't kill the batch).
     normalized = []
@@ -82,7 +89,7 @@ def run_pipeline(items, webui_cfg: dict, progress_cb=None) -> dict:
         try:
             normalized.append(normalize_items.normalize_one(raw))
         except Exception as exc:  # noqa: BLE001 - classify, record, keep batch alive
-            failed.append({"item": raw, "stage": "normalize",
+            failed.append({"post_id": None, "stage": "normalize",
                            "error": str(exc), "error_class": _error_class(exc)})
     _report(f"normalized {len(normalized)} item(s)")
 
@@ -92,7 +99,7 @@ def run_pipeline(items, webui_cfg: dict, progress_cb=None) -> dict:
     before = len(normalized)
     skips = []
 
-    def _on_skip(record, reason):
+    def _on_skip(record: dict, reason: str) -> None:
         skips.append((record, reason))
 
     with state.connect(webui_cfg["state_path"]) as conn:
@@ -123,8 +130,10 @@ def run_pipeline(items, webui_cfg: dict, progress_cb=None) -> dict:
                 rec = render_caption.render_record(rec, template_cfg)
                 cover_err = rec.get("cover_error")
                 if cover_err:
-                    raise ExternalError(cover_err)
-                rec = watermark_cover.watermark(rec, wm_cfg)
+                    rec["cover_source"] = None
+                    rec["cover_path"] = None
+                if not cover_err:
+                    rec = watermark_cover.watermark(rec, wm_cfg)
                 rec["run_id"] = run_id  # Q7: persist into manifest.backend.run_id (publish reads it back)
                 manifest_path = build_manifest.build(rec, out_dir, audit_log)
                 post_id = Path(manifest_path).parent.name
@@ -136,7 +145,7 @@ def run_pipeline(items, webui_cfg: dict, progress_cb=None) -> dict:
                 _report(f"built {post_id}")
             except Exception as exc:  # noqa: BLE001 - classify, record, keep batch alive
                 error_class = _error_class(exc)
-                failed.append({"title": title, "stage": "build",
+                failed.append({"post_id": None, "stage": "build",
                                "error": str(exc), "error_class": error_class})
                 runs.record_run(webui_cfg["state_path"], stage="build", post_id=None,
                                 status="failed", detail=title, error=str(exc),
@@ -152,7 +161,8 @@ def run_pipeline(items, webui_cfg: dict, progress_cb=None) -> dict:
 # Auto-pipeline: draft → verify → publish (public unified entry point, P7)
 # ---------------------------------------------------------------------------
 
-def _retry(fn, times: int = 3, delay: float = 1.0) -> tuple[Any, Exception | None]:
+def _retry(fn: Callable[[], object], times: int = 3,
+           delay: float = 1.0) -> tuple:  # (result, error_or_None)
     """Call fn() up to *times* attempts, sleeping *delay* seconds between retries."""
     last_exc: Exception | None = None
     for attempt in range(times):
@@ -166,14 +176,14 @@ def _retry(fn, times: int = 3, delay: float = 1.0) -> tuple[Any, Exception | Non
 
 
 def run_auto_pipeline(
-    built: list[dict],
+    built: list[PipelineItem],
     cfg: dict,
     *,
     timeout_ms: int = 30_000,
-    on_progress=None,
-    on_status=None,
-    on_session_expired=None,
-) -> dict:
+    on_progress: Callable[[str], object] | None = None,
+    on_status: Callable[[str], object] | None = None,
+    on_session_expired: Callable[[dict], object] | None = None,
+) -> AutoPipelineResult:
     """Draft→verify→publish for each item in *built*.
 
     *built* is the list from run_pipeline()["built"]:
@@ -205,9 +215,9 @@ def run_auto_pipeline(
 
     total = len(built)
     run_id = runs.new_run_id()
-    drafted_ok: list[dict] = []
-    verify_ok: list[dict] = []
-    failed: list[dict] = []
+    drafted_ok: list[PipelineItem] = []
+    verify_ok: list[PipelineItem] = []
+    failed: list[PipelineFailed] = []
 
     # --- DRAFT LOOP ---
     _report(f"自動建草稿（共 {total} 篇）…")
@@ -228,7 +238,7 @@ def run_auto_pipeline(
             state=cfg["state_path"],
             dry_run=False,
         )
-        _rv, err = _retry(lambda ns=ns: draft_post._run(ns))
+        _rv, err = _retry(lambda ns=ns: draft_post.run(ns))  # type: ignore[misc]
         if err is None:
             drafted_ok.append(item)
             runs.record_run(cfg["state_path"], stage="draft", post_id=pid,
@@ -260,7 +270,7 @@ def run_auto_pipeline(
             state=cfg["state_path"],
             dry_run=False,
         )
-        _rv, err = _retry(lambda ns=ns: verify_draft._run(ns))
+        _rv, err = _retry(lambda ns=ns: verify_draft.run(ns))  # type: ignore[misc]
         if err is None:
             verify_ok.append(item)
             runs.record_run(cfg["state_path"], stage="verify", post_id=pid,
@@ -303,7 +313,7 @@ def run_auto_pipeline(
             approve=True,
             expected_content_id=cid,
         )
-        _rv, err = _retry(lambda ns=ns: publish_post._run(ns))
+        _rv, err = _retry(lambda ns=ns: publish_post.run(ns))  # type: ignore[misc]
         if err is None:
             publish_ok += 1
         else:

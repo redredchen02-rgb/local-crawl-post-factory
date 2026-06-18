@@ -34,7 +34,9 @@ def test_post_settings_persists(tmp_path):
 def test_post_settings_invalid_url_400(tmp_path):
     client, cfgp = _client(tmp_path)
     r = client.post("/settings", data={"start_url": "not-a-url", "limit": "30"})
-    assert r.status_code == 400
+    assert r.status_code == 200  # HTMX inline: re-renders form with per-field error
+    assert "field-err" in r.text
+    assert "invalid start_url" in r.text
     # original config not corrupted
     assert yaml.safe_load(open(cfgp, encoding="utf-8"))["start_url"] == "https://example.com/news"
 

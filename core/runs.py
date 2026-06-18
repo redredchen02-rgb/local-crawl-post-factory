@@ -9,17 +9,13 @@ Lives in the same SQLite file as ``items`` (state path). Division of truth:
 """
 
 import sqlite3
+from collections.abc import Generator
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
-from core.errors import DependencyError
+from core.db import connect as _db_connect
 
-# Schema kept in sync with the migration in _ensure_schema(): a fresh DB gets
-# run_id/severity from this CREATE; an old DB gets them via ADD COLUMN. Both
-# must end with identical columns.
-# Table create only. Indexes are created in _ensure_schema *after* migration so
-# an index on a post-release column (run_id) is never built before ADD COLUMN.
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS runs (
   id        INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -34,13 +30,16 @@ CREATE TABLE IF NOT EXISTS runs (
 );
 """
 
-# Columns added after the original release; applied to old DBs via ADD COLUMN.
-_ADDED_COLUMNS = (("run_id", "TEXT"), ("severity", "TEXT"))
-_INDEXES = (
+_MIGRATIONS = [
+    (1, "ALTER TABLE runs ADD COLUMN run_id TEXT;"),
+    (2, "ALTER TABLE runs ADD COLUMN severity TEXT;"),
+]
+
+_EXTRA = [
     "CREATE INDEX IF NOT EXISTS idx_runs_ts ON runs(ts)",
     "CREATE INDEX IF NOT EXISTS idx_runs_post ON runs(post_id)",
     "CREATE INDEX IF NOT EXISTS idx_runs_run_id ON runs(run_id)",
-)
+]
 
 
 def _now() -> str:
@@ -61,42 +60,14 @@ def new_run_id() -> str:
     return f"{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%f')}-{_run_seq}"
 
 
-def _ensure_schema(conn) -> None:
-    """Create the table and bring an old DB up to the current columns.
-
-    Kept off the hot write path: callers run this once per connection at open
-    time, not per insert. Tolerates a concurrent migration (duplicate column).
-    """
-    conn.executescript(_SCHEMA)
-    existing = {row[1] for row in conn.execute("PRAGMA table_info(runs)")}
-    for name, coltype in _ADDED_COLUMNS:
-        if name not in existing:
-            try:
-                conn.execute(f"ALTER TABLE runs ADD COLUMN {name} {coltype}")
-            except sqlite3.OperationalError:  # pragma: no cover - concurrent migrate
-                pass  # another connection added it first
-    for stmt in _INDEXES:  # after migration: run_id column now exists
-        conn.execute(stmt)
-
-
 @contextmanager
-def _connect(path):
-    p = Path(path)
-    p.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        conn = sqlite3.connect(str(p))
-    except sqlite3.Error as exc:  # pragma: no cover
-        raise DependencyError(f"sqlite unavailable: {exc}")
-    try:
-        _ensure_schema(conn)
+def _connect(path: str) -> Generator[sqlite3.Connection, None, None]:
+    with _db_connect(path, _SCHEMA, migrations=_MIGRATIONS, extra=_EXTRA) as conn:
         yield conn
-        conn.commit()
-    finally:
-        conn.close()
 
 
 @contextmanager
-def open_run_conn(path):
+def open_run_conn(path: str) -> Generator[sqlite3.Connection, None, None]:
     """Reusable connection for batched record_run calls within one pipeline run.
 
     Keeps a single SQLite connection open across multiple record_run() calls,
@@ -114,8 +85,10 @@ def open_run_conn(path):
         yield conn
 
 
-def record_run(path, *, stage, status, post_id=None, detail=None, error=None,
-               run_id=None, severity=None, conn=None) -> None:
+def record_run(path: str, *, stage: str, status: str, post_id: str | None = None,
+               detail: str | None = None, error: str | None = None,
+               run_id: str | None = None, severity: str | None = None,
+               conn: sqlite3.Connection | None = None) -> None:
     """Append one run record. Never raises on a missing table (auto-created).
 
     Pass ``conn`` (from :func:`open_run_conn`) to reuse an existing connection
@@ -139,7 +112,20 @@ def record_run(path, *, stage, status, post_id=None, detail=None, error=None,
             )
 
 
-def list_runs(path, limit=100, *, post_id=None, severity=None, run_id=None) -> list:
+def purge_before(path: str, cutoff_iso: str) -> int:
+    """Delete run records older than ``cutoff_iso`` (UTC ISO 8601).
+
+    Returns the number of deleted rows. No-op if the DB file doesn't exist.
+    """
+    if not Path(path).exists():
+        return 0
+    with _connect(path) as conn:
+        cur = conn.execute("DELETE FROM runs WHERE ts < ?", (cutoff_iso,))
+    return cur.rowcount
+
+
+def list_runs(path: str, limit: int = 100, *, post_id: str | None = None,
+              severity: str | None = None, run_id: str | None = None) -> list[dict]:
     """Return the most recent runs (newest first) as dicts, optionally filtered.
 
     Filter by ``run_id`` to pull the whole lifecycle of one pipeline/batch run
@@ -147,7 +133,8 @@ def list_runs(path, limit=100, *, post_id=None, severity=None, run_id=None) -> l
     """
     if not Path(path).exists():
         return []
-    where, params = [], []
+    where: list[str] = []
+    params: list[str | int] = []
     if post_id is not None:
         where.append("post_id = ?")
         params.append(post_id)

@@ -82,9 +82,9 @@ def _make_built(post_id: str, tmp_path, title: str = "Test Title") -> dict:
 
 @patch("core.pipeline.runs.record_run")
 @patch("core.pipeline.reviewed.mark")
-@patch("core.pipeline.publish_post._run")
-@patch("core.pipeline.verify_draft._run")
-@patch("core.pipeline.draft_post._run")
+@patch("core.pipeline.publish_post.run")
+@patch("core.pipeline.verify_draft.run")
+@patch("core.pipeline.draft_post.run")
 def test_happy_path_all_succeed(mock_draft, mock_verify, mock_publish,
                                 mock_mark, mock_record, tmp_path):
     cfg = _make_cfg(tmp_path)
@@ -104,9 +104,9 @@ def test_happy_path_all_succeed(mock_draft, mock_verify, mock_publish,
 
 @patch("core.pipeline.runs.record_run")
 @patch("core.pipeline.reviewed.mark")
-@patch("core.pipeline.publish_post._run")
-@patch("core.pipeline.verify_draft._run")
-@patch("core.pipeline.draft_post._run")
+@patch("core.pipeline.publish_post.run")
+@patch("core.pipeline.verify_draft.run")
+@patch("core.pipeline.draft_post.run")
 def test_empty_built_early_return(mock_draft, mock_verify, mock_publish,
                                   mock_mark, mock_record, tmp_path):
     cfg = _make_cfg(tmp_path)
@@ -123,9 +123,9 @@ def test_empty_built_early_return(mock_draft, mock_verify, mock_publish,
 @patch("core.pipeline.time.sleep")
 @patch("core.pipeline.runs.record_run")
 @patch("core.pipeline.reviewed.mark")
-@patch("core.pipeline.publish_post._run")
-@patch("core.pipeline.verify_draft._run")
-@patch("core.pipeline.draft_post._run")
+@patch("core.pipeline.publish_post.run")
+@patch("core.pipeline.verify_draft.run")
+@patch("core.pipeline.draft_post.run")
 def test_draft_fail_all_retries_skips_verify_and_publish(
         mock_draft, mock_verify, mock_publish, mock_mark, mock_record, mock_sleep, tmp_path):
     cfg = _make_cfg(tmp_path)
@@ -144,9 +144,9 @@ def test_draft_fail_all_retries_skips_verify_and_publish(
 @patch("core.pipeline.time.sleep")
 @patch("core.pipeline.runs.record_run")
 @patch("core.pipeline.reviewed.mark")
-@patch("core.pipeline.publish_post._run")
-@patch("core.pipeline.verify_draft._run")
-@patch("core.pipeline.draft_post._run")
+@patch("core.pipeline.publish_post.run")
+@patch("core.pipeline.verify_draft.run")
+@patch("core.pipeline.draft_post.run")
 def test_verify_fail_skips_publish_counted_as_verify_fail(
         mock_draft, mock_verify, mock_publish, mock_mark, mock_record, mock_sleep, tmp_path):
     cfg = _make_cfg(tmp_path)
@@ -165,9 +165,9 @@ def test_verify_fail_skips_publish_counted_as_verify_fail(
 @patch("core.pipeline.time.sleep")
 @patch("core.pipeline.runs.record_run")
 @patch("core.pipeline.reviewed.mark")
-@patch("core.pipeline.publish_post._run")
-@patch("core.pipeline.verify_draft._run")
-@patch("core.pipeline.draft_post._run")
+@patch("core.pipeline.publish_post.run")
+@patch("core.pipeline.verify_draft.run")
+@patch("core.pipeline.draft_post.run")
 def test_one_draft_fails_others_continue(
         mock_draft, mock_verify, mock_publish, mock_mark, mock_record, mock_sleep, tmp_path):
     cfg = _make_cfg(tmp_path)
@@ -187,9 +187,9 @@ def test_one_draft_fails_others_continue(
 
 @patch("core.pipeline.runs.record_run")
 @patch("core.pipeline.reviewed.mark")
-@patch("core.pipeline.publish_post._run")
-@patch("core.pipeline.verify_draft._run")
-@patch("core.pipeline.draft_post._run")
+@patch("core.pipeline.publish_post.run")
+@patch("core.pipeline.verify_draft.run")
+@patch("core.pipeline.draft_post.run")
 def test_reviewed_mark_called_before_publish(
         mock_draft, mock_verify, mock_publish, mock_mark, mock_record, tmp_path):
     cfg = _make_cfg(tmp_path)
@@ -206,9 +206,9 @@ def test_reviewed_mark_called_before_publish(
 
 @patch("core.pipeline.runs.record_run")
 @patch("core.pipeline.reviewed.mark")
-@patch("core.pipeline.publish_post._run")
-@patch("core.pipeline.verify_draft._run")
-@patch("core.pipeline.draft_post._run")
+@patch("core.pipeline.publish_post.run")
+@patch("core.pipeline.verify_draft.run")
+@patch("core.pipeline.draft_post.run")
 def test_reviewed_mark_failure_skips_publish(
         mock_draft, mock_verify, mock_publish, mock_mark, mock_record, tmp_path):
     cfg = _make_cfg(tmp_path)
@@ -228,9 +228,9 @@ def test_reviewed_mark_failure_skips_publish(
 
 @patch("core.pipeline.runs.record_run")
 @patch("core.pipeline.reviewed.mark")
-@patch("core.pipeline.publish_post._run")
-@patch("core.pipeline.verify_draft._run")
-@patch("core.pipeline.draft_post._run")
+@patch("core.pipeline.publish_post.run")
+@patch("core.pipeline.verify_draft.run")
+@patch("core.pipeline.draft_post.run")
 def test_action_ns_none_skips_item(mock_draft, mock_verify, mock_publish,
                                    mock_mark, mock_record, tmp_path):
     """If manifest path does not exist, item is counted as failed."""
@@ -247,9 +247,9 @@ def test_action_ns_none_skips_item(mock_draft, mock_verify, mock_publish,
 
 @patch("core.pipeline.runs.record_run")
 @patch("core.pipeline.reviewed.mark")
-@patch("core.pipeline.publish_post._run")
-@patch("core.pipeline.verify_draft._run")
-@patch("core.pipeline.draft_post._run")
+@patch("core.pipeline.publish_post.run")
+@patch("core.pipeline.verify_draft.run")
+@patch("core.pipeline.draft_post.run")
 def test_manifest_missing_at_publish_skips(mock_draft, mock_verify, mock_publish,
                                            mock_mark, mock_record, tmp_path):
     """If manifest.json disappears after verify, publish is skipped as failure."""
@@ -293,7 +293,9 @@ def test_webui_adapter_delegates_to_core(tmp_path):
     job = _FakeJob()
 
     with patch("webui._auto_pipeline.pipeline.run_auto_pipeline") as mock_core:
-        _run_auto_pipeline(job, cfg, built)
+        mock_core.return_value = {"ok": 1, "failed": [], "verify_fail_count": 0}
+        result = _run_auto_pipeline(job, cfg, built)
+        assert result == {"ok": 1, "failed": [], "verify_fail_count": 0}
         mock_core.assert_called_once()
         call_kwargs = mock_core.call_args[1]
         assert call_kwargs["on_progress"] is not None
@@ -332,6 +334,7 @@ def test_auto_pipeline_wired_into_crawl(tmp_path):
           _patch("webui.routers.crawl.pipeline.run_pipeline",
                  return_value={"built": built, "failed": [], "skipped": 0}),
           _patch("webui.routers.crawl._run_auto_pipeline") as mock_auto):
+        mock_auto.return_value = {"ok": 1, "failed": [], "verify_fail_count": 0}
         response = client.post("/crawl")
         assert response.status_code == 200
         import time
@@ -339,6 +342,9 @@ def test_auto_pipeline_wired_into_crawl(tmp_path):
         mock_auto.assert_called_once()
         call_job, call_cfg, call_built = mock_auto.call_args[0]
         assert call_built == built
+        from core import jobs as jobs_mod
+        job = jobs_mod.get(call_job.id)
+        assert job["result"]["auto_pipeline"]["ok"] == 1
 
 
 def test_auto_pipeline_not_called_when_disabled(tmp_path):

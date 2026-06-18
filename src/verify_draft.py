@@ -44,6 +44,10 @@ def _run(args) -> int:
     return 0
 
 
+# Public API (used by core.pipeline and webui).
+run = _run
+
+
 def main(argv=None):
     args = _parse(sys.argv[1:] if argv is None else argv)
     cli.main_wrapper(lambda: _run(args))
