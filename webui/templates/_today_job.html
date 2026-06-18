@@ -1,0 +1,37 @@
+{% if job.status in ('pending', 'running') %}
+<div hx-get="/today/jobs/{{ job_id }}" hx-trigger="every 1s" hx-swap="outerHTML">
+  <p>狀態：{{ job.status }}…</p>
+  {% if job.current %}<p class="current">{{ job.current }}</p>{% endif %}
+  <ul>{% for step in job.progress %}<li>{{ step }}</li>{% endfor %}</ul>
+</div>
+{% elif job.status == 'done' %}
+{% set r = job.result %}
+<div>
+  {% if r and r.get('kind') == 'prep' %}
+  <p class="ok">備稿完成 ✓ 落庫 {{ r.ingested }} 筆，聚成 {{ r.clusters }} 個瓜，已打分 {{ r.scored }}。</p>
+  {% if r.single_source %}<p class="hint">單源資料：可信度暫不具區分力，排序以品質為主。</p>{% endif %}
+  {% if r.failed %}
+  <details>
+    <summary style="cursor:pointer;color:#d32f2f;">跳過 {{ r.failed | length }} 筆（解析失敗）</summary>
+    <ul>{% for f in r.failed %}<li class="error">{{ f.stage }} → {{ f.error }}</li>{% endfor %}</ul>
+  </details>
+  {% endif %}
+  <!-- refresh the scoop list now that scoring is done -->
+  <div hx-get="/today/list" hx-trigger="load" hx-target="#scoop-list" hx-swap="outerHTML"></div>
+  {% elif r and r.get('kind') == 'generate' %}
+  <p class="ok">生成完成 ✓ 成功 {{ r.built | length }} 包，失敗 {{ r.failed | length }}。</p>
+  {% if r.built %}
+  <ul>{% for b in r.built %}<li>{{ b.post_id }} — {{ b.title }}</li>{% endfor %}</ul>
+  {% endif %}
+  {% if r.failed %}
+  <details>
+    <summary style="cursor:pointer;color:#d32f2f;">查看失敗詳情 ({{ r.failed | length }})</summary>
+    <ul>{% for f in r.failed %}<li class="error"><strong>{{ f.cluster_id }}</strong>：{{ f.stage }} → {{ f.error }}</li>{% endfor %}</ul>
+  </details>
+  {% endif %}
+  <p class="hint"><a href="/packages">前往上膛清單審核發布 →</a></p>
+  {% endif %}
+</div>
+{% else %}
+<div><p class="error">失敗：{{ job.error }}</p></div>
+{% endif %}
