@@ -29,11 +29,17 @@ DEFAULTS = {
     "backend_config": "./configs/backend.yaml",
     "storage_state": "./auth/storage-state.json",
     "llm_config": "./configs/llm.yaml",
+    "scoring_config": "./configs/scoring.yaml",
+    # /today scoop list default filters. min_confidence is the minimum number of
+    # independent sources (source_count); 0 = no minimum, so a single-source
+    # library is never filtered to empty. min_score gates the combined score.
+    "min_confidence": 0,
+    "min_score": 0.0,
     "auto_pipeline": False,
 }
 
-_INT_FIELDS = ("limit", "max_pages", "concurrency", "max_text_chars")
-_FLOAT_FIELDS = ("download_delay",)
+_INT_FIELDS = ("limit", "max_pages", "concurrency", "max_text_chars", "min_confidence")
+_FLOAT_FIELDS = ("download_delay", "min_score")
 # Checkbox fields: form POST sends "on" when checked, absent when unchecked.
 _BOOL_FIELDS = ("auto_pipeline",)
 
@@ -153,6 +159,10 @@ def validate(cfg: dict) -> None:
         raise ValidationError("concurrency must be >= 1")
     if int(cfg.get("max_text_chars", 0)) < 0:
         raise ValidationError("max_text_chars must be >= 0")
+    if int(cfg.get("min_confidence", 0)) < 0:
+        raise ValidationError("min_confidence must be >= 0")
+    if float(cfg.get("min_score", 0)) < 0:
+        raise ValidationError("min_score must be >= 0")
 
 
 def _coerce(cfg: dict) -> None:
