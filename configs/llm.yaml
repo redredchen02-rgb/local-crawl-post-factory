@@ -1,0 +1,11 @@
+# 文章生成用的 OpenAI 相容端点设定。
+# API key 不写在这里——程式从环境变数 CPOST_LLM_API_KEY 读取（避免进版控外泄）。
+base_url: https://la-sealion.inaiai.com/v1
+model: gemma4-31b-heretic
+api_key_env: CPOST_LLM_API_KEY
+prompt_path: ./article_prompt.zh.md   # 相对本档（configs/）所在目录
+temperature: 0.7
+max_tokens: 4096
+timeout_sec: 120
+# 端点在 Cloudflare 后面，预设 Python User-Agent 会被挡（错误 1010），故带浏览器 UA。
+user_agent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"

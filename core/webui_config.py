@@ -33,6 +33,7 @@ DEFAULTS = {
     "audit_log": "./logs/audit.jsonl",
     "backend_config": "./configs/backend.yaml",
     "storage_state": "./auth/storage-state.json",
+    "llm_config": "./configs/llm.yaml",
     "auto_pipeline": False,
 }
 

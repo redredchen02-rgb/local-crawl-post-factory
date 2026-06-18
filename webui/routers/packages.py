@@ -4,7 +4,8 @@ from pathlib import Path
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse
 
-from core import manifest as mf, reviewed
+from core import llm, manifest as mf, reviewed
+from core.errors import CliError
 from webui._helpers import (
     _filter_packages,
     _move_to_trash,
@@ -89,6 +90,46 @@ def edit_package(request: Request, post_id: str,
     (pkg / "manifest.json").write_text(
         json.dumps(m, ensure_ascii=False, indent=2), encoding="utf-8")
     return HTMLResponse('<p class="ok">已儲存 ✓</p>')
+
+
+@router.post("/packages/{post_id}/generate", response_class=HTMLResponse)
+def generate_article(request: Request, post_id: str):
+    """Rewrite the crawled material into an article via the LLM (custom prompt).
+
+    Runs synchronously: FastAPI serves sync routes from a threadpool, so the LLM
+    latency never blocks the event loop. The result replaces both caption.txt
+    (shown/edited in the UI) and manifest content.body (what publishing uses), so
+    the displayed文案 and the publishable body stay in sync.
+    """
+    cfg = cfg_from_request(request)
+    pkg = _safe_pkg_dir(cfg["out_dir"], post_id)
+    if pkg is None or not (pkg / "manifest.json").exists():
+        return HTMLResponse('<p class="error">找不到此貼文包</p>', status_code=404)
+    m = json.loads((pkg / "manifest.json").read_text(encoding="utf-8"))
+    title = m.get("content", {}).get("title", "")
+    # Prefer the full crawled body (source_text.txt); fall back to the caption.
+    source_file = pkg / "source_text.txt"
+    if source_file.exists():
+        material = source_file.read_text(encoding="utf-8")
+    else:
+        caption_file = pkg / "caption.txt"
+        material = (caption_file.read_text(encoding="utf-8") if caption_file.exists()
+                    else m.get("content", {}).get("body", ""))
+    if not material.strip():
+        return HTMLResponse(
+            '<p class="error">此貼文沒有可用素材（source_text 與文案皆空）</p>',
+            status_code=400)
+    try:
+        llm_cfg = llm.load_config(cfg["llm_config"])
+        article = llm.chat(llm_cfg, llm.load_system_prompt(llm_cfg),
+                           llm.build_user_content(title, material))
+    except CliError as exc:
+        return HTMLResponse(f'<p class="error">生成失敗：{exc.message}</p>', status_code=502)
+    (pkg / "caption.txt").write_text(article, encoding="utf-8")
+    m.setdefault("content", {})["body"] = article
+    (pkg / "manifest.json").write_text(
+        json.dumps(m, ensure_ascii=False, indent=2), encoding="utf-8")
+    return HTMLResponse('<p class="ok">AI 生成完成 ✓ 即將刷新顯示新文案</p>')
 
 
 @router.get("/packages/{post_id}/failure-image")

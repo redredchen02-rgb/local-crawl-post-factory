@@ -24,6 +24,13 @@ cd "$PROJECT_DIR" || {
     exit 1
 }
 
+# ── 載入本機金鑰（AI 生成文章用；放在已被 git 忽略的 auth/，不進版控） ──
+# 檔案 auth/llm.env 內容範例（一行）：  export CPOST_LLM_API_KEY="sk-你的key"
+if [ -f "$PROJECT_DIR/auth/llm.env" ]; then
+    # shellcheck disable=SC1091
+    . "$PROJECT_DIR/auth/llm.env"
+fi
+
 # ── 確認指令存在 ──
 if ! command -v "$SERVICE_CMD" &>/dev/null; then
     echo "❌ 找不到指令：$SERVICE_CMD"
