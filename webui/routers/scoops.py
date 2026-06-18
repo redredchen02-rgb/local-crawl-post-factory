@@ -85,8 +85,15 @@ def today_job(request: Request, job_id: str):
 
 @router.post("/today/generate", response_class=HTMLResponse)
 def start_generate(request: Request, cluster_ids: list[str] = Form(default=[])):
-    # U2 placeholder: the real generation job is wired in U5.
     if not cluster_ids:
         return HTMLResponse('<p class="error">請先勾選至少一個瓜</p>', status_code=400)
-    return HTMLResponse(
-        f'<p class="ok">已收到選取 {len(cluster_ids)} 件（生成將於 U5 接通）</p>')
+    cfg = cfg_from_request(request)
+
+    def _work(job):
+        jobs.set_current(job, "生成中…")
+        return scoop_pipeline.run_generation_pipeline(
+            cluster_ids, cfg, progress_cb=lambda m: jobs.report(job, m))
+
+    job_id = jobs.submit(_work)
+    return templates.TemplateResponse(
+        request, "_today_job.html", {"job": jobs.get(job_id), "job_id": job_id})

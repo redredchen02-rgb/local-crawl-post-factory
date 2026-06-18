@@ -31,11 +31,11 @@ def _seed_cluster(conn, cluster_id="c1", sources=("src_a", "src_b")):
 
 def test_generate_synthesizes_item(tmp_path):
     cfg = {"model": "test-model"}
-    chat = lambda c, sp, uc: "合成出的新標題\n\n这是综合多源后的正文内容。"
     with library.connect(str(tmp_path / "s.sqlite")) as conn:
         _seed_cluster(conn)
-        item = generate_article.generate(conn, "c1", cfg, "系统提示", "2026-06-15T13:00:00Z",
-                                         _chat=chat)
+        item = generate_article.generate(
+            conn, "c1", cfg, "系统提示", "2026-06-15T13:00:00Z",
+            _chat=lambda c, sp, uc: "合成出的新標題\n\n这是综合多源后的正文内容。")
     assert item["title"] == "合成出的新標題"
     assert item["caption"] == "这是综合多源后的正文内容。"
     assert item["canonical_url"] == "https://scoop.local/c1"
@@ -91,10 +91,11 @@ def test_missing_key_maps_to_validation_error(tmp_path, monkeypatch):
 def test_synthetic_item_feeds_build_manifest(tmp_path):
     out_dir = str(tmp_path / "out")
     log = str(tmp_path / "audit.jsonl")
-    chat = lambda c, sp, uc: "建包用標題\n\n建包用的正文內容。"
     with library.connect(str(tmp_path / "s.sqlite")) as conn:
         _seed_cluster(conn)
-        item = generate_article.generate(conn, "c1", {"model": "m"}, "sp", "t", _chat=chat)
+        item = generate_article.generate(
+            conn, "c1", {"model": "m"}, "sp", "t",
+            _chat=lambda c, sp, uc: "建包用標題\n\n建包用的正文內容。")
     manifest_path = build_manifest.build(item, out_dir, log)
     manifest = json.loads(open(manifest_path, encoding="utf-8").read())
     assert manifest["content"]["body"] == "建包用的正文內容。"   # caption -> content.body

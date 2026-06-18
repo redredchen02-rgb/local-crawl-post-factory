@@ -11,10 +11,20 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from datetime import datetime, timezone
+from pathlib import Path
 
-from core import library, scoring_config
+from core import library, llm, scoring_config
 from core.pipeline import crawl_all_sources
-from src import cluster_scoops, library_ingest, normalize_items, score_scoops
+from src import (
+    build_manifest,
+    cluster_scoops,
+    generate_article,
+    library_ingest,
+    normalize_items,
+    score_scoops,
+)
+
+DEFAULT_SCOOP_PROMPT = "./configs/scoop_prompt.zh.md"
 
 
 def _utcnow() -> str:
@@ -76,3 +86,43 @@ def run_prep_pipeline(webui_cfg: dict,
         "top": top,
         "failed": failed,
     }
+
+
+def run_generation_pipeline(selected_cluster_ids: list[str], webui_cfg: dict,
+                            progress_cb: Callable[[str], object] | None = None) -> dict:
+    """Generate one original article per selected scoop and build its package.
+
+    Each selected cluster -> generate-article (synthetic item, body carried in
+    ``caption``) -> build-manifest (-> ``out/<post_id>/``, content.body = caption).
+    Per-cluster isolation: a failed scoop is recorded under ``failed`` and never
+    aborts the rest. Packages land in ``package_built`` and flow into the existing
+    packages console for the manual triple-gate publish -- the generation track
+    never auto-publishes and never bypasses the review gates.
+    """
+    def _report(msg: str) -> None:
+        if progress_cb:
+            progress_cb(msg)
+
+    now = _utcnow()
+    llm_cfg = llm.load_config(webui_cfg["llm_config"])
+    prompt = Path(webui_cfg.get("scoop_prompt") or DEFAULT_SCOOP_PROMPT).read_text(
+        encoding="utf-8")
+    out_dir = webui_cfg["out_dir"]
+    audit_log = webui_cfg["audit_log"]
+
+    built: list[dict] = []
+    failed: list[dict] = []
+    with library.connect(webui_cfg["state_path"]) as conn:
+        for cid in selected_cluster_ids:
+            try:
+                item = generate_article.generate(conn, cid, llm_cfg, prompt, now)
+                manifest_path = build_manifest.build(item, out_dir, audit_log)
+                post_id = Path(manifest_path).parent.name
+                built.append({"post_id": post_id, "title": item["title"]})
+                _report(f"生成 {post_id}")
+            except Exception as exc:  # noqa: BLE001 - isolate, record, keep going
+                # core.llm exceptions carry the upstream response body, never the
+                # Authorization header, so str(exc) is safe to surface to the UI.
+                failed.append({"cluster_id": cid, "stage": "generate", "error": str(exc)})
+                _report(f"失敗 {cid}：{exc}")
+    return {"built": built, "failed": failed, "kind": "generate"}
