@@ -1,9 +1,0 @@
-type: image
-mode: logo
-logo_path: ./assets/logo.png
-position: bottom_right
-opacity: 0.72
-margin_px: 32
-max_width_ratio: 0.22
-output_format: jpg
-quality: 92

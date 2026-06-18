@@ -8,12 +8,6 @@ from core.errors import ValidationError
 from src.build_manifest import _build, _run
 
 
-def _cover(tmp_path, name="src_cover.jpg"):
-    p = tmp_path / name
-    p.write_bytes(b"\xff\xd8\xff fake jpeg")
-    return p
-
-
 def _record(tmp_path, **overrides):
     rec = {
         "source_id": "site",
@@ -22,7 +16,6 @@ def _record(tmp_path, **overrides):
         "title": "Hello World",
         "caption": "a caption line\nhttps://example.com/post/1",
         "content_hash": "deadbeef",
-        "cover_path": str(_cover(tmp_path)),
         "discovered_at": "2026-06-15T00:00:00Z",
     }
     rec.update(overrides)
@@ -41,7 +34,6 @@ def test_happy_path_builds_folder(tmp_path):
     assert (folder / "manifest.json").exists()
     assert (folder / "caption.txt").exists()
     assert (folder / "preview.html").exists()
-    assert (folder / "cover.jpg").exists()
     assert manifest_path == str(folder / "manifest.json")
 
     manifest = json.loads((folder / "manifest.json").read_text())
@@ -49,7 +41,7 @@ def test_happy_path_builds_folder(tmp_path):
     assert manifest["post_id"] == "20260615_https_example_com_post_1"
     assert manifest["content"]["title"] == "Hello World"
     assert manifest["content"]["body"] == rec["caption"]
-    assert manifest["media"]["cover_path"] == "./cover.jpg"
+    assert "media" not in manifest
     assert manifest["audit"]["created_at"]
 
     assert "Hello World" in (folder / "preview.html").read_text()

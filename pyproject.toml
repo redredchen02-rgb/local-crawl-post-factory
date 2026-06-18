@@ -12,7 +12,6 @@ requires-python = ">=3.11"
 # set to include the currently-tested versions; raise them deliberately when moving up.
 dependencies = [
     "Scrapy>=2.11,<3",
-    "Pillow>=10.0,<12",
     "PyYAML>=6.0,<7",
 ]
 
@@ -26,10 +25,9 @@ auth-login = "src.auth_login:main"
 crawl-post-webui = "webui.app:run"
 crawl-posts = "src.crawl_posts:main"
 normalize-items = "src.normalize_items:main"
+library-ingest = "src.library_ingest:main"
 dedupe-posts = "src.dedupe_posts:main"
 render-caption = "src.render_caption:main"
-select-cover = "src.select_cover:main"
-watermark-cover = "src.watermark_cover:main"
 build-manifest = "src.build_manifest:main"
 draft-post = "src.draft_post:main"
 verify-draft = "src.verify_draft:main"

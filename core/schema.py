@@ -85,11 +85,6 @@ class ManifestContent(TypedDict, total=False):
     category: str | None
 
 
-class ManifestMedia(TypedDict, total=False):
-    cover_path: str | None
-    watermarked_cover_path: str | None
-
-
 class ManifestBackend(TypedDict, total=False):
     status: str
     draft_url: str | None
@@ -109,7 +104,6 @@ class Manifest(TypedDict, total=False):
     post_id: str
     source: ManifestSource
     content: ManifestContent
-    media: ManifestMedia
     backend: ManifestBackend
     audit: ManifestAudit
 
@@ -119,8 +113,6 @@ STATES = (
     "normalized",
     "deduped",
     "caption_rendered",
-    "cover_selected",
-    "watermarked",
     "package_built",
     "drafted",
     "draft_verified",
@@ -132,7 +124,7 @@ STATES = (
 def empty_manifest(post_id: str, item: dict) -> dict:
     """Build a fresh manifest skeleton (origin §5.3) in 'package_built' state.
 
-    Paths in media/content are filled by build-manifest; timestamps are stamped
+    Paths in content are filled by build-manifest; timestamps are stamped
     by the caller so this stays deterministic/pure.
     """
     return {
@@ -153,10 +145,6 @@ def empty_manifest(post_id: str, item: dict) -> dict:
             "source_text_path": None,
             "tags": item.get("tags", []),
             "category": item.get("category"),
-        },
-        "media": {
-            "cover_path": None,
-            "watermarked_cover_path": None,
         },
         "backend": {
             "status": "package_built",

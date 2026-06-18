@@ -21,21 +21,6 @@ def test_save_load_roundtrip(tmp_path):
     assert loaded["limit"] == 5
 
 
-def test_cover_retry_keys_roundtrip(tmp_path):
-    # R2: cover retry knobs must survive load() so the WebUI pipeline can use them.
-    p = str(tmp_path / "webui.yaml")
-    saved = webui_config.save(p, {"cover_retries": 2, "cover_backoff_sec": 0.5})
-    assert saved["cover_retries"] == 2 and saved["cover_backoff_sec"] == 0.5
-    loaded = webui_config.load(p)
-    assert loaded["cover_retries"] == 2
-    assert loaded["cover_backoff_sec"] == 0.5
-
-
-def test_invalid_cover_retries_rejected(tmp_path):
-    with pytest.raises(ValidationError):
-        webui_config.save(str(tmp_path / "webui.yaml"), {"cover_retries": "abc"})
-
-
 def test_invalid_start_url_rejected(tmp_path):
     with pytest.raises(ValidationError):
         webui_config.save(str(tmp_path / "webui.yaml"), {"start_url": "not-a-url"})
@@ -214,41 +199,20 @@ def test_max_text_chars_negative_rejected(tmp_path):
         webui_config.save(str(tmp_path / "webui.yaml"), {"max_text_chars": -1})
 
 
-# --- cover_enabled bool field (Unit 1, R1) ---
+# --- R4: legacy cover_* keys are ignored, not errors ---
 
-def test_cover_enabled_defaults_true(tmp_path):
-    """Backward-compat: a config without cover_enabled keeps covers on."""
-    cfg = webui_config.load(str(tmp_path / "nope.yaml"))
-    assert cfg["cover_enabled"] is True
-
-
-def test_cover_enabled_yaml_false_roundtrip(tmp_path):
-    """The shipped webui.yaml turns covers off; the false value must survive load."""
-    p = _write(tmp_path, "cover_enabled: false\n")
-    assert webui_config.load(str(p))["cover_enabled"] is False
-
-
-def test_cover_enabled_false_survives_settings_save(tmp_path):
-    """A settings save (load_raw + form merge) must not flip the YAML-only flag back on."""
-    p = _write(tmp_path, "start_url: https://example.com/news\ncover_enabled: false\n")
-    # cover_enabled is not a form field, so it is absent from the incoming form dict.
-    webui_config.save(str(p), {**webui_config.load_raw(str(p)),
-                               "start_url": "https://example.com/changed"})
-    assert webui_config.load(str(p))["cover_enabled"] is False
-
-
-def test_cover_enabled_form_on_coerced_to_true(tmp_path):
-    saved = webui_config.save(str(tmp_path / "webui.yaml"), {"cover_enabled": "on"})
-    assert saved["cover_enabled"] is True
-
-
-def test_cover_concurrency_upper_bound_rejected(tmp_path):
-    with pytest.raises(ValidationError, match="cover_download_concurrency"):
-        webui_config.save(str(tmp_path / "webui.yaml"),
-                          {"start_url": "https://x.com", "cover_download_concurrency": 20})
-
-
-def test_cover_concurrency_lower_bound_rejected(tmp_path):
-    with pytest.raises(ValidationError, match="cover_download_concurrency"):
-        webui_config.save(str(tmp_path / "webui.yaml"),
-                          {"start_url": "https://x.com", "cover_download_concurrency": 0})
+def test_legacy_cover_keys_ignored(tmp_path):
+    """R4 backward-compat: an old config carrying now-removed cover_* keys must
+    load without error, and those keys must not leak into the loaded config."""
+    p = _write(tmp_path,
+               "start_url: https://example.com/news\n"
+               "cover_enabled: false\n"
+               "cover_retries: 3\n"
+               "cover_backoff_sec: 1.5\n"
+               "cover_download_concurrency: 9\n"
+               "watermark_config: ./configs/watermark.yaml\n")
+    cfg = webui_config.load(str(p))
+    assert cfg["start_url"] == "https://example.com/news"
+    for k in ("cover_enabled", "cover_retries", "cover_backoff_sec",
+              "cover_download_concurrency", "watermark_config"):
+        assert k not in cfg

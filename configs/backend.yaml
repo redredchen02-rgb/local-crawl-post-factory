@@ -2,7 +2,6 @@ create_url: "https://example.com/admin/posts/create"
 selectors:
   title: 'input[name="title"]'
   body: 'textarea[name="content"]'
-  cover: 'input[type="file"][name="cover"]'
   category: 'select[name="category"]'
   tags: 'input[name="tags"]'
   save_draft: 'button:has-text("儲存草稿")'

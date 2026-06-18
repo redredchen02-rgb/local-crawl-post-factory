@@ -56,8 +56,7 @@ def test_post_settings_keeps_config_portable(tmp_path):
     client = TestClient(create_app(str(cfgp)))
     r = client.post("/settings", data={"start_url": "https://example.com/changed",
                                         "limit": "30", "download_delay": "0",
-                                        "concurrency": "8", "cover_download_concurrency": "5",
-                                        "cover_retries": "0", "cover_backoff_sec": "0"})
+                                        "concurrency": "8"})
     assert r.status_code == 200
     raw = yaml.safe_load(cfgp.read_text(encoding="utf-8"))
     for field in ("state_path", "out_dir", "download_dir", "audit_log", "storage_state"):

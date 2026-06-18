@@ -20,7 +20,7 @@ def test_missing_required_selector_raises_validation(tmp_path):
     bad.write_text(
         "create_url: 'https://x/create'\n"
         "selectors:\n"
-        "  title: 'input'\n"  # missing body/cover/save_draft/publish
+        "  title: 'input'\n"  # missing body/save_draft/publish
         "verify:\n"
         "  draft_success_text: 'ok'\n"
         "  publish_success_text: 'ok'\n",

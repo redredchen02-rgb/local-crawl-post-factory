@@ -10,7 +10,7 @@ from pathlib import Path
 from core.errors import ValidationError, DependencyError
 
 REQUIRED_TOP_LEVEL = ("create_url", "selectors", "verify")
-REQUIRED_SELECTORS = ("title", "body", "cover", "save_draft", "publish")
+REQUIRED_SELECTORS = ("title", "body", "save_draft", "publish")
 REQUIRED_VERIFY = ("draft_success_text", "publish_success_text")
 
 

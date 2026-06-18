@@ -50,7 +50,6 @@ def package_detail(request: Request, post_id: str):
     reviewed.mark(cfg["state_path"], post_id, reviewed.content_id(m))
     caption_file = pkg / "caption.txt"
     caption = caption_file.read_text(encoding="utf-8") if caption_file.exists() else m.get("content", {}).get("body", "")
-    has_cover = (pkg / "watermarked_cover.jpg").exists() or (pkg / "cover.jpg").exists()
     receipt = None
     receipt_path = pkg / "publish_receipt.json"
     if receipt_path.exists():
@@ -64,7 +63,6 @@ def package_detail(request: Request, post_id: str):
         "status": m.get("backend", {}).get("status", "?"),
         "canonical_url": m.get("source", {}).get("canonical_url", ""),
         "caption": caption,
-        "has_cover": has_cover,
         "failure": _read_failure(pkg),
         "receipt": receipt,
         "backend_config": cfg["backend_config"],
@@ -144,19 +142,6 @@ def package_failure_image(post_id: str, request: Request):
     if shot and Path(shot).resolve().parent == pkg.resolve() and Path(shot).exists():
         return FileResponse(shot)
     return PlainTextResponse("no failure image", status_code=404)
-
-
-@router.get("/packages/{post_id}/cover")
-def package_cover(post_id: str, request: Request):
-    cfg = cfg_from_request(request)
-    pkg = _safe_pkg_dir(cfg["out_dir"], post_id)
-    if pkg is None:
-        return PlainTextResponse("not found", status_code=404)
-    for name in ("watermarked_cover.jpg", "cover.jpg"):
-        f = pkg / name
-        if f.exists() and f.resolve().parent == pkg.resolve():
-            return FileResponse(str(f))
-    return PlainTextResponse("no cover", status_code=404)
 
 
 @router.post("/packages/{post_id}/rollback", response_class=HTMLResponse)

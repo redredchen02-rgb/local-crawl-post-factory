@@ -21,13 +21,6 @@
 </table>
 <p class="hint"><a href="/history?post_id={{ post_id }}">查看此貼文運行紀錄 →</a></p>
 
-{% if has_cover %}
-<h2>封面（含浮水印）</h2>
-<img src="/packages/{{ post_id }}/cover" alt="cover" style="max-width:100%">
-{% else %}
-<p class="hint">此貼文無封面圖。</p>
-{% endif %}
-
 <h2>標題
   <button type="button" class="sm secondary" style="margin-left:.5rem"
           onclick="this.closest('h2').nextElementSibling.toggleAttribute('hidden')">編輯</button>

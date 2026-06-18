@@ -29,17 +29,11 @@ except Exception as exc:  # pragma: no cover
 def _make_package(tmp_path):
     pkg = tmp_path / "20260615_demo"
     pkg.mkdir()
-    # a real (tiny) cover so the file upload exercises set_input_files
-    cover = pkg / "watermarked_cover.jpg"
-    from PIL import Image
-
-    Image.new("RGB", (32, 32), "white").save(cover)
     manifest = {
         "post_id": "20260615_demo",
         "source": {"canonical_url": "https://example.com/news/a"},
         "content": {"title": "整合測試貼文", "body": "內文 body", "tags": [], "category": None},
-        "media": {"cover_path": "./watermarked_cover.jpg",
-                  "watermarked_cover_path": "./watermarked_cover.jpg"},
+        "media": {},
         "backend": {"status": "package_built", "draft_url": None,
                     "published_url": None, "remote_id": None},
         "audit": {"created_at": None, "updated_at": None, "last_error": None},
