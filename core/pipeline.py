@@ -62,6 +62,34 @@ def crawl_items(webui_cfg: dict,
     return crawl_posts.crawl_items(opts, progress_cb=progress_cb, poll_sec=poll_sec)
 
 
+def crawl_all_sources(webui_cfg: dict,
+                      progress_cb: Callable[[str], object] | None = None,
+                      poll_sec: float = 0.5) -> list[dict]:
+    """Crawl every configured source and return the combined raw items.
+
+    Reads ``webui_cfg["sources"]`` -- a list of per-source dicts that override
+    the base config (e.g. ``start_url``, ``source_id``, ``item_regex``). Falls
+    back to a single crawl of ``webui_cfg["start_url"]`` when no ``sources`` list
+    is present (backward compatible). One source failing is reported via
+    ``progress_cb`` and never aborts the others -- mirroring the per-item
+    isolation of :func:`run_pipeline`.
+    """
+    sources = webui_cfg.get("sources")
+    if not sources:
+        return crawl_items(webui_cfg, progress_cb=progress_cb, poll_sec=poll_sec)
+
+    combined: list[dict] = []
+    for src in sources:
+        merged = {**webui_cfg, **src}
+        label = src.get("source_id") or src.get("start_url") or "?"
+        try:
+            combined.extend(crawl_items(merged, progress_cb=progress_cb, poll_sec=poll_sec))
+        except Exception as exc:  # noqa: BLE001 - one bad source must not abort the batch
+            if progress_cb:
+                progress_cb(f"source {label} failed: {exc}")
+    return combined
+
+
 def run_pipeline(items: list[dict], webui_cfg: dict,
                  progress_cb: Callable[[str], object] | None = None) -> PipelineResult:
     """Run normalize→dedupe→caption→cover→watermark→build over ``items``.
