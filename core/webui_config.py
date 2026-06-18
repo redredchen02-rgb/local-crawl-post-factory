@@ -22,6 +22,7 @@ DEFAULTS = {
     "cover_retries": 0,
     "cover_backoff_sec": 0.0,
     "cover_download_concurrency": 5,
+    "cover_enabled": True,
     "source_id": "",
     "template_path": "./templates/fixed-format.zh.yaml",
     "watermark_config": "./configs/watermark.yaml",
@@ -37,7 +38,10 @@ DEFAULTS = {
 _INT_FIELDS = ("limit", "max_pages", "concurrency", "cover_retries", "cover_download_concurrency")
 _FLOAT_FIELDS = ("download_delay", "cover_backoff_sec")
 # Checkbox fields: form POST sends "on" when checked, absent when unchecked.
-_BOOL_FIELDS = ("auto_pipeline",)
+# cover_enabled is YAML-driven (not a settings-form field yet); default True keeps
+# old configs unchanged, while configs/webui.yaml ships it false. The save flow
+# (load_raw -> merge form -> save) carries the YAML value through untouched.
+_BOOL_FIELDS = ("auto_pipeline", "cover_enabled")
 
 # Output/runtime path fields resolved relative to the config file's directory
 # (R7) so the WebUI writes to the same place regardless of launch directory.

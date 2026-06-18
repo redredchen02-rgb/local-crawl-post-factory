@@ -71,8 +71,11 @@ def run_pipeline(items: list[dict], webui_cfg: dict,
         # an unexpected system fault worth distinguishing for observability.
         return "validation" if isinstance(exc, ValidationError) else "system"
 
+    cover_enabled = bool(webui_cfg.get("cover_enabled", True))
     template_cfg = render_caption.load_template(webui_cfg["template_path"])
-    wm_cfg = watermark_cover.load_config(webui_cfg["watermark_config"])
+    # Watermark config is only needed when covers are on; loading it unconditionally
+    # would make a cover-less deployment still depend on watermark.yaml existing.
+    wm_cfg = watermark_cover.load_config(webui_cfg["watermark_config"]) if cover_enabled else None
     download_dir = Path(webui_cfg["download_dir"])
     out_dir = webui_cfg["out_dir"]
     audit_log = webui_cfg["audit_log"]
@@ -110,9 +113,12 @@ def run_pipeline(items: list[dict], webui_cfg: dict,
 
     # Stage 3: batch cover download (parallel).  Done before caption so the
     # per-item loop below is unmodified — just the select_cover call is removed.
-    select_cover.select_all(deduped, download_dir, COVER_TIMEOUT_SEC,
-                            cover_retries, cover_backoff,
-                            max_workers=cover_concurrency, progress_cb=_report)
+    # Skipped entirely when covers are disabled (records carry no cover_path,
+    # which build_manifest already treats as "no cover").
+    if cover_enabled:
+        select_cover.select_all(deduped, download_dir, COVER_TIMEOUT_SEC,
+                                cover_retries, cover_backoff,
+                                max_workers=cover_concurrency, progress_cb=_report)
 
     # Stages 4-6: caption → (cover already done) → watermark → build, per item.
     # A single open_run_conn reuses one SQLite connection for all record_run
@@ -133,7 +139,10 @@ def run_pipeline(items: list[dict], webui_cfg: dict,
                 if cover_err:
                     rec["cover_source"] = None
                     rec["cover_path"] = None
-                if not cover_err:
+                # Gate on cover_enabled too: when covers are off, select_all was
+                # skipped so there is no cover_error, but watermark must not run.
+                if cover_enabled and not cover_err:
+                    assert wm_cfg is not None  # loaded whenever cover_enabled is True
                     rec = watermark_cover.watermark(rec, wm_cfg)
                 rec["run_id"] = run_id  # Q7: persist into manifest.backend.run_id (publish reads it back)
                 manifest_path = build_manifest.build(rec, out_dir, audit_log)
