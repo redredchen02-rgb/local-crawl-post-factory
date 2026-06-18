@@ -80,6 +80,7 @@ class ManifestContent(TypedDict, total=False):
     title: str
     caption_path: str
     body: str
+    source_text_path: str | None
     tags: list[str]
     category: str | None
 
@@ -147,6 +148,9 @@ def empty_manifest(post_id: str, item: dict) -> dict:
             "title": item.get("title"),
             "caption_path": "./caption.txt",
             "body": item.get("caption", ""),
+            # Raw full article text (内文), distinct from body(=caption). Filled by
+            # build-manifest when the crawled record carries non-empty ``text``.
+            "source_text_path": None,
             "tags": item.get("tags", []),
             "category": item.get("category"),
         },

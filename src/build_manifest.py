@@ -86,8 +86,20 @@ def build(record: dict, out_dir: str, log_path: str) -> str:
         folder / "preview.html", _preview_html(title, caption, has_cover)
     )
 
+    # Persist the full crawled body (内文) for later cleaning/summarizing. This is
+    # NOT the published caption: it lands in its own file + manifest pointer and
+    # never touches content.body (which feeds publishing and the reviewed
+    # content_id fingerprint). Records without text leave source_text_path None.
+    source_text = record.get("text")
+    has_source_text = bool(source_text and str(source_text).strip())
+    if has_source_text:
+        write_text_no_overwrite(folder / "source_text.txt", str(source_text))
+
     manifest = empty_manifest(post_id, record)
     manifest["content"]["body"] = caption
+    manifest["content"]["source_text_path"] = (
+        "./source_text.txt" if has_source_text else None
+    )
     manifest["media"]["cover_path"] = "./cover.jpg" if has_cover else None
     manifest["media"]["watermarked_cover_path"] = (
         "./watermarked_cover.jpg" if has_watermarked else None
