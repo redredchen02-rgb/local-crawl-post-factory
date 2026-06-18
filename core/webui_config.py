@@ -146,8 +146,9 @@ def validate(cfg: dict) -> None:
         raise ValidationError("cover_retries must be >= 0")
     if float(cfg.get("cover_backoff_sec", 0)) < 0:
         raise ValidationError("cover_backoff_sec must be >= 0")
-    if int(cfg.get("cover_download_concurrency", 1)) < 1:
-        raise ValidationError("cover_download_concurrency must be >= 1")
+    cdc = int(cfg.get("cover_download_concurrency", 1))
+    if not 1 <= cdc <= 16:
+        raise ValidationError(f"cover_download_concurrency must be between 1 and 16, got {cdc}")
 
 
 def _coerce(cfg: dict) -> None:

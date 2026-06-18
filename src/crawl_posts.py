@@ -326,7 +326,7 @@ def _run(args) -> int:
     return 0
 
 
-def crawl_items(opts: dict, progress_cb=None) -> list:
+def crawl_items(opts: dict, progress_cb=None, poll_sec: float = 0.5) -> list:
     """Run the crawl in a fresh child process and return the items as a list.
 
     Shared by the CLI (`_run`) and the in-process pipeline orchestrator so both
@@ -362,7 +362,7 @@ def crawl_items(opts: dict, progress_cb=None) -> list:
             if snap is not None and snap != _last_progress:
                 _last_progress = snap
                 progress_cb(snap)
-            time.sleep(0.5)
+            time.sleep(poll_sec)
         # One final read in case the child wrote progress between the last
         # poll and process exit.
         snap = _read_progress(progress_path)

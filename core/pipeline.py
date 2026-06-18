@@ -33,7 +33,8 @@ COVER_TIMEOUT_SEC = 20
 
 
 def crawl_items(webui_cfg: dict,
-                progress_cb: Callable[[str], object] | None = None) -> list[dict]:
+                progress_cb: Callable[[str], object] | None = None,
+                poll_sec: float = 0.5) -> list[dict]:
     """Crawl the configured start_url and return raw crawled items.
 
     When *progress_cb* is given, the subprocess crawl calls it during
@@ -51,7 +52,7 @@ def crawl_items(webui_cfg: dict,
         "source_id": webui_cfg.get("source_id", ""),
         "start_urls": [webui_cfg["start_url"]],
     })
-    return crawl_posts.crawl_items(opts, progress_cb=progress_cb)
+    return crawl_posts.crawl_items(opts, progress_cb=progress_cb, poll_sec=poll_sec)
 
 
 def run_pipeline(items: list[dict], webui_cfg: dict,
