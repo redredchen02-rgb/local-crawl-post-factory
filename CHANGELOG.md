@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.2.1] - 2026-06-18
+
+### Fixed
+- **獨立可重新定位**：啟動器 `啟動本地服務.command` 改以自身位置解析專案目錄（取代硬編碼絕對路徑），pyenv PATH 改條件式 — 資料夾可複製/搬移到任意路徑或機器後直接啟動。
+- **設定存檔不再寫死絕對路徑**：WebUI「儲存設定」流程改以 `webui_config.load_raw()`（未解析）合併，避免把解析後的機器絕對路徑寫回 `configs/webui.yaml`（會破壞可攜性）；`configs/webui.yaml` 執行期路徑對齊專案根（`../`）。
+- **設定錯誤頁修復**：`/settings` 驗證失敗分支補上 `diag`，輸入非法值不再導致頁面渲染崩潰。
+
+### Changed
+- **倉庫衛生**：`.gitignore` 忽略工具目錄與備份（`*.bak`、`.omo/`、`.mimocode/`）並防止執行期產物再漏進 `configs/`；執行期狀態統一落在專案根 `state/`、`logs/`、`auth/`。
+- **VERSION 對齊**：`VERSION` 檔與 `pyproject.toml` 同步至 `0.2.2.1`（先前 `VERSION` 落後）。
+
+### Added
+- **可攜性回歸守門測試**（`tests/test_portability_guard.py`）：偵測追蹤檔中的機器絕對路徑與設定檔非相對路徑，鎖定可重新定位狀態。
+
 ## [0.2.2.0] - 2026-06-16
 
 ### Added
