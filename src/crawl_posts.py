@@ -267,13 +267,14 @@ def _crawl_worker(opts: dict, out_path: str, status_path: str,
         )
         process.crawl(_Spider)
         process.start()
-        out_file.flush()
-        out_file.close()
     except ImportError as exc:  # pragma: no cover - scrapy missing
         status["error"] = f"__dependency__: {exc}"
     except Exception as exc:  # noqa: BLE001
         status["error"] = repr(exc)
     finally:
+        if "out_file" in dir() and out_file and not out_file.closed:
+            out_file.flush()
+            out_file.close()
         with open(status_path, "w", encoding="utf-8") as fh:
             json.dump(status, fh)
 
@@ -374,30 +375,34 @@ def crawl_items(opts: dict, progress_cb=None, poll_sec: float = 0.5) -> list:
 
     proc.join()
 
-    status = {"responses": 0, "items": 0, "error": None}
-    if os.path.exists(status_path):
-        with open(status_path, encoding="utf-8") as fh:
-            try:
-                status = json.load(fh)
-            except json.JSONDecodeError:
-                pass
+    try:
+        status = {"responses": 0, "items": 0, "error": None}
+        if os.path.exists(status_path):
+            with open(status_path, encoding="utf-8") as fh:
+                try:
+                    status = json.load(fh)
+                except json.JSONDecodeError:
+                    pass
 
-    err = status.get("error")
-    if err and str(err).startswith("__dependency__"):
-        raise DependencyError(str(err))
+        err = status.get("error")
+        if err and str(err).startswith("__dependency__"):
+            raise DependencyError(str(err))
 
-    if status.get("responses", 0) == 0:
-        detail = err or "no response from any start URL"
-        raise ExternalError(f"crawl failed: site unreachable or timed out ({detail})")
+        if status.get("responses", 0) == 0:
+            detail = err or "no response from any start URL"
+            raise ExternalError(f"crawl failed: site unreachable or timed out ({detail})")
 
-    items = []
-    if os.path.exists(out_path):
-        with open(out_path, encoding="utf-8") as fh:
-            for line in fh:
-                line = line.strip()
-                if line:
-                    items.append(json.loads(line))
-    return items
+        items = []
+        if os.path.exists(out_path):
+            with open(out_path, encoding="utf-8") as fh:
+                for line in fh:
+                    line = line.strip()
+                    if line:
+                        items.append(json.loads(line))
+        return items
+    finally:
+        import shutil
+        shutil.rmtree(tmpdir, ignore_errors=True)
 
 
 def main() -> None:
