@@ -153,3 +153,15 @@ def test_auto_pipeline_invalid_type_rejected(tmp_path):
     p = str(tmp_path / "webui.yaml")
     with pytest.raises(ValidationError, match="auto_pipeline"):
         webui_config.save(p, {"auto_pipeline": ["oops"]})
+
+
+def test_cover_concurrency_upper_bound_rejected(tmp_path):
+    with pytest.raises(ValidationError, match="cover_download_concurrency"):
+        webui_config.save(str(tmp_path / "webui.yaml"),
+                          {"start_url": "https://x.com", "cover_download_concurrency": 20})
+
+
+def test_cover_concurrency_lower_bound_rejected(tmp_path):
+    with pytest.raises(ValidationError, match="cover_download_concurrency"):
+        webui_config.save(str(tmp_path / "webui.yaml"),
+                          {"start_url": "https://x.com", "cover_download_concurrency": 0})

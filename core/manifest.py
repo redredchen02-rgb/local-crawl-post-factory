@@ -20,7 +20,7 @@ def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def load(path) -> dict:
+def load(path: str | Path) -> dict:
     try:
         with open(path, encoding="utf-8") as fh:
             data = json.load(fh)
@@ -33,7 +33,7 @@ def load(path) -> dict:
     return data
 
 
-def save(path, manifest: dict) -> None:
+def save(path: str | Path, manifest: dict) -> None:
     manifest.setdefault("audit", {})["updated_at"] = now_iso()
     Path(path).write_text(
         json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True),
@@ -41,7 +41,7 @@ def save(path, manifest: dict) -> None:
     )
 
 
-def require_status(manifest: dict, expected) -> None:
+def require_status(manifest: dict, expected: str | tuple[str, ...]) -> None:
     """Raise ValidationError unless manifest backend.status is in ``expected``."""
     if isinstance(expected, str):
         expected = (expected,)
@@ -54,8 +54,10 @@ def require_status(manifest: dict, expected) -> None:
         )
 
 
-def set_backend(manifest: dict, *, status=None, draft_url=None,
-                published_url=None, last_error=None) -> dict:
+def set_backend(manifest: dict, *, status: str | None = None,
+                draft_url: str | None = None,
+                published_url: str | None = None,
+                last_error: str | None = None) -> dict:
     backend = manifest.setdefault("backend", {})
     if status is not None:
         backend["status"] = status

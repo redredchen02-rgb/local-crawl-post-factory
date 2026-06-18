@@ -4,7 +4,7 @@ from pathlib import Path
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse
 
-from core import reviewed
+from core import manifest as mf, reviewed
 from webui._helpers import (
     _filter_packages,
     _move_to_trash,
@@ -50,6 +50,13 @@ def package_detail(request: Request, post_id: str):
     caption_file = pkg / "caption.txt"
     caption = caption_file.read_text(encoding="utf-8") if caption_file.exists() else m.get("content", {}).get("body", "")
     has_cover = (pkg / "watermarked_cover.jpg").exists() or (pkg / "cover.jpg").exists()
+    receipt = None
+    receipt_path = pkg / "publish_receipt.json"
+    if receipt_path.exists():
+        try:
+            receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            pass
     return templates.TemplateResponse(request, "detail.html", {
         "post_id": post_id,
         "title": m.get("content", {}).get("title", ""),
@@ -58,6 +65,7 @@ def package_detail(request: Request, post_id: str):
         "caption": caption,
         "has_cover": has_cover,
         "failure": _read_failure(pkg),
+        "receipt": receipt,
         "backend_config": cfg["backend_config"],
     })
 
@@ -105,6 +113,23 @@ def package_cover(post_id: str, request: Request):
         return PlainTextResponse("not found", status_code=404)
     for name in ("watermarked_cover.jpg", "cover.jpg"):
         f = pkg / name
-        if f.exists():
+        if f.exists() and f.resolve().parent == pkg.resolve():
             return FileResponse(str(f))
     return PlainTextResponse("no cover", status_code=404)
+
+
+@router.post("/packages/{post_id}/rollback", response_class=HTMLResponse)
+def rollback_package(request: Request, post_id: str):
+    cfg = cfg_from_request(request)
+    pkg = _safe_pkg_dir(cfg["out_dir"], post_id)
+    if pkg is None or not (pkg / "manifest.json").exists():
+        return HTMLResponse('<p class="error">找不到此貼文包</p>', status_code=404)
+    manifest = mf.load(str(pkg / "manifest.json"))
+    if manifest.get("backend", {}).get("status") != "published":
+        return HTMLResponse('<p class="error">只有已發布的貼文可以 rollback</p>', status_code=400)
+    mf.set_backend(manifest, status="draft_verified", published_url=None)
+    mf.save(str(pkg / "manifest.json"), manifest)
+    receipt_path = pkg / "publish_receipt.json"
+    if receipt_path.exists():
+        receipt_path.unlink()
+    return HTMLResponse('<p class="ok">已回退至已驗證狀態，可重新發布</p>')

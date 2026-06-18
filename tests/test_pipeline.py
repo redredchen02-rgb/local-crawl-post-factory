@@ -296,3 +296,12 @@ def test_download_all_covers_progress_callback(tmp_path, monkeypatch):
     assert all("cover " in m for m in messages)
     assert messages[0].startswith("cover 1/2") or messages[0].startswith("cover 2/2")
     assert all(m.endswith("(ok)") for m in messages)
+
+
+def test_crawl_items_accepts_poll_sec():
+    """crawl_items() must accept poll_sec parameter (U5.3)."""
+    from src import crawl_posts
+    import inspect
+    sig = inspect.signature(crawl_posts.crawl_items)
+    assert "poll_sec" in sig.parameters
+    assert sig.parameters["poll_sec"].default == 0.5

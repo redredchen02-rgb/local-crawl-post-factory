@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-pytestmark = pytest.mark.slow  # Playwright subprocess; excluded from fast-run
+pytestmark = [pytest.mark.slow, pytest.mark.browser]  # Playwright subprocess; excluded from fast-run
 
 from core import cli  # noqa: E402
 from tests.mock_admin import MockAdmin  # noqa: E402

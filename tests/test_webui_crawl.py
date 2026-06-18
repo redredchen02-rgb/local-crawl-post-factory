@@ -108,6 +108,46 @@ def test_crawl_current_updates(tmp_path, monkeypatch):
     assert any("爬取完成" in m for m in job["progress"])
 
 
+def test_crawl_auto_pipeline_result_renders(tmp_path, monkeypatch):
+    cfgp = tmp_path / "webui.yaml"
+    webui_config.save(str(cfgp), {
+        "start_url": "https://example.com/news",
+        "auto_pipeline": True,
+        "out_dir": str(tmp_path / "out"),
+        "download_dir": str(tmp_path / "assets"),
+        "state_path": str(tmp_path / "state.sqlite"),
+        "audit_log": str(tmp_path / "audit.jsonl"),
+    })
+
+    built = [{"post_id": "p1", "title": "標題甲",
+              "manifest_path": str(tmp_path / "out" / "p1" / "manifest.json")}]
+    monkeypatch.setattr(pipeline, "crawl_items", lambda cfg, **kwargs: [])
+    monkeypatch.setattr(pipeline, "run_pipeline",
+                        lambda items, cfg, progress_cb=None:
+                        {"built": built, "failed": [], "skipped": 0})
+
+    def fake_auto(job, cfg, built_items, **kwargs):
+        time.sleep(0.1)
+        return {"ok": 1, "failed": [], "verify_fail_count": 0}
+
+    monkeypatch.setattr("webui.routers.crawl._run_auto_pipeline", fake_auto)
+    client = TestClient(create_app(str(cfgp)))
+    r = client.post("/crawl")
+    jid = _job_id(r.text)
+    assert jid
+
+    for _ in range(100):
+        done = client.get(f"/jobs/{jid}")
+        j = jobs_mod.get(jid)
+        if j and j["status"] in ("done", "failed"):
+            break
+        time.sleep(0.05)
+
+    assert jobs_mod.get(jid)["status"] == "done"
+    assert "自動發布完成" in done.text
+    assert "成功 1" in done.text
+
+
 def test_job_not_found_404(tmp_path, monkeypatch):
     client, _ = _client(tmp_path, monkeypatch)
     assert client.get("/jobs/deadbeef").status_code == 404

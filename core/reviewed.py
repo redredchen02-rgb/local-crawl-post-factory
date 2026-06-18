@@ -16,11 +16,12 @@ no check_same_thread concern).
 
 import hashlib
 import sqlite3
+from collections.abc import Generator
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
-from core.errors import DependencyError
+from core.db import connect as _db_connect
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS reviewed (
@@ -54,22 +55,12 @@ def content_id(manifest: dict) -> str:
 
 
 @contextmanager
-def _connect(path):
-    p = Path(path)
-    p.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        conn = sqlite3.connect(str(p))
-    except sqlite3.Error as exc:  # pragma: no cover - environment dependent
-        raise DependencyError(f"sqlite unavailable: {exc}")
-    try:
-        conn.executescript(_SCHEMA)
+def _connect(path: str) -> Generator[sqlite3.Connection, None, None]:
+    with _db_connect(path, _SCHEMA) as conn:
         yield conn
-        conn.commit()
-    finally:
-        conn.close()
 
 
-def mark(path, post_id: str, cid: str) -> None:
+def mark(path: str, post_id: str, cid: str) -> None:
     """Record (or refresh) that ``post_id`` was reviewed at content-id ``cid``."""
     with _connect(path) as conn:
         conn.execute(
@@ -79,7 +70,7 @@ def mark(path, post_id: str, cid: str) -> None:
         )
 
 
-def get(path, post_id: str):
+def get(path: str, post_id: str) -> str | None:
     """Return the reviewed content-id for ``post_id``, or None (fail-closed)."""
     if not Path(path).exists():
         return None

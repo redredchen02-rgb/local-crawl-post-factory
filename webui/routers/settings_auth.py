@@ -1,9 +1,22 @@
+import re
+
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse
 
 from core import webui_config
-from core.errors import CliError
+from core.errors import CliError, ValidationError
 from webui.routers._ctx import auth_light, cfg_from_request, templates
+
+
+_VALIDATION_FIELD_RE = re.compile(r"^(?:invalid )?(\w+) must|^invalid (\w+):")
+
+
+def _extract_field(message: str) -> str | None:
+    """Extract field name from a validation error message, or None if not field-specific."""
+    m = _VALIDATION_FIELD_RE.match(message)
+    if m:
+        return m.group(1) or m.group(2)
+    return None
 
 router = APIRouter()
 
@@ -50,6 +63,12 @@ def save_settings(request: Request,
                 "auto_pipeline": auto_pipeline}
     try:
         cfg = webui_config.save(request.app.state.config_path, {**cfg_from_request(request), **incoming})
+    except ValidationError as exc:
+        field = _extract_field(exc.message)
+        cfg_in = cfg_from_request(request)
+        return templates.TemplateResponse(
+            request, "settings.html", {"cfg": cfg_in, "saved": False,
+                                        "field_error": {field: exc.message} if field else None})
     except CliError as exc:
         return HTMLResponse(f'<p class="error">{exc.message}</p>', status_code=400)
     return templates.TemplateResponse(

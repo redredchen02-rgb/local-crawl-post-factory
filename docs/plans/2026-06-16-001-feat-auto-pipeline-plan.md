@@ -1,12 +1,15 @@
 ---
 title: "feat: Add auto-pipeline mode for one-click crawl→publish"
 type: feat
-status: active
+status: superseded
 date: 2026-06-16
 origin: docs/brainstorms/2026-06-16-auto-pipeline-requirements.md
+superseded_by: docs/plans/2026-06-18-001-fix-workflow-pipeline-stabilization-plan.md
 ---
 
 # feat: Add auto-pipeline mode for one-click crawl→publish
+
+> Superseded on 2026-06-18 by `docs/plans/2026-06-18-001-fix-workflow-pipeline-stabilization-plan.md`. The auto-pipeline feature has moved into the current codebase; remaining work should follow the stabilization plan, which reconciles docs, result rendering, public stage contracts, and operator recovery.
 
 ## Overview
 

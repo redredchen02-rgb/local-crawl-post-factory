@@ -19,6 +19,7 @@
   <tr><th>狀態</th><td><span class="pill {{ status }}">{{ status }}</span></td></tr>
   <tr><th>來源</th><td><a href="{{ canonical_url }}" target="_blank" rel="noopener">{{ canonical_url }}</a></td></tr>
 </table>
+<p class="hint"><a href="/history?post_id={{ post_id }}">查看此貼文運行紀錄 →</a></p>
 
 {% if has_cover %}
 <h2>封面（含浮水印）</h2>
@@ -74,8 +75,21 @@
 
 {% if status == 'published' %}
 <div style="background:var(--ok-weak);border:1px solid var(--ok);border-radius:var(--radius);padding:.75em 1em;margin:1.25rem 0;color:var(--ok);font-weight:600">
-  ✓ 已發布——此貼文已完成全部流程，無需再執行後台動作。
+  ✓ 已發布
+  {% if receipt %}
+  <br><span style="font-weight:400;font-size:.85rem">
+    發布時間：{{ receipt.published_at }}&ensp;|&ensp;
+    發布 URL：<a href="{{ receipt.published_url }}" target="_blank" rel="noopener">{{ receipt.published_url }}</a>
+  </span>
+  {% endif %}
 </div>
+<button class="danger" hx-post="/packages/{{ post_id }}/rollback"
+        hx-target="#action-area" hx-swap="innerHTML"
+        hx-confirm="確定回退至已驗證狀態？此貼文可重新發布。"
+        hx-indicator="this"
+        style="margin-top:.5rem">
+  <span class="htmx-indicator btn-spinner">⟳</span>回退至已驗證
+</button>
 {% else %}
 <h2>後台動作</h2>
 <p class="hint">需先以 <code>auth-login</code> 取得登入態。動作於背景執行。</p>

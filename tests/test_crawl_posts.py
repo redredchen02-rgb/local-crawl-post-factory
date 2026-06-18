@@ -8,7 +8,7 @@ is guaranteed free of Scrapy log noise.
 
 import pytest  # noqa: E402
 
-pytestmark = pytest.mark.slow  # subprocess + embedded HTTP server; excluded from fast-run
+pytestmark = [pytest.mark.slow, pytest.mark.subprocess]  # subprocess + embedded HTTP server; excluded from fast-run
 
 import http.server  # noqa: E402
 import json  # noqa: E402

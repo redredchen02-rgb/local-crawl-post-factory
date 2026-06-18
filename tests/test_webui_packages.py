@@ -67,6 +67,7 @@ def test_detail_page_shows_caption_and_source(tmp_path):
     assert r.status_code == 200
     assert "這是甲文的文案" in r.text
     assert "https://example.com/20260615_a" in r.text
+    assert "/history?post_id=20260615_a" in r.text
     # publish guidance is shown as CLI text, not an action
     assert "publish-post" in r.text and "--approve" in r.text
 
@@ -358,3 +359,49 @@ def test_detail_shows_history_link(tmp_path):
     assert r.status_code == 200
     assert "運行歷史" in r.text
     assert "/history?post_id=20260615_a" in r.text
+
+
+def test_rollback_published_package(tmp_path):
+    out = tmp_path / "out"
+    _pkg(out, "20260615_a", "甲文", status="published")
+    receipt = {"post_id": "20260615_a", "published_url": "https://example.com/p/1",
+               "published_at": "2026-06-18T12:00:00"}
+    pkg_dir = out / "20260615_a"
+    (pkg_dir / "publish_receipt.json").write_text(json.dumps(receipt), encoding="utf-8")
+    client = _client(tmp_path, out)
+    r = client.post("/packages/20260615_a/rollback")
+    assert r.status_code == 200
+    assert "ok" in r.text
+    manifest = json.loads((pkg_dir / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["backend"]["status"] == "draft_verified"
+    assert not (pkg_dir / "publish_receipt.json").exists()
+
+
+def test_rollback_non_published_rejected(tmp_path):
+    out = tmp_path / "out"
+    _pkg(out, "20260615_b", "乙文", status="draft_verified")
+    client = _client(tmp_path, out)
+    r = client.post("/packages/20260615_b/rollback")
+    assert r.status_code == 400
+    assert "error" in r.text
+
+
+def test_rollback_unknown_404(tmp_path):
+    client = _client(tmp_path, tmp_path / "out")
+    assert client.post("/packages/nope/rollback").status_code == 404
+
+
+def test_cover_rejects_symlink(tmp_path):
+    """Symlink cover.jpg outside pkg dir must NOT be served (U7.3)."""
+    import os
+    out = tmp_path / "out"
+    _pkg(out, "20260615_a", "甲文", cover=False)
+    pkg_dir = out / "20260615_a"
+    ext = tmp_path / "external.png"
+    from PIL import Image
+    Image.new("RGB", (16, 16), "red").save(ext)
+    sym = pkg_dir / "watermarked_cover.jpg"
+    os.symlink(str(ext), str(sym))
+    client = _client(tmp_path, out)
+    r = client.get("/packages/20260615_a/cover")
+    assert r.status_code == 404 or "no cover" in r.text

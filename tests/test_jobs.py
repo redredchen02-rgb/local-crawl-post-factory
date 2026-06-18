@@ -18,6 +18,8 @@ def test_submit_runs_and_completes():
     snap = _wait(jid)
     assert snap["status"] == "done"
     assert snap["result"] == {"answer": 42}
+    assert snap["created_at"] <= snap["updated_at"]
+    assert snap["finished_at"] is not None
 
 
 def test_failure_is_captured():
@@ -75,6 +77,7 @@ def test_set_current_overwrites():
     snap = _wait(jid)
     assert snap["current"] == "second"
     assert calls == ["second"]
+    assert snap["updated_at"] >= snap["created_at"]
 
 
 def test_current_does_not_affect_progress():
@@ -107,3 +110,43 @@ def test_two_jobs_current_independent():
     b_id = jobs.submit(work_b)
     assert _wait(a_id)["current"] == "status A"
     assert _wait(b_id)["current"] == "status B"
+
+
+def test_finished_jobs_pruned_after_ttl(monkeypatch):
+    """Finished jobs older than the TTL disappear from snapshots."""
+    jid = jobs.submit(lambda job: "ok")
+    snap = _wait(jid)
+    assert snap["status"] == "done"
+
+    with jobs._LOCK:
+        jobs._JOBS[jid].finished_at = 1.0
+
+    monkeypatch.setattr(jobs, "_JOB_TTL_SEC", 10)
+    monkeypatch.setattr(jobs.time, "time", lambda: 100.0)
+    assert jobs.get(jid) is None
+
+
+def test_pruning_preserves_running_jobs(monkeypatch):
+    """Overflow pruning removes finished jobs before active jobs."""
+    with jobs._LOCK:
+        jobs._JOBS.clear()
+
+    blocked = []
+
+    def work(job):
+        blocked.append(job.id)
+        while blocked:
+            time.sleep(0.01)
+
+    running_id = jobs.submit(work)
+    while not blocked:
+        time.sleep(0.01)
+    done_id = jobs.submit(lambda job: "done")
+    _wait(done_id)
+
+    monkeypatch.setattr(jobs, "_MAX_JOBS", 1)
+    jobs.get(running_id)
+
+    assert jobs.get(running_id) is not None
+    assert jobs.get(done_id) is None
+    blocked.clear()

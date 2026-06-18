@@ -99,6 +99,10 @@ def _mark_published(state_path, manifest, post_id, published_url):
                          now=mf.now_iso(), post_id=post_id, published_url=published_url)
 
 
+# Public API (used by core.pipeline and webui).
+run = _run
+
+
 def main(argv=None):
     args = _parse(sys.argv[1:] if argv is None else argv)
     cli.main_wrapper(lambda: _run(args))

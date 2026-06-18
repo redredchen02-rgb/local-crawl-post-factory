@@ -20,7 +20,7 @@ def require_url(url: str, field: str = "url") -> str:
     return url.strip()
 
 
-def require_nonempty(value, field: str) -> str:
+def require_nonempty(value: str, field: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise ValidationError(f"missing or empty field: {field}")
     return value.strip()

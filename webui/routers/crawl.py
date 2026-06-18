@@ -29,7 +29,7 @@ def start_crawl(request: Request):
         jobs.set_current(job, "建包中…")
         result = pipeline.run_pipeline(items, cfg, progress_cb=lambda m: jobs.report(job, m))
         if cfg.get("auto_pipeline"):
-            _run_auto_pipeline(
+            result["auto_pipeline"] = _run_auto_pipeline(
                 job, cfg, result.get("built", []),
                 note_expiry=lambda c: note_session_expiry(request, c),
             )

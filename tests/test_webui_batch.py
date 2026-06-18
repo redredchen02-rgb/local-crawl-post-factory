@@ -59,7 +59,7 @@ def test_batch_draft_isolates_failures_and_shares_run_id(tmp_path, monkeypatch):
             raise RuntimeError("boom on b")
         calls.append(ns.manifest)
 
-    monkeypatch.setattr(draft_post, "_run", fake_run)
+    monkeypatch.setattr(draft_post, "run", fake_run)
 
     r = client.post("/batch/draft", data={"post_ids": ["a", "b"]})
     text = _await_done(client, r.text)
@@ -73,7 +73,7 @@ def test_batch_draft_isolates_failures_and_shares_run_id(tmp_path, monkeypatch):
 def test_batch_traversal_post_id_skipped(tmp_path, monkeypatch):
     client, out, state = _client(tmp_path)
     _mkpkg(out, "good")
-    monkeypatch.setattr(verify_draft, "_run", lambda ns: None)
+    monkeypatch.setattr(verify_draft, "run", lambda ns: None)
 
     r = client.post("/batch/verify",
                     data={"post_ids": ["../../etc/passwd", "/abs/path", "good"]})

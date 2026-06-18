@@ -10,12 +10,30 @@
   {% if job.result and job.result.get('built') is not none %}
   <p class="ok">完成 ✓ 建包 {{ job.result.built | length }} 篇，跳過 {{ job.result.skipped }}，失敗 {{ job.result.failed | length }}。</p>
   <ul>{% for b in job.result.built %}<li>{{ b.post_id }} — {{ b.title }}</li>{% endfor %}</ul>
+  {% if job.result.get('auto_pipeline') %}
+  {% set auto = job.result.auto_pipeline %}
+  <p class="ok">自動發布完成 ✓ 成功 {{ auto.ok }}，失敗 {{ auto.failed | length }}，驗證失敗跳過 {{ auto.verify_fail_count }}。</p>
+  {% if auto.failed %}
+  <details>
+    <summary style="cursor:pointer;color:#d32f2f;">查看自動發布失敗 ({{ auto.failed | length }})</summary>
+    <ul>{% for f in auto.failed %}<li class="error" style="margin-bottom:0.5em;">{{ f.post_id or "unknown" }}：{{ f.stage }} → {{ f.error }}</li>{% endfor %}</ul>
+  </details>
+  {% endif %}
+  <p class="hint"><a href="/history">查看運行歷史 →</a></p>
+  {% endif %}
+  {% if job.result.failed %}
+  <details>
+    <summary style="cursor:pointer;color:#d32f2f;">查看失敗詳情 ({{ job.result.failed | length }})</summary>
+    <ul>{% for f in job.result.failed %}<li class="error" style="margin-bottom:0.5em;"><strong>{{ f.post_id or "unknown" }}</strong>: {{ f.stage }} → {{ f.error }}</li>{% endfor %}</ul>
+  </details>
+  {% endif %}
   <p class="hint"><a href="/packages">前往上膛清單 →</a></p>
   {% elif job.result and job.result.get('batch') %}
   <p class="ok">批量{{ stage_zh.get(job.result.stage, job.result.stage) }}完成 ✓ 成功 {{ job.result.ok | length }}，失敗 {{ job.result.failed | length }}。</p>
   {% if job.result.failed %}
   <ul>{% for f in job.result.failed %}<li class="error">{{ f.post_id }} — {{ f.error }}</li>{% endfor %}</ul>
   {% endif %}
+  <p class="hint"><a href="/history?run_id={{ job.result.run_id }}">查看此批量操作的完整紀錄 →</a></p>
   <p class="hint"><a href="/packages">前往上膛清單 →</a></p>
   {% else %}
   <p class="ok">完成 ✓ {{ stage_zh.get(job.result.stage, job.result.stage) }} — {{ job.result.post_id }}</p>

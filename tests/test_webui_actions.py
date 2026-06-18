@@ -6,11 +6,13 @@ import time
 
 import pytest
 import yaml
-from fastapi.testclient import TestClient
+pytestmark = pytest.mark.browser  # Playwright end-to-end; excluded from fast-run
 
-from webui.app import create_app
-from core import webui_config
-from tests.mock_admin import MockAdmin
+from fastapi.testclient import TestClient  # noqa: E402
+
+from webui.app import create_app  # noqa: E402
+from core import webui_config  # noqa: E402
+from tests.mock_admin import MockAdmin  # noqa: E402
 
 playwright = pytest.importorskip("playwright.sync_api")
 try:

@@ -1,18 +1,18 @@
-audit_log: /Users/dex/YDEX/INPORTANT WORK/发帖/0615 CPOST/configs/logs/audit.jsonl
+audit_log: ./logs/audit.jsonl
 auto_pipeline: false
 backend_config: ./configs/backend.yaml
 concurrency: 8
 cover_backoff_sec: 0.0
 cover_retries: 0
-deny_regex: login|admin|tag|category|search|page/[0-9]+
+deny_regex: login|admin|tag|category|search|author|page/[0-9]+
 download_delay: 0.0
-download_dir: /Users/dex/YDEX/INPORTANT WORK/发帖/0615 CPOST/configs/out/assets
-item_regex: /news/|/article/|/post/
+download_dir: ../out/assets
+item_regex: archives/\d+
 limit: 30
-out_dir: /Users/dex/YDEX/INPORTANT WORK/发帖/0615 CPOST/configs/out
+out_dir: ../out
 source_id: ''
 start_url: https://51cg1.com/
-state_path: /Users/dex/YDEX/INPORTANT WORK/发帖/0615 CPOST/configs/state/published.sqlite
-storage_state: /Users/dex/YDEX/INPORTANT WORK/发帖/0615 CPOST/configs/auth/storage-state.json
+state_path: ./state/published.sqlite
+storage_state: ./auth/storage-state.json
 template_path: ./templates/fixed-format.zh.yaml
 watermark_config: ./configs/watermark.yaml
