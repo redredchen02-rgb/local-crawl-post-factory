@@ -195,6 +195,25 @@ def test_auto_pipeline_invalid_type_rejected(tmp_path):
         webui_config.save(p, {"auto_pipeline": ["oops"]})
 
 
+# --- max_text_chars knob (Unit 2, R3) ---
+
+def test_max_text_chars_defaults_20000(tmp_path):
+    cfg = webui_config.load(str(tmp_path / "nope.yaml"))
+    assert cfg["max_text_chars"] == 20000
+
+
+def test_max_text_chars_roundtrip(tmp_path):
+    p = str(tmp_path / "webui.yaml")
+    saved = webui_config.save(p, {"max_text_chars": 0})  # 0 = no clamp
+    assert saved["max_text_chars"] == 0
+    assert webui_config.load(p)["max_text_chars"] == 0
+
+
+def test_max_text_chars_negative_rejected(tmp_path):
+    with pytest.raises(ValidationError, match="max_text_chars"):
+        webui_config.save(str(tmp_path / "webui.yaml"), {"max_text_chars": -1})
+
+
 # --- cover_enabled bool field (Unit 1, R1) ---
 
 def test_cover_enabled_defaults_true(tmp_path):

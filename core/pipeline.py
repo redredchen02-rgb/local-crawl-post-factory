@@ -50,6 +50,13 @@ def crawl_items(webui_cfg: dict,
         "download_delay": float(webui_cfg.get("download_delay", 0.0)),
         "concurrency": int(webui_cfg.get("concurrency", 8)),
         "source_id": webui_cfg.get("source_id", ""),
+        # Wire the text-length knobs through to the crawl subprocess; without these
+        # the config field is silently ignored and the crawler falls back to its
+        # own CONFIG_DEFAULTS. max_text_chars=0 means "no clamp".
+        "max_text_chars": int(webui_cfg.get(
+            "max_text_chars", crawl_posts.CONFIG_DEFAULTS["max_text_chars"])),
+        "min_text_chars": int(webui_cfg.get(
+            "min_text_chars", crawl_posts.CONFIG_DEFAULTS["min_text_chars"])),
         "start_urls": [webui_cfg["start_url"]],
     })
     return crawl_posts.crawl_items(opts, progress_cb=progress_cb, poll_sec=poll_sec)

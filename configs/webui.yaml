@@ -10,6 +10,7 @@ download_delay: 0.0
 download_dir: ../out/assets
 item_regex: archives/\d+
 limit: 30
+max_text_chars: 20000
 out_dir: ../out
 source_id: ''
 start_url: https://51cg1.com/

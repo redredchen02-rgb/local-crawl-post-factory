@@ -19,6 +19,7 @@ DEFAULTS = {
     "max_pages": 200,
     "download_delay": 0.0,
     "concurrency": 8,
+    "max_text_chars": 20000,
     "cover_retries": 0,
     "cover_backoff_sec": 0.0,
     "cover_download_concurrency": 5,
@@ -35,7 +36,7 @@ DEFAULTS = {
     "auto_pipeline": False,
 }
 
-_INT_FIELDS = ("limit", "max_pages", "concurrency", "cover_retries", "cover_download_concurrency")
+_INT_FIELDS = ("limit", "max_pages", "concurrency", "max_text_chars", "cover_retries", "cover_download_concurrency")
 _FLOAT_FIELDS = ("download_delay", "cover_backoff_sec")
 # Checkbox fields: form POST sends "on" when checked, absent when unchecked.
 # cover_enabled is YAML-driven (not a settings-form field yet); default True keeps
@@ -157,6 +158,8 @@ def validate(cfg: dict) -> None:
         raise ValidationError("download_delay must be >= 0")
     if int(cfg.get("concurrency", 1)) < 1:
         raise ValidationError("concurrency must be >= 1")
+    if int(cfg.get("max_text_chars", 0)) < 0:
+        raise ValidationError("max_text_chars must be >= 0")
     if int(cfg.get("cover_retries", 0)) < 0:
         raise ValidationError("cover_retries must be >= 0")
     if float(cfg.get("cover_backoff_sec", 0)) < 0:

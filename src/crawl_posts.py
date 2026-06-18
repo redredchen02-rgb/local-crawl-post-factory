@@ -229,8 +229,11 @@ def _crawl_worker(opts: dict, out_path: str, status_path: str,
                     or response.css('meta[name="date"]::attr(content)').get()
                     or ""
                 ).strip()
+                # Descendant ``::text`` (note the space) captures both a tag's direct
+                # text AND text nested in inline markup -- <strong>, <a>, <em> -- so
+                # inline-formatted words inside a paragraph are no longer dropped.
                 text_parts = response.css(
-                    "body p::text, body h1::text, body h2::text, body li::text"
+                    "body p ::text, body h1 ::text, body h2 ::text, body li ::text"
                 ).getall()
                 text = " ".join(t.strip() for t in text_parts if t.strip())
                 text = re.sub(r"\s+", " ", text).strip()
