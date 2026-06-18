@@ -41,6 +41,29 @@ def test_post_settings_invalid_url_400(tmp_path):
     assert yaml.safe_load(open(cfgp, encoding="utf-8"))["start_url"] == "https://example.com/news"
 
 
+def test_post_settings_keeps_config_portable(tmp_path):
+    """#3: saving settings via the WebUI must not rewrite infra paths to absolute
+    machine paths (which would break standalone relocation)."""
+    cfgp = tmp_path / "webui.yaml"
+    cfgp.write_text(
+        "start_url: https://example.com/news\n"
+        "state_path: ../state/db.sqlite\n"
+        "out_dir: ../out\n"
+        "download_dir: ../out/assets\n"
+        "audit_log: ../logs/audit.jsonl\n"
+        "storage_state: ../auth/ss.json\n",
+        encoding="utf-8")
+    client = TestClient(create_app(str(cfgp)))
+    r = client.post("/settings", data={"start_url": "https://example.com/changed",
+                                        "limit": "30", "download_delay": "0",
+                                        "concurrency": "8", "cover_download_concurrency": "5",
+                                        "cover_retries": "0", "cover_backoff_sec": "0"})
+    assert r.status_code == 200
+    raw = yaml.safe_load(cfgp.read_text(encoding="utf-8"))
+    for field in ("state_path", "out_dir", "download_dir", "audit_log", "storage_state"):
+        assert not str(raw[field]).startswith("/"), f"{field} became absolute: {raw[field]!r}"
+
+
 def test_run_binds_localhost(monkeypatch):
     captured = {}
 

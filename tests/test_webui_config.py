@@ -103,6 +103,46 @@ def test_storage_state_inside_out_dir_rejected(tmp_path):
         webui_config.load(str(p))
 
 
+def test_load_raw_does_not_resolve_paths(tmp_path):
+    """load_raw() keeps path fields in their on-disk (relative) form; load() resolves."""
+    p = _write(tmp_path, "state_path: ../state/db.sqlite\nout_dir: ../out\n")
+    raw = webui_config.load_raw(str(p))
+    assert raw["state_path"] == "../state/db.sqlite"
+    assert raw["out_dir"] == "../out"
+    assert webui_config.load(str(p))["out_dir"].startswith("/")  # contrast: load resolves
+
+
+def test_settings_save_via_load_raw_keeps_paths_portable(tmp_path):
+    """Portability (#3): the settings save flow merges over load_raw() (unresolved)
+    + a form edit. Infra paths must stay portable -- never baked to absolute."""
+    import yaml
+    p = _write(tmp_path,
+               "start_url: https://example.com/news\n"
+               "state_path: ../state/db.sqlite\n"
+               "out_dir: ../out\n"
+               "download_dir: ../out/assets\n"
+               "audit_log: ../logs/audit.jsonl\n"
+               "storage_state: ../auth/ss.json\n")
+    # Replicates webui/routers/settings_auth.save_settings.
+    webui_config.save(str(p), {**webui_config.load_raw(str(p)),
+                               "start_url": "https://example.com/changed"})
+    raw = yaml.safe_load(p.read_text(encoding="utf-8"))
+    assert raw["start_url"] == "https://example.com/changed"  # the real edit persists
+    for field in ("state_path", "out_dir", "download_dir", "audit_log", "storage_state"):
+        assert not str(raw[field]).startswith("/"), \
+            f"{field} persisted as absolute machine path: {raw[field]!r}"
+
+
+def test_settings_save_via_load_does_bake_absolute_paths(tmp_path):
+    """Regression witness: merging over load() (resolved) -- the OLD behavior --
+    bakes machine-absolute paths into the file. This is exactly what load_raw avoids."""
+    import yaml
+    p = _write(tmp_path, "out_dir: ../out\nstate_path: ../state/db.sqlite\n")
+    webui_config.save(str(p), {**webui_config.load(str(p)), "limit": 5})
+    raw = yaml.safe_load(p.read_text(encoding="utf-8"))
+    assert str(raw["out_dir"]).startswith("/")  # documents WHY the handler must use load_raw
+
+
 # --- auto_pipeline bool field ---
 
 def test_auto_pipeline_defaults_false(tmp_path):

@@ -11,3 +11,11 @@ auth/
 .coverage
 htmlcov/
 .ruff_cache/
+*.bak
+.omo/
+.mimocode/
+# Runtime output must land in project-root state/ logs/ auth/ (see configs/webui.yaml).
+# Guard against the WebUI ever re-polluting configs/ if launched with stale paths.
+configs/state/
+configs/logs/
+configs/auth/

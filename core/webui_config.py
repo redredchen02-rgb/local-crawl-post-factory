@@ -55,8 +55,13 @@ _ENV_OVERRIDES = {
 }
 
 
-def load(path: str) -> dict:
-    """Load settings, falling back to defaults for a missing file/keys."""
+def load_raw(path: str) -> dict:
+    """Load settings merged over defaults **without** resolving path fields.
+
+    The on-disk (relative) form of path fields is preserved. The settings save
+    flow uses this to carry forward non-form fields without baking ``load()``'s
+    machine-absolute paths back into the file (which would break relocation).
+    """
     try:
         import yaml
     except ImportError as exc:  # pragma: no cover
@@ -75,7 +80,13 @@ def load(path: str) -> dict:
             if key in cfg and value is not None:
                 cfg[key] = value
     _coerce(cfg)
-    _resolve_paths(cfg, base=p.parent)
+    return cfg
+
+
+def load(path: str) -> dict:
+    """Load settings (path fields resolved to absolute), defaults for missing keys."""
+    cfg = load_raw(path)
+    _resolve_paths(cfg, base=Path(path).parent)
     return cfg
 
 

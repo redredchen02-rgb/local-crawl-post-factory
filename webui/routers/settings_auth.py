@@ -61,19 +61,25 @@ def save_settings(request: Request,
                 "cover_download_concurrency": cover_download_concurrency,
                 "cover_retries": cover_retries, "cover_backoff_sec": cover_backoff_sec,
                 "auto_pipeline": auto_pipeline}
+    config_path = request.app.state.config_path
     try:
-        cfg = webui_config.save(request.app.state.config_path, {**cfg_from_request(request), **incoming})
+        # Merge over load_raw() (unresolved) -- never load() -- so non-form fields,
+        # including infra paths, keep their portable on-disk form instead of being
+        # rewritten to machine-absolute paths (which would break relocation, #3).
+        webui_config.save(config_path, {**webui_config.load_raw(config_path), **incoming})
     except ValidationError as exc:
         field = _extract_field(exc.message)
         cfg_in = cfg_from_request(request)
         return templates.TemplateResponse(
             request, "settings.html", {"cfg": cfg_in, "saved": False,
-                                        "field_error": {field: exc.message} if field else None})
+                                        "field_error": {field: exc.message} if field else None,
+                                        "diag": _diag(cfg_in, config_path)})
     except CliError as exc:
         return HTMLResponse(f'<p class="error">{exc.message}</p>', status_code=400)
+    cfg = cfg_from_request(request)  # re-load resolved, for accurate diag display
     return templates.TemplateResponse(
         request, "settings.html", {"cfg": cfg, "saved": True,
-                                   "diag": _diag(cfg, request.app.state.config_path)})
+                                   "diag": _diag(cfg, config_path)})
 
 
 @router.get("/auth-status", response_class=HTMLResponse)
