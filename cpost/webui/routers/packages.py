@@ -84,6 +84,12 @@ def edit_package(request: Request, post_id: str,
     if title:
         m.setdefault("content", {})["title"] = title
     if caption:
+        # Keep the publishable body in sync with the edited caption (U2/R1):
+        # publishing ships content.body, so writing only caption.txt would silently
+        # drop the edit. Mirrors generate_article's dual-write invariant. The body
+        # change also moves reviewed.content_id, so the gate correctly re-requires a
+        # review before this edit can publish.
+        m.setdefault("content", {})["body"] = caption
         (pkg / "caption.txt").write_text(caption, encoding="utf-8")
     (pkg / "manifest.json").write_text(
         json.dumps(m, ensure_ascii=False, indent=2), encoding="utf-8")

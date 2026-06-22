@@ -327,6 +327,26 @@ def test_edit_updates_caption(tmp_path):
     r = client.post("/packages/20260615_a/edit", data={"caption": "新文案內容"})
     assert r.status_code == 200
     assert (out / "20260615_a" / "caption.txt").read_text(encoding="utf-8") == "新文案內容"
+    # U2/R1: the edit must also reach the publishable body. Publishing ships
+    # content.body (not caption.txt), so writing only caption.txt would silently
+    # drop the operator's edit at publish time.
+    m = json.loads((out / "20260615_a" / "manifest.json").read_text(encoding="utf-8"))
+    assert m["content"]["body"] == "新文案內容"
+
+
+def test_edit_title_only_leaves_body_unchanged(tmp_path):
+    out = tmp_path / "out"
+    _pkg(out, "20260615_a", "舊標題")
+    mpath = out / "20260615_a" / "manifest.json"
+    m = json.loads(mpath.read_text(encoding="utf-8"))
+    m["content"]["body"] = "原始正文"
+    mpath.write_text(json.dumps(m), encoding="utf-8")
+    client = _client(tmp_path, out)
+    r = client.post("/packages/20260615_a/edit", data={"title": "新標題"})
+    assert r.status_code == 200
+    m2 = json.loads(mpath.read_text(encoding="utf-8"))
+    assert m2["content"]["title"] == "新標題"
+    assert m2["content"]["body"] == "原始正文"  # title-only edit must not touch body
 
 
 def test_edit_empty_both_400(tmp_path):
