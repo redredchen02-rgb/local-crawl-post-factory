@@ -100,6 +100,24 @@ def test_bad_item_isolated(tmp_path, monkeypatch):
     assert result["failed"][0]["stage"] == "normalize"
 
 
+def test_prep_result_declared_keys(tmp_path, monkeypatch):
+    """R7: run_prep_pipeline returns exactly the PrepPipelineResult keys, and
+    each top entry exactly the PrepTopScoop keys."""
+    same = "藝人A被爆新戀情震驚全網一夜洗版"
+    _patch_crawl(monkeypatch, [
+        _raw("a1", same, source_id="src_a"),
+        _raw("b1", same, source_id="src_b"),
+    ])
+    result = scoop_pipeline.run_prep_pipeline(_cfg(tmp_path))
+    assert set(result) == {
+        "ingested", "clusters", "scored", "single_source", "top", "failed"}
+    assert result["top"]
+    for entry in result["top"]:
+        assert set(entry) == {
+            "cluster_id", "representative_title", "source_count",
+            "confidence", "quality", "score"}
+
+
 def test_idempotent_rerun(tmp_path, monkeypatch):
     items = [
         _raw("a1", "重複跑測試的標題甲乙丙", source_id="s1"),

@@ -15,6 +15,13 @@ from pathlib import Path
 
 from core import library, llm, scoring_config
 from core.pipeline import crawl_all_sources
+from core.schema import (
+    GenerationBuilt,
+    GenerationPipelineResult,
+    PrepPipelineResult,
+    PrepTopScoop,
+    ScoopFailed,
+)
 from src import (
     build_manifest,
     cluster_scoops,
@@ -31,7 +38,7 @@ def _utcnow() -> str:
 
 def run_prep_pipeline(webui_cfg: dict,
                       progress_cb: Callable[[str], object] | None = None,
-                      on_source: Callable[[str, object], object] | None = None) -> dict:
+                      on_source: Callable[[str, object], object] | None = None) -> PrepPipelineResult:
     """Crawl (multi-source) → normalize → library-ingest → cluster → score.
 
     Produces ranked scoops in the library for the ``/today`` selection page,
@@ -52,7 +59,7 @@ def run_prep_pipeline(webui_cfg: dict,
     _report(f"爬取完成：{len(raw)} 篇")
 
     normalized: list[dict] = []
-    failed: list[dict] = []
+    failed: list[ScoopFailed] = []
     for item in raw:
         try:
             normalized.append(normalize_items.normalize_one(item))
@@ -70,7 +77,7 @@ def run_prep_pipeline(webui_cfg: dict,
         _report("打分完成")
 
     single_source = bool(scored) and all(s["source_count"] <= 1 for s in scored)
-    top = [
+    top: list[PrepTopScoop] = [
         {"cluster_id": s["cluster_id"],
          "representative_title": s.get("representative_title"),
          "source_count": s["source_count"],
@@ -90,7 +97,7 @@ def run_prep_pipeline(webui_cfg: dict,
 
 
 def run_generation_pipeline(selected_cluster_ids: list[str], webui_cfg: dict,
-                            progress_cb: Callable[[str], object] | None = None) -> dict:
+                            progress_cb: Callable[[str], object] | None = None) -> GenerationPipelineResult:
     """Generate one original article per selected scoop and build its package.
 
     Each selected cluster -> generate-article (synthetic item, body carried in
@@ -110,8 +117,8 @@ def run_generation_pipeline(selected_cluster_ids: list[str], webui_cfg: dict,
     out_dir = webui_cfg["out_dir"]
     audit_log = webui_cfg["audit_log"]
 
-    built: list[dict] = []
-    failed: list[dict] = []
+    built: list[GenerationBuilt] = []
+    failed: list[ScoopFailed] = []
     with library.connect(webui_cfg["state_path"]) as conn:
         for cid in selected_cluster_ids:
             try:

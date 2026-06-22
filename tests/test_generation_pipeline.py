@@ -25,7 +25,7 @@ def _cfg(tmp_path):
 
 def _fake_item(cid, now):
     return {"title": f"標題{cid}", "caption": f"正文內容{cid}", "text": f"正文內容{cid}",
-            "canonical_url": f"https://scoop.local/{cid}", "source_id": "scoop",
+            "canonical_url": f"https://scoop.cpost.local/{cid}", "source_id": "scoop",
             "url": "https://rep.example.com/x",
             "published_at": "2026-06-15T10:00:00+08:00", "discovered_at": now}
 

@@ -6,7 +6,8 @@ these helpers define required/optional fields plus the canonical state names.
 
 from __future__ import annotations
 
-from typing import NotRequired, TypedDict
+from collections.abc import Mapping
+from typing import Any, NotRequired, TypedDict
 
 # ---------------------------------------------------------------------------
 # Crawled / Normalized item  (origin §5.1)
@@ -62,6 +63,97 @@ class AutoPipelineResult(TypedDict, total=True):
     ok: int
     failed: list[PipelineFailed]
     verify_fail_count: int
+
+
+# ---------------------------------------------------------------------------
+# Scoop / generation-track orchestration (core.scoop_pipeline)
+# ---------------------------------------------------------------------------
+
+class ScoopFailed(TypedDict, total=True):
+    """A single failure recorded during prep/generation (stage-tagged)."""
+    stage: str
+    error: str
+    cluster_id: NotRequired[str]
+
+
+class PrepTopScoop(TypedDict, total=True):
+    """One ranked scoop summary in PrepPipelineResult.top."""
+    cluster_id: str
+    representative_title: str | None
+    source_count: int
+    confidence: float
+    quality: float
+    score: float
+
+
+class PrepPipelineResult(TypedDict, total=True):
+    """Return value of run_prep_pipeline()."""
+    ingested: int
+    clusters: int
+    scored: int
+    single_source: bool
+    top: list[PrepTopScoop]
+    failed: list[ScoopFailed]
+
+
+class GenerationBuilt(TypedDict, total=True):
+    """One built package summary in GenerationPipelineResult.built."""
+    post_id: str
+    title: str
+
+
+class GenerationPipelineResult(TypedDict, total=True):
+    """Return value of run_generation_pipeline()."""
+    built: list[GenerationBuilt]
+    failed: list[ScoopFailed]
+    kind: str
+
+
+# ---------------------------------------------------------------------------
+# PackageInput: the normalized item contract feeding build-manifest (R8)
+# ---------------------------------------------------------------------------
+
+# build_manifest._REQUIRED = ('title', 'canonical_url', 'caption'). These three
+# are the hard contract; the rest are optional source/provenance fields the
+# manifest carries through (see empty_manifest).
+PACKAGE_INPUT_REQUIRED = ("title", "canonical_url", "caption")
+
+
+class PackageInput(TypedDict, total=False):
+    """Normalized item handed to ``build_manifest.build`` (origin R8).
+
+    ONE shared contract for BOTH convergence tracks:
+      * legacy repost track: normalize-items -> build-manifest;
+      * scoop generation track: generate-article -> build-manifest.
+
+    Required (build_manifest._REQUIRED): ``title``, ``canonical_url``, ``caption``.
+    ``caption`` is the publishable body -> build-manifest maps it to
+    ``content.body``; ``text`` (if present) is the raw full article persisted to
+    source_text.txt and never touches ``content.body``.
+
+    ``canonical_url`` is the dedup/identity key. For the scoop track it is the
+    self-describing synthetic ``https://scoop.cpost.local/<cluster_id>`` -- a real
+    http(s)+hostname URL (``core.validators.valid_url`` rejects custom schemes and
+    hostless URLs); ``cluster_id`` is content-derived (``c_<hex>``) so the same
+    membership yields the same canonical, keeping cross-run dedup correct.
+
+    G5 provenance decision (R8): for the scoop track ``source_id`` is the fixed
+    ``"scoop"`` -- the aggregated article is a NEW synthesized artifact, not from
+    any single source. Per-source provenance lives in the cluster members /
+    library (tracked by R4); R4's per-member ``source_id`` does NOT flow into the
+    manifest.
+    """
+    title: str
+    canonical_url: str
+    caption: str
+    source_id: str | None
+    text: str
+    url: str | None
+    published_at: str | None
+    discovered_at: str | None
+    tags: list[str]
+    category: str | None
+    run_id: str | None
 
 
 # ---------------------------------------------------------------------------
@@ -121,7 +213,7 @@ STATES = (
 )
 
 
-def empty_manifest(post_id: str, item: dict) -> dict:
+def empty_manifest(post_id: str, item: Mapping[str, Any]) -> dict:
     """Build a fresh manifest skeleton (origin §5.3) in 'package_built' state.
 
     Paths in content are filled by build-manifest; timestamps are stamped
