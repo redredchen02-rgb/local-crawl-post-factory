@@ -145,6 +145,59 @@ def test_budget_cut_mid_url_leaves_no_fragment():
     assert "http" not in body
 
 
+def test_over_budget_preserves_word_ending_in_url_prefix_char():
+    """U17 regression (a): the body word right before the url ends in a char that
+    is a prefix of the url scheme (e.g. 'launch' -> ...'h'). The old prefix-eating
+    loop would silently drop that trailing 'h' ('launc'). The word must survive
+    intact and the url must appear exactly once at the tail.
+    """
+    url = "https://news.site/article/12345"
+    cfg = {
+        "name": "real-shape",
+        "max_chars": 53,
+        "format": "{description} {canonical_url} {hashtags}",
+    }
+    record = {
+        "title": "",
+        "description": "The mayor will launch",
+        "canonical_url": url,
+        "hashtags": " ".join("#x" for _ in range(100)),
+    }
+    caption = _render(record, cfg)
+    assert len(caption) <= 53
+    assert "The mayor will launch" in caption
+    assert "launc " not in caption  # the trailing 'h' was NOT eaten
+    assert caption.count(url) == 1
+    assert caption.endswith(url)
+
+
+def test_over_budget_body_quoting_url_early_keeps_trailing_text():
+    """U17 regression (b): the article body legitimately quotes the canonical url
+    early, then has in-budget trailing text. The old code cut at the FIRST url
+    occurrence and discarded everything after it. The trailing text must be kept.
+    """
+    url = "https://news.site/article/12345"
+    # description quotes the url early, then continues with text that fits budget.
+    cfg = {
+        "name": "real-shape",
+        "max_chars": 120,
+        "format": "{description}\n{canonical_url}\n{hashtags}",
+    }
+    record = {
+        "title": "",
+        "description": f"See {url} for the original, then read THIS_TRAILING_TEXT.",
+        "canonical_url": url,
+        "hashtags": " ".join("#x" for _ in range(100)),
+    }
+    caption = _render(record, cfg)
+    assert len(caption) <= 120
+    assert "THIS_TRAILING_TEXT" in caption  # trailing body text NOT discarded
+    # url still present (it appears in the quoted body and/or the tail); the
+    # appended tail guarantees the canonical link survives.
+    assert url in caption
+    assert caption.endswith(url)
+
+
 def test_determinism(template_cfg):
     record = _full_record()
     assert _render(record, template_cfg) == _render(dict(record), template_cfg)

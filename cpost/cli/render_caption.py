@@ -46,60 +46,52 @@ def load_template(path: str) -> dict:
     return cfg
 
 
-def _strip_url(body: str, url: str) -> str:
-    """Remove the url (and any leading fragment of it) from the end of ``body``.
-
-    The caption is built from a template that embeds the url mid-string, so a
-    naive ``caption[:budget]`` can leave the url intact or — worse — as a
-    partial fragment in the body. We re-append the url ourselves, so any whole
-    or partial occurrence trailing the truncated body must go first.
-    """
-    if not url:
-        return body
-    idx = body.find(url)
-    if idx != -1:
-        # Whole url present: cut from its first occurrence onward.
-        return body[:idx]
-    # No whole url, but the truncation may have severed it: drop the longest
-    # suffix of body that is a prefix of url (a partial url fragment).
-    for cut in range(len(body)):
-        if url.startswith(body[cut:]):
-            return body[:cut]
-    return body
-
-
-def _enforce_max_chars(caption: str, canonical_url: str, max_chars: int) -> str:
+def _enforce_max_chars(caption: str, url_free_body: str, canonical_url: str, max_chars: int) -> str:
     """Truncate to ``max_chars`` while keeping the canonical_url intact.
 
-    Deterministic: if over budget, cut the caption to fit, strip any whole or
-    partial url left in the body, then re-append the canonical_url on its own
-    line so the source link survives exactly once and is never fragmented.
+    Deterministic. The under-budget caption is returned verbatim (url stays at
+    its template position). Over budget, we do NOT search the truncated text for
+    the url — that risks eating legitimate body characters that merely share a
+    prefix with the url. Instead we truncate ``url_free_body`` (the same caption
+    rendered with ``{canonical_url}`` blank) to fit, then append the url once on
+    its own line so the source link survives exactly once and is never fragmented.
     """
     if max_chars <= 0 or len(caption) <= max_chars:
         return caption
     url = (canonical_url or "").strip()
     if not url:
         return caption[:max_chars]
-    # Reserve room for a newline + the url line; truncate the body region.
+    # Reserve room for a newline + the url line; truncate the url-free body.
     tail = "\n" + url
     budget = max_chars - len(tail)
     if budget < 0:
         # url alone exceeds budget: keep the url, drop the rest.
         return url[:max_chars]
-    body = _strip_url(caption[:budget], url).rstrip()
+    body = url_free_body[:budget].rstrip()
     return body + tail
+
+
+def _render_with(template_cfg: dict, values: "defaultdict[str, str]") -> str:
+    return template_cfg["format"].format_map(values).strip()
 
 
 def render(record: dict, template_cfg: dict) -> str:
     """Pure render: record + template config -> caption string."""
-    values = defaultdict(str)
+    values: "defaultdict[str, str]" = defaultdict(str)
     for field in _RENDER_FIELDS:
         value = record.get(field)
         if value is not None:
             values[field] = str(value)
-    caption = template_cfg["format"].format_map(values).strip()
+    caption = _render_with(template_cfg, values)
     max_chars = int(template_cfg.get("max_chars", 0) or 0)
-    return _enforce_max_chars(caption, values["canonical_url"], max_chars)
+    if max_chars <= 0 or len(caption) <= max_chars:
+        return caption
+    # Over budget: rebuild the body with the url slot blank so truncation can
+    # never sever the url or eat a legitimate body char that shares its prefix.
+    url_free_values = values.copy()
+    url_free_values["canonical_url"] = ""
+    url_free_body = _render_with(template_cfg, url_free_values)
+    return _enforce_max_chars(caption, url_free_body, values["canonical_url"], max_chars)
 
 
 _render = render  # deprecated: remove in vNEXT (use render)

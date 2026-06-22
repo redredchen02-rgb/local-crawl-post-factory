@@ -529,6 +529,45 @@ def test_child_finishing_under_budget_is_not_killed(monkeypatch, tmp_path):
     assert not proc.terminated and not proc.killed
 
 
+def test_child_finishing_at_deadline_with_progress_cb_not_killed(monkeypatch):
+    """U11: on the PROGRESS path, a child finishing right at the deadline boundary
+    keeps its results instead of being spuriously killed.
+
+    Mirrors test_child_finishing_under_budget_is_not_killed but exercises the
+    progress_cb poll loop: the loop straddles the deadline while the child is
+    alive, breaks, and the child then exits on the grace join. Before the fix the
+    progress branch set timed_out unconditionally on the deadline (without
+    re-checking is_alive), killing the finished child and discarding its results.
+    """
+    from cpost.cli import crawl_posts
+    from cpost.cli.crawl_posts import crawl_items
+
+    # Alive through the poll loop until the deadline; exits on the next join.
+    proc = _FakeProc(exits_on_join=True)
+    _patch_proc(monkeypatch, proc)
+
+    real_mkdtemp = crawl_posts.tempfile.mkdtemp
+
+    def fake_mkdtemp(*a, **k):
+        d = real_mkdtemp(*a, **k)
+        import json as _json
+        import os as _os
+        with open(_os.path.join(d, "status.json"), "w") as fh:
+            _json.dump({"responses": 1, "items": 1, "error": None}, fh)
+        with open(_os.path.join(d, "items.ndjson"), "w") as fh:
+            fh.write(_json.dumps({"url": "http://x/a", "title": "A"}) + "\n")
+        return d
+
+    monkeypatch.setattr(crawl_posts.tempfile, "mkdtemp", fake_mkdtemp)
+
+    opts = {"start_urls": ["http://x/a"]}
+    items = crawl_items(opts, progress_cb=lambda s: None, poll_sec=0.01,
+                        max_runtime_sec=0.05)
+
+    assert items == [{"url": "http://x/a", "title": "A"}]
+    assert not proc.terminated and not proc.killed
+
+
 def test_env_var_overrides_default_budget(monkeypatch):
     """CPOST_CRAWL_MAX_RUNTIME_SEC overrides the default when no arg is given."""
     from cpost.cli.crawl_posts import _resolve_max_runtime
