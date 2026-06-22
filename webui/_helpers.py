@@ -5,7 +5,8 @@ import logging
 import shutil
 import time
 from pathlib import Path
-from types import SimpleNamespace
+
+from core.backend_args import BackendInvocation
 
 __all__ = [
     "_safe_pkg_dir",
@@ -189,23 +190,18 @@ def _restore_from_trash(out_dir: str, post_id: str) -> str:
 
 
 def _action_ns(post_id: str, stage: str, cfg: dict):
-    """Build the argparse-style namespace for a manual backend command from webui cfg.
+    """Build the typed backend-invocation args for a manual backend command from webui cfg.
 
-    Returns (cfg, SimpleNamespace) or None when the package directory is missing.
+    Returns ``(cfg, BackendInvocation)`` or None when the package directory is missing.
     Used by webui/routers/actions.py for single-item manual draft/verify/publish actions.
+    ``timeout_ms`` is left at the BackendInvocation default (DEFAULT_TIMEOUT_MS).
     """
-    from browser import backend_driver  # import here to avoid adding browser dep at module level
-
     pkg = _safe_pkg_dir(cfg["out_dir"], post_id)
     if pkg is None:
         return None
-    return cfg, SimpleNamespace(
+    return cfg, BackendInvocation(
         manifest=str(pkg / "manifest.json"),
         backend=cfg["backend_config"],
         storage_state=cfg["storage_state"],
-        headless=True,
-        timeout_ms=backend_driver.DEFAULT_TIMEOUT_MS,
-        retries=None,
         state=cfg["state_path"],
-        dry_run=False,
     )
