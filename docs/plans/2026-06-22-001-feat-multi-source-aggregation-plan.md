@@ -150,7 +150,7 @@ flowchart TB
 
 ### 第一刀（最小可用 + 地基穩）
 
-- [ ] **U1：`sources` 設定一級化（+ `min_text_chars` 同類修補）**
+- [x] **U1：`sources` 設定一級化（+ `min_text_chars` 同類修補）**
 
 **Goal:** 讓 `sources`（per-source dict 清單）與 `min_text_chars` 成為 `webui_config` 認得、`load`/`save` 保留的欄位。
 
@@ -184,7 +184,7 @@ flowchart TB
 
 ---
 
-- [ ] **U2：主爬取路徑改爬所有啟用來源**
+- [x] **U2：主爬取路徑改爬所有啟用來源**
 
 **Goal:** 「立即爬取」與 `run_pipeline` 入口改走 `crawl_all_sources`,爬所有 `enabled` 來源;單站 = `sources=[]` 特例;逐來源失敗不中斷、結果可見。
 
@@ -224,7 +224,7 @@ flowchart TB
 
 ---
 
-- [ ] **U3：SQLite `busy_timeout`（並行不崩）**
+- [x] **U3：SQLite `busy_timeout`（並行不崩）**
 
 **Goal:** 每條 SQLite 連線在鎖競爭時等待而非立即 `database is locked`。
 
@@ -249,7 +249,7 @@ flowchart TB
 
 ---
 
-- [ ] **U4：原子寫檔（審計 + 不覆寫寫檔）**
+- [x] **U4：原子寫檔（審計 + 不覆寫寫檔）**
 
 **Goal:** `audit.purge_before` 與 `filesystem` 的不覆寫寫檔改 temp + `os.replace`,避免崩潰/並行截斷耐久記錄或毒化冪等。
 
@@ -275,7 +275,7 @@ flowchart TB
 
 ---
 
-- [ ] **U5：LLM 對外 HTTP 傳輸測試**
+- [x] **U5：LLM 對外 HTTP 傳輸測試**
 
 **Goal:** 覆蓋 `core/llm.py:chat` 的 `urlopen`、HTTP/URL error→型別例外映射、空/壞回應分支。
 
@@ -300,7 +300,7 @@ flowchart TB
 
 ---
 
-- [ ] **U6：修 `examples/scheduling.md`（刪 cover 殘留 + 多來源匯整 cron 範本）**
+- [x] **U6：修 `examples/scheduling.md`（刪 cover 殘留 + 多來源匯整 cron 範本）**
 
 **Goal:** cron 範本端到端可跑,並反映新的多來源**匯整**流（非舊單站轉貼）。
 
@@ -320,7 +320,7 @@ flowchart TB
 
 ---
 
-- [ ] **U7：文件對齊現實**
+- [x] **U7：文件對齊現實**
 
 **Goal:** 消除文件與程式的漂移,補上未文件化指令。
 
