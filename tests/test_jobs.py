@@ -1,6 +1,6 @@
 import time
 
-from core import jobs
+from cpost.core import jobs
 
 
 def _wait(job_id, timeout=5.0):

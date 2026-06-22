@@ -3,10 +3,10 @@ the publish-truth tables. library_items/clusters share the state DB with
 items/runs/reviewed, so a stray write or migration could corrupt dedupe truth.
 """
 
-from core import library, runs, state, url_utils
-from src.cluster_scoops import cluster_library
-from src.library_ingest import ingest
-from src.score_scoops import score_all
+from cpost.core import library, runs, state, url_utils
+from cpost.cli.cluster_scoops import cluster_library
+from cpost.cli.library_ingest import ingest
+from cpost.cli.score_scoops import score_all
 
 NOW = "2026-06-18T00:00:00+00:00"
 _CFG = {

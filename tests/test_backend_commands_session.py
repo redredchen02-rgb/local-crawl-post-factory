@@ -4,10 +4,10 @@ import contextlib
 import json
 
 
-from core import cli
-from core.errors import SessionExpiredError
-from src import draft_post
-from browser import backend_driver
+from cpost.core import cli
+from cpost.core.errors import SessionExpiredError
+from cpost.cli import draft_post
+from cpost.browser import backend_driver
 
 
 @contextlib.contextmanager

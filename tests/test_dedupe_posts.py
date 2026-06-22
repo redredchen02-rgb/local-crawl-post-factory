@@ -2,9 +2,9 @@
 
 import pytest
 
-from core import state
-from core.url_utils import title_hash
-from src.dedupe_posts import _dedupe
+from cpost.core import state
+from cpost.core.url_utils import title_hash
+from cpost.cli.dedupe_posts import _dedupe
 
 
 def _seed(db_path, *, canonical_url, title, status):

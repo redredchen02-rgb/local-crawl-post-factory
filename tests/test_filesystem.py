@@ -3,8 +3,8 @@ from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
-from core import filesystem
-from core.errors import ValidationError
+from cpost.core import filesystem
+from cpost.core.errors import ValidationError
 
 
 # --- write_text_no_overwrite --------------------------------------------------
@@ -51,7 +51,7 @@ def test_write_text_no_overwrite_partial_write_cleans_up(tmp_path, monkeypatch):
             return _BoomFile(fh)
         return fh
 
-    monkeypatch.setattr("core.filesystem.open", fake_open, raising=False)
+    monkeypatch.setattr("cpost.core.filesystem.open", fake_open, raising=False)
     with pytest.raises(OSError, match="disk full"):
         filesystem.write_text_no_overwrite(p, "hello")
     assert not p.exists()  # no sticky truncated file left behind

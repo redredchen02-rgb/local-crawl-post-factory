@@ -9,8 +9,8 @@ import json
 
 from fastapi.testclient import TestClient
 
-from webui.app import create_app
-from core import webui_config
+from cpost.webui.app import create_app
+from cpost.core import webui_config
 
 _TRAVERSAL = "..%2f..%2fetc"  # encoded ../../etc -> _safe_pkg_dir must reject
 

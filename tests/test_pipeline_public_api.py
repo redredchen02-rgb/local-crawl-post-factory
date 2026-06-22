@@ -6,7 +6,7 @@ callers (and ``from module import _xxx``) keep working for one deprecation
 cycle, and a parity run proves the rename changed no behavior.
 """
 
-from src import (
+from cpost.cli import (
     normalize_items,
     dedupe_posts,
     render_caption,
@@ -34,7 +34,7 @@ def test_old_alias_still_callable(tmp_path):
 
 def test_full_pipeline_parity(tmp_path):
     """run_pipeline via public names produces the expected built/failed/skipped."""
-    from core import pipeline
+    from cpost.core import pipeline
 
     cfg = {
         "template_path": "./templates/fixed-format.zh.yaml",

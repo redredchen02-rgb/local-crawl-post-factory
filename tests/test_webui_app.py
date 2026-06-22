@@ -3,8 +3,8 @@
 import yaml
 from fastapi.testclient import TestClient
 
-from webui.app import create_app, run
-from core import webui_config
+from cpost.webui.app import create_app, run
+from cpost.core import webui_config
 
 
 def _client(tmp_path):
@@ -69,7 +69,7 @@ def test_run_binds_localhost(monkeypatch):
     def fake_run(app, host, port):
         captured["host"] = host
 
-    import webui.app as appmod
+    import cpost.webui.app as appmod
     monkeypatch.setattr(appmod, "uvicorn", type("U", (), {"run": staticmethod(fake_run)}), raising=False)
     # inject a fake uvicorn module import
     import sys

@@ -1,7 +1,7 @@
 import pytest
 
-from core import scoring_config
-from core.errors import ValidationError
+from cpost.core import scoring_config
+from cpost.core.errors import ValidationError
 
 
 def test_none_path_returns_defaults():

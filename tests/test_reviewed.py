@@ -1,6 +1,6 @@
 """U8 (Q9): persistent reviewed-gate store + content-subtree binding."""
 
-from core import reviewed
+from cpost.core import reviewed
 
 
 def _db(tmp_path):

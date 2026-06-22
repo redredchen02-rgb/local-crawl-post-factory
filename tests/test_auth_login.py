@@ -6,11 +6,11 @@ import pytest
 
 pytestmark = [pytest.mark.slow, pytest.mark.browser]  # Playwright subprocess; excluded from fast-run
 
-from core import cli  # noqa: E402
+from cpost.core import cli  # noqa: E402
 from tests.mock_admin import MockAdmin  # noqa: E402
 
 playwright = pytest.importorskip("playwright.sync_api")
-from src import auth_login  # noqa: E402
+from cpost.cli import auth_login  # noqa: E402
 
 try:
     with playwright.sync_playwright() as _pw:

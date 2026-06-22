@@ -1,4 +1,4 @@
-"""Tests for core.db.connect — busy_timeout (U3 / R11).
+"""Tests for cpost.core.db.connect — busy_timeout (U3 / R11).
 
 busy_timeout bounds the lock-WAIT, not transaction duration: a writer that
 holds a transaction longer than busy_timeout still raises OperationalError
@@ -11,7 +11,7 @@ import time
 
 import pytest
 
-from core.db import connect
+from cpost.core.db import connect
 
 _SCHEMA = "CREATE TABLE IF NOT EXISTS t (id INTEGER PRIMARY KEY, v TEXT)"
 

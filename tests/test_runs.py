@@ -2,7 +2,7 @@
 
 import sqlite3
 
-from core import runs, pipeline
+from cpost.core import runs, pipeline
 
 
 def _db(tmp_path):

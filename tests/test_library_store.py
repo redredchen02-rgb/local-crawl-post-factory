@@ -1,4 +1,4 @@
-from core import library
+from cpost.core import library
 
 
 def _db(tmp_path):

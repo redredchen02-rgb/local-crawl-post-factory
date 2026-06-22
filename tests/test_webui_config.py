@@ -2,8 +2,8 @@ from pathlib import Path
 
 import pytest
 
-from core import webui_config
-from core.errors import ValidationError
+from cpost.core import webui_config
+from cpost.core.errors import ValidationError
 
 
 def test_missing_file_returns_defaults(tmp_path):

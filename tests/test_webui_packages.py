@@ -5,8 +5,8 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from webui.app import create_app
-from core import webui_config
+from cpost.webui.app import create_app
+from cpost.core import webui_config
 
 
 def _client(tmp_path, out_dir):

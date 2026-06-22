@@ -2,8 +2,8 @@
 
 from fastapi.testclient import TestClient
 
-from core import library, scoring, scoring_config, webui_config
-from webui.app import create_app
+from cpost.core import library, scoring, scoring_config, webui_config
+from cpost.webui.app import create_app
 
 
 def _client_and_state(tmp_path, **overrides):
@@ -113,7 +113,7 @@ def test_generate_zero_selected_rejected(tmp_path):
 
 def test_prep_trigger_returns_job_view(tmp_path, monkeypatch):
     client, _ = _client_and_state(tmp_path)
-    import core.scoop_pipeline as sp
+    import cpost.core.scoop_pipeline as sp
     monkeypatch.setattr(sp, "run_prep_pipeline",
                         lambda cfg, progress_cb=None, on_source=None: {
                             "ingested": 0, "clusters": 0, "scored": 0,

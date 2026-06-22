@@ -1,4 +1,4 @@
-from core import state, url_utils
+from cpost.core import state, url_utils
 
 
 def _db(tmp_path):

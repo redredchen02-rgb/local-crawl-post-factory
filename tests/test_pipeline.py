@@ -4,9 +4,9 @@ import json
 
 import pytest
 
-from core import pipeline, state, url_utils, runs
-from core.errors import ValidationError
-from src import normalize_items
+from cpost.core import pipeline, state, url_utils, runs
+from cpost.core.errors import ValidationError
+from cpost.cli import normalize_items
 
 
 def _cfg(tmp_path):
@@ -137,7 +137,7 @@ def test_build_persists_run_id_to_manifest(tmp_path):
 
 def test_crawl_items_accepts_poll_sec():
     """crawl_items() must accept poll_sec parameter (U5.3)."""
-    from src import crawl_posts
+    from cpost.cli import crawl_posts
     import inspect
     sig = inspect.signature(crawl_posts.crawl_items)
     assert "poll_sec" in sig.parameters

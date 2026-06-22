@@ -4,9 +4,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from core import cli, library, pipeline
-from core.errors import ValidationError
-from src.library_ingest import _run, ingest, to_library_fields
+from cpost.core import cli, library, pipeline
+from cpost.core.errors import ValidationError
+from cpost.cli.library_ingest import _run, ingest, to_library_fields
 
 
 def _db(tmp_path):

@@ -1,7 +1,7 @@
 import json
 
-from core import cli
-from src import draft_post, publish_post
+from cpost.core import cli
+from cpost.cli import draft_post, publish_post
 
 BACKEND = "configs/backend.yaml"
 

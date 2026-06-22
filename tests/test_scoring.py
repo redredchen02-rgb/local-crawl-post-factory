@@ -1,6 +1,6 @@
 import math
 
-from core import scoring
+from cpost.core import scoring
 
 NOW = "2026-06-18T00:00:00+00:00"
 
