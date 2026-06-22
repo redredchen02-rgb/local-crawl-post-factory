@@ -307,7 +307,6 @@ def run_auto_pipeline(
         *,
         missing_error: str,
         prepare: Callable[[Path, PipelineItem], BackendInvocation | None] | None = None,
-        on_ok: Callable[[Path], str | None] | None = None,
     ) -> tuple[list[PipelineItem], int]:
         """Run one draft/verify/publish stage over *items*.
 
@@ -319,7 +318,9 @@ def run_auto_pipeline(
         - *prepare* (publish only): runs the pre-step (reviewed.mark) and returns the
           invocation; returning ``None`` means it already recorded the failure and
           the item must be skipped. When absent, a default invocation is built.
-        - *on_ok* (publish only): derives the ``detail`` for the success run record.
+
+        The publish stage's success run is recorded by publish_post.run itself, so
+        this helper records on-success runs for draft/verify only (U9).
 
         Returns ``(ok_items, fail_count)``.
         """
@@ -345,9 +346,13 @@ def run_auto_pipeline(
             _rv, err = _retry(lambda inv=inv: runner(inv))  # type: ignore[misc]
             if err is None:
                 ok_items.append(item)
-                detail = on_ok(manifest_path) if on_ok is not None else None
-                runs.record_run(cfg["state_path"], stage=stage, post_id=pid,
-                                status="ok", detail=detail, run_id=run_id, severity="info")
+                # The publish stage records its OWN success run inside
+                # publish_post.run (guarded against duplicates), so recording it
+                # here too would double-count the publish (U9). Mirror webui
+                # submit_job's publish exemption; draft/verify are recorded here.
+                if stage != "publish":
+                    runs.record_run(cfg["state_path"], stage=stage, post_id=pid,
+                                    status="ok", run_id=run_id, severity="info")
             else:
                 _note_expiry(err)
                 failed.append({"post_id": pid, "stage": stage, "error": str(err)})
@@ -384,15 +389,10 @@ def run_auto_pipeline(
             return None
         return _invocation(manifest_path, approve=True, expected_content_id=cid)
 
-    def _publish_detail(manifest_path: Path) -> str | None:
-        m = json.loads(manifest_path.read_text(encoding="utf-8"))
-        url: str | None = m.get("backend", {}).get("published_url")
-        return url
-
     published_ok, publish_fail = _run_stage(
         "publish", f"自動發布（共 {len(verify_ok)} 篇）…", "發布",
         publish_post.run, verify_ok, missing_error="找不到 manifest",
-        prepare=_prepare_publish, on_ok=_publish_detail)
+        prepare=_prepare_publish)
     publish_ok = len(published_ok)
 
     _report(

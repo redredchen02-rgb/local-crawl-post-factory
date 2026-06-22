@@ -1,6 +1,8 @@
+import contextlib
 import json
+from unittest.mock import patch
 
-from cpost.core import cli
+from cpost.core import cli, runs
 from cpost.cli import draft_post, publish_post
 
 BACKEND = "configs/backend.yaml"
@@ -15,6 +17,17 @@ def _manifest(tmp_path, status):
     return str(p)
 
 
+def _publishable_manifest(tmp_path, status="draft_verified", **backend):
+    p = tmp_path / "manifest.json"
+    p.write_text(json.dumps({
+        "post_id": "20260615_demo",
+        "content": {"title": "T", "body": "b"},
+        "source": {"canonical_url": "https://x.com/p1"},
+        "backend": {"status": status, **backend},
+    }), encoding="utf-8")
+    return str(p)
+
+
 def _ns(**kw):
     base = dict(
         manifest=None,
@@ -24,10 +37,21 @@ def _ns(**kw):
         timeout_ms=5000,
         approve=False,
         dry_run=False,
+        retries=None,
         state=None,
     )
     base.update(kw)
     return type("NS", (), base)()
+
+
+@contextlib.contextmanager
+def _fake_session(*_a, **_kw):
+    yield object()  # dummy page; publish_draft is mocked separately
+
+
+def _publish_ok_rows(state_path):
+    return [r for r in runs.list_runs(state_path, post_id="20260615_demo")
+            if r.get("stage") == "publish" and r.get("status") == "ok"]
 
 
 def test_publish_without_approve_exits_2(tmp_path):
@@ -47,3 +71,43 @@ def test_draft_dry_run_validated_exits_0(tmp_path, capsys):
     assert code == 0
     assert json.loads(out)["status"] == "validated"
     assert json.loads(out)["post_id"] == "20260615_demo"
+
+
+# --- U3 (R2): publish is idempotent on re-entry, recorded exactly once ---
+
+def test_publish_idempotent_on_reentry(tmp_path):
+    """A re-entry after a successful publish (e.g. _retry firing because a
+    post-publish bookkeeping step failed) must NOT re-click publish, must report
+    success, and must leave exactly ONE 'ok' publish run row.
+
+    Pre-fix this fails: the second call hits Gate 2 ('draft not verified') because
+    the manifest is already 'published', so the live post is reported as failed.
+    """
+    state = str(tmp_path / "state.sqlite")
+    mpath = _publishable_manifest(tmp_path)
+    args = _ns(manifest=mpath, approve=True, state=state, headless=True)
+    with patch.object(publish_post.backend_driver, "session", _fake_session), \
+         patch.object(publish_post.backend_driver, "publish_draft",
+                      return_value={"published_url": "https://pub/p1"}) as mpub, \
+         patch.object(publish_post.audit, "record"):
+        assert cli.run(lambda: publish_post._run(args)) == 0       # first publish
+        assert mpub.call_count == 1
+        # Manifest is now 'published'; re-invoking simulates _retry after a tail
+        # failure. It must converge to success WITHOUT re-publishing.
+        assert cli.run(lambda: publish_post._run(args)) == 0       # re-entry
+        assert mpub.call_count == 1                                # no second publish
+
+    assert len(_publish_ok_rows(state)) == 1                       # no double-count
+
+
+def test_publish_records_single_ok_with_published_url(tmp_path):
+    state = str(tmp_path / "state.sqlite")
+    args = _ns(manifest=_publishable_manifest(tmp_path), approve=True, state=state, headless=True)
+    with patch.object(publish_post.backend_driver, "session", _fake_session), \
+         patch.object(publish_post.backend_driver, "publish_draft",
+                      return_value={"published_url": "https://pub/p1"}), \
+         patch.object(publish_post.audit, "record"):
+        assert cli.run(lambda: publish_post._run(args)) == 0
+    rows = _publish_ok_rows(state)
+    assert len(rows) == 1
+    assert rows[0]["detail"] == "https://pub/p1"
