@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from cpost.core import webui_config
+from cpost.core import filesystem, webui_config
 from cpost.core.errors import ValidationError
 
 
@@ -364,3 +364,75 @@ def test_sources_duplicate_source_id_rejected(tmp_path):
         webui_config.save(str(tmp_path / "webui.yaml"),
                           {"sources": [{"source_id": "dup", "start_url": "https://a.com/"},
                                        {"source_id": "dup", "start_url": "https://b.com/"}]})
+
+
+# --- L1: save() is atomic (temp-in-parent + replace) -------------------------
+
+def test_save_uses_atomic_write(tmp_path):
+    """save() must persist via atomic_write_text (temp file in dest.parent +
+    os.replace), so a crash mid-write never leaves a half-written config."""
+    p = tmp_path / "webui.yaml"
+    real_mkstemp = filesystem.tempfile.mkstemp
+    seen = {}
+
+    def spy_mkstemp(*args, **kwargs):
+        seen["dir"] = kwargs.get("dir")
+        return real_mkstemp(*args, **kwargs)
+
+    import cpost.core.filesystem as fs_mod
+    import unittest.mock as _mock
+    with _mock.patch.object(fs_mod.tempfile, "mkstemp", spy_mkstemp):
+        webui_config.save(str(p), {"start_url": "https://example.com/news"})
+    assert seen["dir"] == str(p.parent)
+    assert webui_config.load(str(p))["start_url"] == "https://example.com/news"
+
+
+def test_save_replace_failure_keeps_original_intact(tmp_path, monkeypatch):
+    """A simulated os.replace failure mid-save leaves the existing config
+    untouched (old-or-new, never truncated) and no temp leftover."""
+    p = tmp_path / "webui.yaml"
+    webui_config.save(str(p), {"start_url": "https://example.com/news"})
+    original = p.read_text(encoding="utf-8")
+
+    def boom(*_a, **_k):
+        raise OSError("replace failed")
+
+    monkeypatch.setattr(filesystem.os, "replace", boom)
+    with pytest.raises(OSError, match="replace failed"):
+        webui_config.save(str(p), {"start_url": "https://example.com/changed"})
+    assert p.read_text(encoding="utf-8") == original
+    leftovers = [x.name for x in p.parent.iterdir() if x.name != "webui.yaml"]
+    assert leftovers == []
+
+
+# --- L1: retention-days config keys ------------------------------------------
+
+def test_retention_days_default_zero(tmp_path):
+    cfg = webui_config.load(str(tmp_path / "nope.yaml"))
+    assert cfg["audit_retention_days"] == 0
+    assert cfg["runs_retention_days"] == 0
+
+
+def test_retention_days_roundtrip(tmp_path):
+    p = str(tmp_path / "webui.yaml")
+    saved = webui_config.save(p, {"audit_retention_days": 30, "runs_retention_days": 7})
+    assert saved["audit_retention_days"] == 30
+    assert saved["runs_retention_days"] == 7
+    loaded = webui_config.load(p)
+    assert loaded["audit_retention_days"] == 30
+    assert loaded["runs_retention_days"] == 7
+
+
+def test_audit_retention_days_negative_rejected(tmp_path):
+    with pytest.raises(ValidationError, match="audit_retention_days"):
+        webui_config.save(str(tmp_path / "webui.yaml"), {"audit_retention_days": -1})
+
+
+def test_runs_retention_days_negative_rejected(tmp_path):
+    with pytest.raises(ValidationError, match="runs_retention_days"):
+        webui_config.save(str(tmp_path / "webui.yaml"), {"runs_retention_days": -1})
+
+
+def test_retention_days_non_int_rejected(tmp_path):
+    with pytest.raises(ValidationError, match="audit_retention_days"):
+        webui_config.save(str(tmp_path / "webui.yaml"), {"audit_retention_days": "abc"})
