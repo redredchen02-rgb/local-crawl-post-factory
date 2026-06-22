@@ -21,7 +21,7 @@
     <thead><tr>
       <th><input type="checkbox" id="select-all" title="全選／取消全選"
                  onchange="document.querySelectorAll('#batch-form input[name=post_ids]').forEach(cb => cb.checked = this.checked)"></th>
-      <th>post_id</th><th>標題</th><th>狀態</th><th>操作</th><th></th>
+      <th>post_id</th><th>來源</th><th>標題</th><th>狀態</th><th>操作</th><th></th>
     </tr></thead>
     <tbody>
     {% for p in packages %}
@@ -29,6 +29,7 @@
         <td>{% if not p.broken %}<input type="checkbox" name="post_ids" value="{{ p.post_id }}"
                 onchange="document.getElementById('select-all').indeterminate=true">{% endif %}</td>
         <td>{% if not p.broken %}<a href="/packages/{{ p.post_id }}">{{ p.post_id }}</a>{% else %}{{ p.post_id }}{% endif %}</td>
+        <td>{{ p.source_id }}</td>
         <td>{{ p.title }}</td>
         <td><span class="pill {{ p.status }}">{{ p.status }}</span></td>
         <td class="row-actions">
