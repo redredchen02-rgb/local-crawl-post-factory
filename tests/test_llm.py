@@ -9,6 +9,7 @@ test-isolation convention of patching the symbol on the module under test.
 
 import io
 import json
+import socket
 import urllib.error
 
 import pytest
@@ -110,6 +111,74 @@ def test_url_error_maps_to_external_error_with_reason(monkeypatch):
     with pytest.raises(ExternalError) as exc:
         llm.chat(_CFG, "sp", "uc")
     assert "connection refused" in str(exc.value)
+
+
+def test_read_timeout_maps_to_external_error_not_timeout_error(monkeypatch):
+    # Server sends headers then never sends the body: urlopen() returns, but
+    # resp.read() blocks until timeout_sec and raises socket.timeout (an alias of
+    # TimeoutError). U10: this must surface as ExternalError (exit 4), not as a raw
+    # TimeoutError that the CLI would map to exit 5 / the webui to a 500.
+    class _StallingResponse(_FakeResponse):
+        def read(self):
+            raise socket.timeout("timed out")
+
+    def fake_urlopen(request, timeout=None):
+        return _StallingResponse(b"")
+
+    _patch_urlopen(monkeypatch, fake_urlopen)
+
+    with pytest.raises(ExternalError) as exc:
+        llm.chat(_CFG, "sp", "uc")
+    # Exit-4 contract the CLI (generate-article) and webui /generate rely on.
+    assert exc.value.exit_code == 4
+    assert "逾时" in str(exc.value)
+    # The configured budget is surfaced for diagnosis.
+    assert "120" in str(exc.value)
+
+
+def test_read_timeout_via_builtin_timeouterror_maps_to_external_error(monkeypatch):
+    # socket.timeout is an alias of TimeoutError on 3.10+, but pin the builtin too.
+    def fake_urlopen(request, timeout=None):
+        raise TimeoutError("the read operation timed out")
+
+    _patch_urlopen(monkeypatch, fake_urlopen)
+
+    with pytest.raises(ExternalError) as exc:
+        llm.chat(_CFG, "sp", "uc")
+    assert exc.value.exit_code == 4
+    assert not isinstance(exc.value, TimeoutError)
+
+
+def test_connection_reset_mid_read_maps_to_external_error(monkeypatch):
+    # Connection reset while streaming the body is an OSError, not a URLError/
+    # HTTPError. Without the broad OSError catch it would escape as exit 5.
+    class _ResettingResponse(_FakeResponse):
+        def read(self):
+            raise ConnectionResetError("Connection reset by peer")
+
+    def fake_urlopen(request, timeout=None):
+        return _ResettingResponse(b"")
+
+    _patch_urlopen(monkeypatch, fake_urlopen)
+
+    with pytest.raises(ExternalError) as exc:
+        llm.chat(_CFG, "sp", "uc")
+    assert exc.value.exit_code == 4
+    assert "中断" in str(exc.value)
+
+
+def test_connect_timeout_url_error_maps_to_external_error(monkeypatch):
+    # A connect-phase timeout reaches urllib as URLError(reason=socket.timeout).
+    # It must still be ExternalError, with connect-appropriate (逾时) messaging.
+    def fake_urlopen(request, timeout=None):
+        raise urllib.error.URLError(socket.timeout("timed out"))
+
+    _patch_urlopen(monkeypatch, fake_urlopen)
+
+    with pytest.raises(ExternalError) as exc:
+        llm.chat(_CFG, "sp", "uc")
+    assert exc.value.exit_code == 4
+    assert "逾时" in str(exc.value)
 
 
 def test_empty_content_raises_not_silent_empty(monkeypatch):

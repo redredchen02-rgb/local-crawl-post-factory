@@ -6,6 +6,7 @@ import pytest
 
 from cpost.core import cli, library, pipeline
 from cpost.core.errors import ValidationError
+from cpost.core.io_ndjson import read_lines
 from cpost.cli.library_ingest import _run, ingest, to_library_fields
 
 
@@ -153,6 +154,87 @@ def test_contract_missing_canonical_exits_2(tmp_path, monkeypatch):
     code, out, err = _run_command(json.dumps(rec) + "\n", db, monkeypatch)
     assert code == 2
     assert out == ""
+
+
+def test_contract_partial_failure_emits_nothing_and_commits_nothing(tmp_path, monkeypatch):
+    # [valid, valid, missing-source_id]: the third record rolls the whole
+    # transaction back (db.connect commits only after the loop completes), so
+    # the two earlier valid records must NOT reach stdout -- otherwise stdout
+    # would advertise records the library never persisted (U8).
+    db = _db(tmp_path)
+    bad = _rec(canonical_url="https://a.com/3")
+    del bad["source_id"]
+    stdin_text = (
+        json.dumps(_rec(canonical_url="https://a.com/1")) + "\n"
+        + json.dumps(_rec(canonical_url="https://a.com/2")) + "\n"
+        + json.dumps(bad) + "\n"
+    )
+    code, out, err = _run_command(stdin_text, db, monkeypatch)
+    assert code == 2
+    assert out == ""                 # nothing emitted on failure
+    assert err.strip() != ""
+    with library.connect(db) as conn:
+        assert library.count(conn) == 0   # transaction rolled back: DB empty
+
+
+def test_contract_partial_failure_malformed_tail_emits_nothing(tmp_path, monkeypatch):
+    # Same invariant when the failing line is malformed JSON rather than an
+    # invalid record: already-passed valid records must not leak to stdout.
+    db = _db(tmp_path)
+    stdin_text = (
+        json.dumps(_rec(canonical_url="https://a.com/1")) + "\n"
+        + json.dumps(_rec(canonical_url="https://a.com/2")) + "\n"
+        + "{not json}\n"
+    )
+    code, out, err = _run_command(stdin_text, db, monkeypatch)
+    assert code == 2
+    assert out == ""
+    with library.connect(db) as conn:
+        assert library.count(conn) == 0
+
+
+def test_contract_all_valid_emits_all_and_commits_all(tmp_path, monkeypatch):
+    # Happy path with multiple records: every record is emitted to stdout AND
+    # committed to the library (emitted stream agrees with committed DB state).
+    db = _db(tmp_path)
+    stdin_text = (
+        json.dumps(_rec(canonical_url="https://a.com/1")) + "\n"
+        + json.dumps(_rec(canonical_url="https://a.com/2")) + "\n"
+    )
+    code, out, err = _run_command(stdin_text, db, monkeypatch)
+    assert code == 0
+    assert err == ""
+    emitted = [json.loads(line)["canonical_url"] for line in out.splitlines() if line.strip()]
+    assert emitted == ["https://a.com/1", "https://a.com/2"]
+    with library.connect(db) as conn:
+        assert library.count(conn) == 2
+        for url in ("https://a.com/1", "https://a.com/2"):
+            assert library.get(conn, url) is not None
+
+
+def test_integration_downstream_never_sees_unpersisted_records(tmp_path, monkeypatch):
+    # Integration: ingest's stdout is the downstream stage's stdin. On a
+    # partial failure the buffered records are dropped, so a downstream
+    # consumer reading ingest's stdout never receives a record the library
+    # rolled back -- the emitted stream and committed DB agree.
+    db = _db(tmp_path)
+    bad = _rec(canonical_url="https://a.com/3")
+    del bad["source_id"]
+    stdin_text = (
+        json.dumps(_rec(canonical_url="https://a.com/1")) + "\n"
+        + json.dumps(bad) + "\n"
+    )
+    code, out, err = _run_command(stdin_text, db, monkeypatch)
+    assert code == 2
+
+    # downstream consumes ingest's stdout verbatim
+    downstream_records = list(read_lines(io.StringIO(out)))
+    assert downstream_records == []
+
+    # and the library holds exactly what downstream was fed: nothing
+    with library.connect(db) as conn:
+        committed = {r["canonical_url"] for r in library.list_items(conn)}
+    assert committed == {r["canonical_url"] for r in downstream_records}
 
 
 # --- multi-source crawl orchestration ---

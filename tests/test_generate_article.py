@@ -116,6 +116,62 @@ def test_cache_hit_skips_llm(tmp_path):
     assert calls["n"] == 1                   # second run hit the generations cache
 
 
+def test_description_change_invalidates_cache_when_source_text_empty(tmp_path):
+    # U6: description is the model's source text when source_text is empty. A
+    # changed description (same url, source_text still empty) MUST produce a fresh
+    # article (LLM re-called), not the stale cached one.
+    cid = "c_desc"
+    url = "https://src_a.example.com/news/0"
+    now = "2026-06-15T00:00:00Z"
+    articles = iter(["標題A\n描述A 的正文。", "標題B\n描述B 的正文。"])
+    calls = {"n": 0}
+
+    def chat(c, sp, uc):
+        calls["n"] += 1
+        return next(articles)
+
+    def _seed(description):
+        with library.connect(str(tmp_path / "s.sqlite")) as conn:
+            library.upsert(conn, canonical_url=url, title="標題", now=now,
+                           source_id="src_a", source_text="", description=description,
+                           published_at="2026-06-15T10:00:00+08:00")
+            library.assign_clusters(conn, [{
+                "cluster_id": cid, "members": [url], "member_count": 1,
+                "source_count": 1, "representative_url": url,
+                "representative_title": "代表標題",
+                "earliest_published": "2026-06-15T10:00:00+08:00",
+                "latest_published": "2026-06-15T12:00:00+08:00"}], now)
+
+    _seed("描述A")
+    with library.connect(str(tmp_path / "s.sqlite")) as conn:
+        item1 = generate_article.generate(conn, cid, {"model": "m"}, "sp", "t",
+                                          _chat=chat)
+    # Re-ingest the same url with a new description; source_text stays empty.
+    _seed("描述B")
+    with library.connect(str(tmp_path / "s.sqlite")) as conn:
+        item2 = generate_article.generate(conn, cid, {"model": "m"}, "sp", "t",
+                                          _chat=chat)
+    assert calls["n"] == 2                    # LLM re-called, no stale cache hit
+    assert item1["title"] == "標題A"
+    assert item2["title"] == "標題B"          # fresh article reflects new input
+
+
+def test_source_text_present_unchanged_still_caches(tmp_path):
+    # Edge: when source_text is present and inputs are unchanged, behavior is
+    # unchanged -- the second run still hits the cache (no LLM call).
+    calls = {"n": 0}
+
+    def chat(c, sp, uc):
+        calls["n"] += 1
+        return "標題行\n正文內容。"
+
+    with library.connect(str(tmp_path / "s.sqlite")) as conn:
+        _seed_cluster(conn)               # seeds non-empty source_text per member
+        generate_article.generate(conn, "c1", {"model": "m"}, "sp", "t", _chat=chat)
+        generate_article.generate(conn, "c1", {"model": "m"}, "sp", "t", _chat=chat)
+    assert calls["n"] == 1
+
+
 def test_missing_key_maps_to_validation_error(tmp_path, monkeypatch):
     # Real cpost.core.llm.chat path: base_url+model present, API key env absent ->
     # ValidationError (exit 2), NOT DependencyError(3). Message must not leak a key.

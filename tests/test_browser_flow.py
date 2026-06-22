@@ -44,8 +44,14 @@ def _make_package(tmp_path):
 
 
 def _backend_file(tmp_path, mock):
+    cfg = mock.backend_cfg()
+    # U15(1): login_required_url_contains is now a REQUIRED verify key (a missing
+    # marker is a config error, not a silent no-op). The mock admin never redirects
+    # to a login page, so any sentinel that won't appear in its URLs satisfies the
+    # validator without changing behaviour.
+    cfg["verify"].setdefault("login_required_url_contains", "/admin/login")
     p = tmp_path / "backend.yaml"
-    p.write_text(yaml.safe_dump(mock.backend_cfg()), encoding="utf-8")
+    p.write_text(yaml.safe_dump(cfg), encoding="utf-8")
     return str(p)
 
 

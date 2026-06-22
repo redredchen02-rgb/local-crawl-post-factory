@@ -96,3 +96,80 @@ def test_busy_timeout_does_not_extend_transaction_limit(tmp_path):
     finally:
         holder.rollback()
         holder.close()
+
+
+# --- Migrations: per-statement savepoint correctness (U20) -------------------
+
+_MIG_SCHEMA = "CREATE TABLE IF NOT EXISTS m (id INTEGER PRIMARY KEY)"
+
+
+def _columns(db: str, table: str) -> set[str]:
+    with connect(db, _MIG_SCHEMA) as conn:
+        return {r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+
+
+def _applied_versions(db: str) -> list[int]:
+    with connect(db, _MIG_SCHEMA) as conn:
+        rows = conn.execute(
+            "SELECT schema_version FROM _schema_meta ORDER BY schema_version"
+        ).fetchall()
+    return [r[0] for r in rows]
+
+
+def test_single_statement_migrations_apply_and_are_idempotent(tmp_path):
+    """Happy path: the existing one-ALTER-per-migration shape (runs.py) still
+    works and a second connect re-runs nothing."""
+    db = str(tmp_path / "x.sqlite")
+    migrations = [
+        (1, "ALTER TABLE m ADD COLUMN a TEXT;"),
+        (2, "ALTER TABLE m ADD COLUMN b TEXT;"),
+    ]
+    with connect(db, _MIG_SCHEMA, migrations=migrations):
+        pass
+    assert {"a", "b"} <= _columns(db, "m")
+    assert _applied_versions(db) == [1, 2]
+
+    # Re-open: already-applied migrations are skipped, no duplicate-column error.
+    with connect(db, _MIG_SCHEMA, migrations=migrations):
+        pass
+    assert _applied_versions(db) == [1, 2]
+
+
+def test_multi_statement_migration_applies_sibling_after_duplicate(tmp_path):
+    """Error path (U20): a migration with several statements where one hits
+    'duplicate column' must still apply its siblings. The version is recorded
+    only once the whole migration has run."""
+    db = str(tmp_path / "x.sqlite")
+    # Pre-create col_x so the first statement of the migration is a duplicate.
+    with connect(db, _MIG_SCHEMA, migrations=[(1, "ALTER TABLE m ADD COLUMN col_x TEXT;")]):
+        pass
+    assert "col_x" in _columns(db, "m")
+
+    multi = [
+        (1, "ALTER TABLE m ADD COLUMN col_x TEXT;"),  # already applied (skipped)
+        (2, "ALTER TABLE m ADD COLUMN col_x TEXT; ALTER TABLE m ADD COLUMN col_y TEXT;"),
+    ]
+    with connect(db, _MIG_SCHEMA, migrations=multi):
+        pass
+
+    cols = _columns(db, "m")
+    assert "col_x" in cols
+    assert "col_y" in cols, "sibling statement must still be applied after duplicate-column"
+    assert _applied_versions(db) == [1, 2]
+
+
+def test_migration_version_not_recorded_when_a_statement_truly_fails(tmp_path):
+    """A genuinely broken statement (not duplicate-column) must roll back the
+    whole migration and NOT mark the version applied — no half-applied state
+    silently recorded as done."""
+    db = str(tmp_path / "x.sqlite")
+    migrations = [
+        (1, "ALTER TABLE m ADD COLUMN good TEXT; ALTER TABLE nope ADD COLUMN bad TEXT;"),
+    ]
+    with pytest.raises(sqlite3.OperationalError):
+        with connect(db, _MIG_SCHEMA, migrations=migrations):
+            pass
+
+    # Version 1 must not be recorded, and the first statement must be rolled back.
+    assert _applied_versions(db) == []
+    assert "good" not in _columns(db, "m")

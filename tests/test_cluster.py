@@ -109,6 +109,57 @@ def test_mixed_naive_and_aware_published_at_does_not_crash():
     assert len(clusters) == 1  # naive assumed UTC -> 1h apart -> within window
 
 
+def test_published_sorted_chronologically_not_lexically():
+    """Mixed offsets: the true-latest instant wins, even when it sorts first as a string.
+
+    +08:00 08:00 == 00:00 UTC (earlier instant) but sorts lexically AFTER
+    +00:00 01:00 == 01:00 UTC (later instant). latest_published must be the
+    +00:00 value (true newest), earliest the +08:00 value.
+    """
+    items = [
+        _it("https://a.com/1", "藝人A被爆隱婚生子", source_id="site-a",
+            published_at="2026-06-18T08:00:00+08:00"),     # 00:00 UTC (earliest instant)
+        _it("https://b.com/2", "藝人A被爆隱婚生子內幕", source_id="site-b",
+            published_at="2026-06-18T01:00:00+00:00"),     # 01:00 UTC (latest instant)
+    ]
+    clusters = cluster.cluster_items(items, similarity_threshold=0.3, time_window_hours=72)
+    assert len(clusters) == 1
+    c = clusters[0]
+    assert c["latest_published"] == "2026-06-18T01:00:00+00:00"
+    assert c["earliest_published"] == "2026-06-18T08:00:00+08:00"
+
+
+def test_published_uniform_offset_sorts_unchanged():
+    """No regression: with a single uniform offset, chrono order == lexical order."""
+    items = [
+        _it("https://a.com/1", "藝人A被爆隱婚生子", source_id="site-a",
+            published_at="2026-06-18T01:00:00+00:00"),
+        _it("https://b.com/2", "藝人A被爆隱婚生子內幕", source_id="site-b",
+            published_at="2026-06-18T05:00:00+00:00"),
+    ]
+    clusters = cluster.cluster_items(items, similarity_threshold=0.3, time_window_hours=72)
+    assert len(clusters) == 1
+    c = clusters[0]
+    assert c["earliest_published"] == "2026-06-18T01:00:00+00:00"
+    assert c["latest_published"] == "2026-06-18T05:00:00+00:00"
+
+
+def test_published_missing_and_empty_skipped():
+    """Members with missing/empty published_at are skipped, not sorted as values."""
+    items = [
+        _it("https://a.com/1", "藝人A被爆隱婚生子", source_id="site-a"),  # missing -> None
+        _it("https://b.com/2", "藝人A被爆隱婚生子內幕", source_id="site-b",
+            published_at=""),                                            # empty string
+        _it("https://c.com/3", "藝人A被爆隱婚生子細節", source_id="site-c",
+            published_at="2026-06-18T03:00:00+08:00"),                   # only real value
+    ]
+    clusters = cluster.cluster_items(items, similarity_threshold=0.3, time_window_hours=72)
+    assert len(clusters) == 1
+    c = clusters[0]
+    assert c["earliest_published"] == "2026-06-18T03:00:00+08:00"
+    assert c["latest_published"] == "2026-06-18T03:00:00+08:00"
+
+
 def test_empty_and_punctuation_only_titles_do_not_merge():
     items = [
         _it("https://a.com/1", "", source_id="site-a"),
