@@ -53,6 +53,12 @@ def crawl_items(webui_cfg: dict,
             "max_text_chars", crawl_posts.CONFIG_DEFAULTS["max_text_chars"])),
         "min_text_chars": int(webui_cfg.get(
             "min_text_chars", crawl_posts.CONFIG_DEFAULTS["min_text_chars"])),
+        # Per-source extraction overrides (R6). crawl_all_sources merges per-source
+        # values into webui_cfg before calling here; empty string = use the
+        # crawler's built-in hardcoded selectors (fallback in _extract).
+        "body_selector": webui_cfg.get("body_selector", ""),
+        "image_selector": webui_cfg.get("image_selector", ""),
+        "date_selector": webui_cfg.get("date_selector", ""),
         "start_urls": [webui_cfg["start_url"]],
     })
     return crawl_posts.crawl_items(opts, progress_cb=progress_cb, poll_sec=poll_sec)

@@ -222,24 +222,62 @@ def _crawl_worker(opts: dict, out_path: str, status_path: str,
                     ).get()
                     or ""
                 ).strip()
-                image_url = (
-                    response.css('meta[property="og:image"]::attr(content)').get() or ""
-                ).strip()
+                # Per-source overrides (R6) arrive as plain-data opts keys so they
+                # pickle cleanly into this spawned subprocess. An empty string means
+                # "use the built-in hardcoded selector" (backward-compatible fallback).
+                # A syntactically invalid custom selector raises in parsel/cssselect
+                # (ValueError / SelectorSyntaxError); rather than letting one typo
+                # zero the whole crawl, fall back to the default extraction per field.
+                image_sel = opts.get("image_selector") or ""
+                date_sel = opts.get("date_selector") or ""
+                body_sel = opts.get("body_selector") or ""
+
+                # Sentinel for "the custom selector was syntactically invalid, so
+                # use the default" -- distinct from "valid selector matched nothing"
+                # (which keeps the empty custom result, preserving R6 semantics).
+                _INVALID = object()
+
+                def _css_get(selector: str):
+                    try:
+                        return response.css(selector).get()
+                    except Exception:  # noqa: BLE001 - invalid CSS -> fall back
+                        return _INVALID
+
+                def _css_getall(selector: str):
+                    try:
+                        return response.css(selector).getall()
+                    except Exception:  # noqa: BLE001 - invalid CSS -> fall back
+                        return _INVALID
+
+                image_url = _css_get(image_sel) if image_sel else _INVALID
+                if image_url is _INVALID:
+                    image_url = (
+                        response.css('meta[property="og:image"]::attr(content)').get()
+                        or ""
+                    )
+                image_url = (image_url or "").strip()
                 if image_url:
                     image_url = response.urljoin(image_url)
-                published_at = (
-                    response.css(
-                        'meta[property="article:published_time"]::attr(content)'
-                    ).get()
-                    or response.css('meta[name="date"]::attr(content)').get()
-                    or ""
-                ).strip()
+                published_at = _css_get(date_sel) if date_sel else _INVALID
+                if published_at is _INVALID:
+                    published_at = (
+                        response.css(
+                            'meta[property="article:published_time"]::attr(content)'
+                        ).get()
+                        or response.css('meta[name="date"]::attr(content)').get()
+                        or ""
+                    )
+                published_at = (published_at or "").strip()
                 # Descendant ``::text`` (note the space) captures both a tag's direct
                 # text AND text nested in inline markup -- <strong>, <a>, <em> -- so
-                # inline-formatted words inside a paragraph are no longer dropped.
-                text_parts = response.css(
+                # inline-formatted words inside a paragraph are no longer dropped. A
+                # per-source body_selector overrides the built-in body p/h1/h2/li set.
+                default_body_css = (
                     "body p ::text, body h1 ::text, body h2 ::text, body li ::text"
-                ).getall()
+                )
+                text_parts = _css_getall(body_sel) if body_sel else _INVALID
+                if text_parts is _INVALID:
+                    text_parts = response.css(default_body_css).getall()
                 text = " ".join(t.strip() for t in text_parts if t.strip())
                 text = re.sub(r"\s+", " ", text).strip()
                 if opts["max_text_chars"] and len(text) > opts["max_text_chars"]:

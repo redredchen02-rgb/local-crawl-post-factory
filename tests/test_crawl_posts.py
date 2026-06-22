@@ -263,3 +263,151 @@ def test_progress_cb_unreachable_host_still_external_error(server):
 
     with pytest.raises(ExternalError):
         crawl_items(opts, progress_cb=lambda s: None)
+
+
+# -- U10: per-source extraction selector overrides (R6) --------------------- #
+
+def _crawl_one(server, item_regex, **opt_overrides):
+    """Crawl the fixture site and return the single matching item."""
+    from src.crawl_posts import CONFIG_DEFAULTS, crawl_items
+
+    opts = dict(CONFIG_DEFAULTS)
+    opts["start_urls"] = [f"{server}/index-c.html"]
+    opts["item_regex"] = item_regex
+    opts["no_robots"] = True
+    opts["limit"] = 5
+    opts.update(opt_overrides)
+    items = crawl_items(opts)
+    return next(it for it in items if "news/c.html" in it["url"])
+
+
+@pytest.fixture
+def index_c(server):
+    """Write a temp index that links to news/c.html, then clean up."""
+    path = FIXTURE_DIR / "index-c.html"
+    path.write_text(
+        '<!doctype html><html><head><title>Idx</title></head><body>'
+        '<a href="news/c.html">Article C</a></body></html>',
+        encoding="utf-8",
+    )
+    try:
+        yield server
+    finally:
+        path.unlink(missing_ok=True)
+
+
+def test_custom_body_selector_extracts_non_p_layout(index_c):
+    """A body_selector targeting a <div> extracts content the default would miss."""
+    c = _crawl_one(index_c, r"/news/c", body_selector="div.article-body ::text")
+    assert "CUSTOMDIVBODY" in c["text"], c["text"]
+    # The decoy <p> is excluded because the custom selector only targets the div.
+    assert "IGNORED" not in c["text"], c["text"]
+
+
+def test_empty_body_selector_falls_back_to_default(index_c):
+    """Empty body_selector → built-in body p/h1/h2/li behavior (decoy <p> captured)."""
+    c = _crawl_one(index_c, r"/news/c")  # body_selector defaults to ""
+    assert "IGNORED" in c["text"], c["text"]
+    assert "Article C Heading" in c["text"], c["text"]
+
+
+def test_custom_image_and_date_selectors_honored(index_c):
+    """Custom image_selector/date_selector read non-default meta tags."""
+    c = _crawl_one(
+        index_c,
+        r"/news/c",
+        image_selector='meta[name="thumbnail"]::attr(content)',
+        date_selector='meta[name="pubdate"]::attr(content)',
+    )
+    assert c["image_url"].endswith("/img/c-custom.png"), c["image_url"]
+    assert c["published_at"] == "2026-06-20T09:30:00Z", c["published_at"]
+
+
+def test_empty_image_date_selectors_fall_back(server):
+    """Empty image/date selectors → og:image + article:published_time defaults."""
+    a = _crawl_one_a(server)
+    assert a["image_url"].endswith("/img/a.png"), a["image_url"]
+    assert a["published_at"] == "2026-06-10T08:00:00Z", a["published_at"]
+
+
+def _crawl_one_a(server):
+    from src.crawl_posts import CONFIG_DEFAULTS, crawl_items
+
+    opts = dict(CONFIG_DEFAULTS)
+    opts["start_urls"] = [f"{server}/index.html"]
+    opts["item_regex"] = r"/news/a"
+    opts["no_robots"] = True
+    opts["limit"] = 5
+    items = crawl_items(opts)
+    return next(it for it in items if "news/a.html" in it["url"])
+
+
+def test_body_selector_matching_nothing_yields_empty_not_crash(index_c):
+    """A selector matching nothing → empty body, visible (not a crash).
+
+    min_text_chars=0 (default) means the item is still emitted with empty text,
+    so an under-extracted source surfaces rather than silently vanishing.
+    """
+    c = _crawl_one(index_c, r"/news/c", body_selector="div.does-not-exist ::text")
+    assert c["text"] == "", repr(c["text"])
+    # Other fields still populate, so the zero-content item is observable.
+    assert c["title"] == "Article C Title"
+
+
+def test_invalid_body_selector_falls_back_to_default(index_c):
+    """A syntactically invalid body_selector → default body extraction, not 0 items.
+
+    A typo'd selector used to raise inside parsel/cssselect, silently dropping
+    every item for the source (reported as a 0-item success). It must now fall
+    back to the built-in body p/h1/h2/li set so the crawl still yields content.
+    """
+    c = _crawl_one(index_c, r"/news/c", body_selector="div[unclosed")
+    # Fell back to default extraction: the decoy <p> and heading are captured.
+    assert "IGNORED" in c["text"], c["text"]
+    assert "Article C Heading" in c["text"], c["text"]
+    assert c["text"].strip() != ""
+
+
+def test_invalid_image_and_date_selectors_fall_back(index_c):
+    """Invalid image/date selectors → default meta-tag extraction, item still produced."""
+    c = _crawl_one(
+        index_c,
+        r"/news/c",
+        image_selector="meta[unclosed",
+        date_selector="meta[unclosed",
+    )
+    # Item is still produced (crawl not zeroed) and falls back to defaults; the
+    # fixture has no og:image / article:published_time, so these resolve empty
+    # without crashing -- the point is the item exists with body content.
+    assert "IGNORED" in c["text"], c["text"]
+    assert c["image_url"] == "", c["image_url"]
+    assert c["published_at"] == "", c["published_at"]
+
+
+def test_invalid_body_selector_returns_items_not_zero(index_c):
+    """End-to-end: an invalid body_selector still returns items (count > 0)."""
+    from src.crawl_posts import CONFIG_DEFAULTS, crawl_items
+
+    opts = dict(CONFIG_DEFAULTS)
+    opts["start_urls"] = [f"{index_c}/index-c.html"]
+    opts["item_regex"] = r"/news/c"
+    opts["no_robots"] = True
+    opts["limit"] = 5
+    opts["body_selector"] = "div[unclosed"
+    items = crawl_items(opts)
+    assert any("news/c.html" in it["url"] for it in items)
+
+
+def test_body_selector_empty_with_min_text_chars_filters_item(index_c):
+    """min_text_chars filters an empty-body item — under-extraction is enforceable."""
+    from src.crawl_posts import CONFIG_DEFAULTS, crawl_items
+
+    opts = dict(CONFIG_DEFAULTS)
+    opts["start_urls"] = [f"{index_c}/index-c.html"]
+    opts["item_regex"] = r"/news/c"
+    opts["no_robots"] = True
+    opts["limit"] = 5
+    opts["min_text_chars"] = 10
+    opts["body_selector"] = "div.does-not-exist ::text"
+    items = crawl_items(opts)
+    assert not any("news/c.html" in it["url"] for it in items)
