@@ -170,5 +170,6 @@ class MockAdmin:
                 "search_input": 'input[name="keyword"]',
                 "search_button": 'button:has-text("搜尋")',
                 "result_title": "table >> text={title}",
+                "login_required_url_contains": "/admin/login",
             },
         }

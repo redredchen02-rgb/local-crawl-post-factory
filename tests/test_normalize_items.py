@@ -96,3 +96,76 @@ def test_contract_malformed_line_exits_2(monkeypatch):
     assert code == 2
     assert out == ""
     assert err.strip() != ""
+
+
+# -- U7: per-record resilience ---------------------------------------------- #
+
+def test_bad_record_quarantined_good_records_survive(monkeypatch):
+    """[good, empty-title, good] → both good emitted, bad skipped, exit 0."""
+    import json
+
+    good_a = _base_item(url="https://example.com/a/", canonical_url="https://example.com/a/")
+    bad = _base_item(title="   ", url="https://example.com/b/",
+                     canonical_url="https://example.com/b/")
+    good_c = _base_item(url="https://example.com/c/", canonical_url="https://example.com/c/")
+    stdin_text = "".join(json.dumps(x) + "\n" for x in (good_a, bad, good_c))
+
+    code, out, err = _run_command(stdin_text, monkeypatch)
+
+    assert code == 0
+    emitted = [json.loads(line) for line in out.strip().splitlines()]
+    urls = {it["canonical_url"] for it in emitted}
+    # Both good records survive; the bad one in the MIDDLE did not abort the stream.
+    assert urls == {"https://example.com/a", "https://example.com/c"}
+    # The bad record produced a stderr warning.
+    assert "warning" in err.lower()
+    assert "skip" in err.lower()
+
+
+def test_all_invalid_stream_nonzero_no_silent_empty_success(monkeypatch):
+    """Every record invalid → non-zero exit, nothing emitted (no silent success)."""
+    import json
+
+    bad1 = _base_item(title="   ")
+    bad2 = _base_item(title="")
+    stdin_text = json.dumps(bad1) + "\n" + json.dumps(bad2) + "\n"
+
+    code, out, err = _run_command(stdin_text, monkeypatch)
+
+    assert code == 2
+    assert out == ""
+    assert err.strip() != ""
+
+
+def test_all_valid_stream_unchanged(monkeypatch):
+    """Happy path: an all-valid stream emits every record at exit 0, no warnings."""
+    import json
+
+    a = _base_item(url="https://example.com/a/", canonical_url="https://example.com/a/")
+    b = _base_item(url="https://example.com/b/", canonical_url="https://example.com/b/")
+    stdin_text = json.dumps(a) + "\n" + json.dumps(b) + "\n"
+
+    code, out, err = _run_command(stdin_text, monkeypatch)
+
+    assert code == 0
+    assert err == ""
+    emitted = [json.loads(line) for line in out.strip().splitlines()]
+    assert len(emitted) == 2
+
+
+def test_first_record_bad_does_not_abort_before_good(monkeypatch):
+    """A bad FIRST record must not exit 2 before the following good record runs."""
+    import json
+
+    bad = _base_item(title="   ")
+    good = _base_item(url="https://example.com/ok/",
+                      canonical_url="https://example.com/ok/")
+    stdin_text = json.dumps(bad) + "\n" + json.dumps(good) + "\n"
+
+    code, out, err = _run_command(stdin_text, monkeypatch)
+
+    assert code == 0
+    emitted = [json.loads(line) for line in out.strip().splitlines()]
+    assert len(emitted) == 1
+    assert emitted[0]["canonical_url"] == "https://example.com/ok"
+    assert "warning" in err.lower()

@@ -1,12 +1,20 @@
 """normalize-items: clean/validate crawled NDJSON -> normalized NDJSON.
 
 Reads crawled records from stdin, writes normalized records to stdout under the
-shared CLI contract. Per origin §4.2/§13.1 a malformed input line or a record
-missing required ``title``/``canonical_url`` (after derivation) fails the whole
-command with exit 2.
+shared CLI contract. A malformed input *line* (not valid JSON) still fails the
+whole command with exit 2 -- it signals a broken upstream stream, not a single
+bad page. But a single *record* that fails normalization (e.g. a title-less
+page) is quarantined: it is skipped with a stderr warning and the remaining
+good records still flow through. Losing every subsequent good item to one bad
+page is the worse outcome for the "one operator, long batches" usage (U7/R3).
+
+A whole stream of invalid records still fails non-zero: if nothing was emitted
+*and* at least one record was quarantined, the command exits 2 rather than
+reporting a silent empty success.
 """
 
 import argparse
+import sys
 from urllib.parse import urlparse
 
 from cpost.core import cli, io_ndjson, url_utils, validators
@@ -75,8 +83,27 @@ _normalize = normalize_one  # deprecated: remove in vNEXT (use normalize_one)
 
 
 def _run():
+    emitted = 0
+    quarantined = 0
+    # NOTE: iterating read_lines() may raise ValidationError on a malformed JSON
+    # *line* -- that is a stream-level failure (exit 2) and is intentionally NOT
+    # caught here. Only per-record normalization is wrapped, so one bad page
+    # never discards the good records that follow it.
     for obj in io_ndjson.read_lines():
-        io_ndjson.write_line(normalize_one(obj))
+        try:
+            out = normalize_one(obj)
+        except ValidationError as exc:
+            quarantined += 1
+            sys.stderr.write(f"warning: skipping invalid record: {exc.message}\n")
+            continue
+        io_ndjson.write_line(out)
+        emitted += 1
+    # An all-invalid stream must not look like a silent empty success: if every
+    # record was quarantined (nothing emitted), surface a non-zero outcome.
+    if emitted == 0 and quarantined > 0:
+        raise ValidationError(
+            f"all {quarantined} record(s) failed normalization; nothing emitted"
+        )
 
 
 def main():

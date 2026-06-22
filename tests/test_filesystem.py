@@ -1,9 +1,11 @@
+import json
 import os
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
 from cpost.core import filesystem
+from cpost.core import manifest as mf
 from cpost.core.errors import ValidationError
 
 
@@ -114,3 +116,74 @@ def test_copy_no_overwrite_missing_src_raises(tmp_path):
     with pytest.raises(ValidationError):
         filesystem.copy_no_overwrite(src, dst)
     assert not dst.exists()
+
+
+# --- U13: atomic_write_text + manifest.save durability ------------------------
+
+def test_atomic_write_text_writes_content(tmp_path):
+    p = tmp_path / "sub" / "out.txt"
+    result = filesystem.atomic_write_text(p, "payload")
+    assert result == p
+    assert p.read_text(encoding="utf-8") == "payload"
+
+
+def test_atomic_write_text_temp_in_dest_parent(tmp_path, monkeypatch):
+    """HEADLINE INVARIANT: the temp file must be created in dest.parent (same
+    filesystem) — the single property that makes os.replace atomic."""
+    p = tmp_path / "out.txt"
+    real_mkstemp = filesystem.tempfile.mkstemp
+    seen = {}
+
+    def spy_mkstemp(*args, **kwargs):
+        seen["dir"] = kwargs.get("dir")
+        return real_mkstemp(*args, **kwargs)
+
+    monkeypatch.setattr(filesystem.tempfile, "mkstemp", spy_mkstemp)
+    filesystem.atomic_write_text(p, "x")
+    assert seen["dir"] == str(p.parent)
+
+
+def test_manifest_save_round_trips(tmp_path):
+    p = tmp_path / "manifest.json"
+    m = {"post_id": "p1", "backend": {"status": "drafted"}}
+    mf.save(p, m)
+    loaded = mf.load(p)
+    assert loaded["post_id"] == "p1"
+    assert loaded["backend"]["status"] == "drafted"
+    assert "updated_at" in loaded["audit"]
+
+
+def test_manifest_save_replace_failure_keeps_original_intact(tmp_path, monkeypatch):
+    """A simulated os.replace failure mid-save must leave the existing manifest
+    untouched (old-or-new, never truncated)."""
+    p = tmp_path / "manifest.json"
+    mf.save(p, {"post_id": "p1", "backend": {"status": "drafted"}})
+    original = p.read_text(encoding="utf-8")
+
+    def boom(*_a, **_k):
+        raise OSError("replace failed")
+
+    monkeypatch.setattr(filesystem.os, "replace", boom)
+    with pytest.raises(OSError, match="replace failed"):
+        mf.save(p, {"post_id": "p1", "backend": {"status": "published"}})
+    # original content intact, no leftover temp file
+    assert p.read_text(encoding="utf-8") == original
+    leftovers = [x for x in p.parent.iterdir() if x.name != "manifest.json"]
+    assert leftovers == []
+
+
+def test_manifest_save_load_across_lifecycle(tmp_path):
+    p = tmp_path / "manifest.json"
+    m = {"post_id": "p1", "backend": {"status": "drafted"}}
+    mf.save(p, m)
+    m = mf.load(p)
+    mf.set_backend(m, status="draft_verified")
+    mf.save(p, m)
+    m = mf.load(p)
+    mf.set_backend(m, status="published", published_url="https://x.com/p/1")
+    mf.save(p, m)
+    final = mf.load(p)
+    assert final["backend"]["status"] == "published"
+    assert final["backend"]["published_url"] == "https://x.com/p/1"
+    # confirm it is real JSON on disk
+    assert json.loads(p.read_text(encoding="utf-8"))["post_id"] == "p1"

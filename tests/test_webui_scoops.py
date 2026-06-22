@@ -1,8 +1,12 @@
 """WebUI /today 今日備稿 workspace: scoop list, filters, prep trigger, nav."""
 
+import re
+import time
+
 from fastapi.testclient import TestClient
 
-from cpost.core import library, scoring, scoring_config, webui_config
+from cpost.core import jobs as jobs_mod
+from cpost.core import library, pipeline, scoring, scoring_config, webui_config
 from cpost.webui.app import create_app
 
 
@@ -115,13 +119,73 @@ def test_prep_trigger_returns_job_view(tmp_path, monkeypatch):
     client, _ = _client_and_state(tmp_path)
     import cpost.core.scoop_pipeline as sp
     monkeypatch.setattr(sp, "run_prep_pipeline",
-                        lambda cfg, progress_cb=None, on_source=None: {
+                        lambda cfg, progress_cb=None, on_source=None,
+                        crawl_progress_cb=None: {
                             "ingested": 0, "clusters": 0, "scored": 0,
                             "single_source": False, "top": [], "failed": []})
     r = client.post("/today/prep")
     assert r.status_code == 200
     # either still polling (today/jobs) or already finished (prep done view)
     assert "today/jobs" in r.text or "備稿完成" in r.text or "狀態" in r.text
+
+
+def _today_job_id(html):
+    m = re.search(r"/today/jobs/([0-9a-f]+)", html)
+    return m.group(1) if m else None
+
+
+def test_prep_crawl_telemetry_no_dict_in_log_and_status_advances(tmp_path, monkeypatch):
+    """U18 integration: a prep run with a crawl source must surface live crawl
+    telemetry on the status line (current), never as a raw dict in the job log.
+
+    The crawl subprocess fires {responses, items, last_url, last_title} dict
+    snapshots. Before the fix the prep path routed those through jobs.report,
+    stringifying dicts into job.progress. Now they map to jobs.set_current.
+    """
+    client, _ = _client_and_state(tmp_path)
+
+    def fake_crawl(cfg, progress_cb=None, poll_sec=0.5):
+        if progress_cb:
+            progress_cb({"responses": 3, "items": 1, "last_url": "https://ex.com/a",
+                         "last_title": "爬到的標題甲"})
+        return [{
+            "source_id": "example.com",
+            "url": "https://example.com/a",
+            "canonical_url": "https://example.com/a",
+            "title": "今日大事件的完整標題敘述",
+            "text": "內容段落敘述。" * 80,
+            "description": "desc",
+            "published_at": "2026-06-15T10:00:00+08:00",
+            "discovered_at": "2026-06-15T02:00:00Z",
+        }]
+
+    monkeypatch.setattr(pipeline, "crawl_items", fake_crawl)
+    r = client.post("/today/prep")
+    assert r.status_code == 200
+    jid = _today_job_id(r.text)
+    assert jid
+
+    for _ in range(100):
+        client.get(f"/today/jobs/{jid}")
+        j = jobs_mod.get(jid)
+        if j and j["status"] in ("done", "failed"):
+            break
+        time.sleep(0.05)
+    job = jobs_mod.get(jid)
+    assert job is not None
+    assert job["status"] == "done"
+
+    # No raw dict repr leaked into the human-readable log.
+    assert all(isinstance(m, str) for m in job["progress"])
+    assert all("'responses'" not in m and "爬到的標題甲" not in m
+               for m in job["progress"])
+    # The live crawl telemetry advanced the status line during the crawl
+    # (set_current, not report). After the crawl no further set_current runs,
+    # so the final status holds the last crawl snapshot.
+    assert "爬取進度 3 頁" in job["current"]
+    assert "爬到的標題甲" in job["current"]
+    # Stage reports still flow to the log as plain strings.
+    assert any("爬取完成" in m for m in job["progress"])
 
 
 def test_min_score_filters_low_scoring(tmp_path):

@@ -73,6 +73,78 @@ def test_truncation_keeps_canonical_url():
     assert "https://example.com/keep-me" in caption
 
 
+def test_over_budget_url_appears_exactly_once_intact():
+    """U17 edge: url mid-caption + long trailing hashtags over max_chars=800.
+
+    The url must survive exactly once and intact — never duplicated, never as a
+    fragment left in the body.
+    """
+    url = "https://example.com/posts/this-is-a-canonical-url"
+    cfg = {
+        "name": "real-shape",
+        "max_chars": 800,
+        "format": "{title}\n\n{description}\n\n查看完整內容：\n{canonical_url}\n\n{hashtags}",
+    }
+    record = {
+        "title": "T",
+        "description": "d" * 700,
+        "canonical_url": url,
+        "hashtags": " ".join(f"#tag{i}" for i in range(40)),
+    }
+    caption = _render(record, cfg)
+    assert len(caption) <= 800
+    assert caption.count(url) == 1
+    # No stray url scheme beyond the single intact occurrence (no fragment).
+    assert caption.count("https") == 1
+    assert caption.endswith(url)
+
+
+def test_over_budget_empty_hashtags_single_url_at_tail():
+    """U17 happy: empty hashtags (current in-repo flow) -> single url at tail."""
+    url = "https://example.com/posts/keep"
+    cfg = {
+        "name": "real-shape",
+        "max_chars": 60,
+        "format": "{title}\n\n{description}\n\n查看完整內容：\n{canonical_url}\n\n{hashtags}",
+    }
+    record = {
+        "title": "標題",
+        "description": "x" * 500,
+        "canonical_url": url,
+        "hashtags": "",
+    }
+    caption = _render(record, cfg)
+    assert len(caption) <= 60
+    assert caption.count(url) == 1
+    assert caption.count("https") == 1
+    assert caption.endswith(url)
+
+
+def test_budget_cut_mid_url_leaves_no_fragment():
+    """U17 edge: budget boundary landing mid-url -> no url fragment in body."""
+    url = "https://example.com/posts/abcdefghijklmnop"
+    cfg = {
+        "name": "real-shape",
+        "max_chars": 70,
+        "format": "{title}\n{canonical_url}\n{hashtags}",
+    }
+    record = {
+        "title": "T",
+        "description": "",
+        "canonical_url": url,
+        "hashtags": "#" + "z" * 200,
+    }
+    caption = _render(record, cfg)
+    assert len(caption) <= 70
+    assert caption.count(url) == 1
+    # Exactly one scheme token: the intact tail url, no severed prefix fragment.
+    assert caption.count("https") == 1
+    assert caption.endswith(url)
+    # The portion before the tail url must not contain any prefix of the url.
+    body = caption[: -len(url)]
+    assert "http" not in body
+
+
 def test_determinism(template_cfg):
     record = _full_record()
     assert _render(record, template_cfg) == _render(dict(record), template_cfg)

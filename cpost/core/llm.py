@@ -9,6 +9,7 @@ read from the env var named by ``api_key_env``.
 
 import json
 import os
+import socket
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -101,7 +102,18 @@ def chat(cfg: dict, system_prompt: str, user_content: str) -> str:
         detail = exc.read()[:300].decode("utf-8", "replace")
         raise ExternalError(f"LLM 端点错误 HTTP {exc.code}：{detail}")
     except urllib.error.URLError as exc:
+        # A connect-phase timeout surfaces here with reason=socket.timeout.
+        if isinstance(exc.reason, (TimeoutError, socket.timeout)):
+            raise ExternalError(f"LLM 端点连线逾时（{cfg.get('timeout_sec', 120)}s）：{exc.reason}")
         raise ExternalError(f"LLM 端点连线失败：{exc.reason}")
+    except (TimeoutError, socket.timeout) as exc:
+        # Read-phase stall: server accepted the connection but never finished the
+        # body before timeout_sec. Raised directly by resp.read(), not via URLError.
+        raise ExternalError(f"LLM 端点读取逾时（{cfg.get('timeout_sec', 120)}s）：{exc}")
+    except OSError as exc:
+        # Any other socket-level failure mid-request (e.g. connection reset during
+        # read) is an external fault, not an internal bug -> exit 4, not exit 5.
+        raise ExternalError(f"LLM 端点连线中断：{exc}")
 
     try:
         content = data["choices"][0]["message"]["content"]

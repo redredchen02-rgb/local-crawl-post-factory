@@ -411,3 +411,140 @@ def test_body_selector_empty_with_min_text_chars_filters_item(index_c):
     opts["body_selector"] = "div.does-not-exist ::text"
     items = crawl_items(opts)
     assert not any("news/c.html" in it["url"] for it in items)
+
+
+# -- U11: crawl child wall-clock timeout ------------------------------------ #
+# These are fast (mocked process — no real Scrapy reactor / HTTP server), so the
+# wedged-child path is exercised deterministically in well under a second.
+
+class _FakeProc:
+    """A stand-in for mp.Process that lets a test script its liveness."""
+
+    def __init__(self, alive_after_join=True, exits_on_join=False):
+        self._alive = False
+        self._alive_after_join = alive_after_join
+        self._exits_on_join = exits_on_join
+        self.started = False
+        self.terminated = False
+        self.killed = False
+        self.join_calls = []
+
+    def start(self):
+        self.started = True
+        self._alive = True
+
+    def is_alive(self):
+        return self._alive
+
+    def join(self, timeout=None):
+        self.join_calls.append(timeout)
+        if self._exits_on_join:
+            self._alive = False
+        elif not self._alive_after_join:
+            self._alive = False
+
+    def terminate(self):
+        self.terminated = True
+        self._alive = False
+
+    def kill(self):
+        self.killed = True
+        self._alive = False
+
+
+class _FakeCtx:
+    def __init__(self, proc):
+        self._proc = proc
+
+    def Process(self, *args, **kwargs):  # noqa: N802 - mirrors mp API
+        return self._proc
+
+
+def _patch_proc(monkeypatch, proc):
+    from cpost.cli import crawl_posts
+
+    monkeypatch.setattr(crawl_posts.mp, "get_context", lambda _name: _FakeCtx(proc))
+
+
+def test_wedged_child_times_out_and_is_killed(monkeypatch):
+    """A child that never exits → ExternalError within budget, child killed (no orphan)."""
+    from cpost.cli.crawl_posts import crawl_items
+    from cpost.core.errors import ExternalError
+
+    proc = _FakeProc(alive_after_join=True)  # never dies on its own
+    _patch_proc(monkeypatch, proc)
+
+    opts = {"start_urls": ["http://127.0.0.1:1/x"]}
+    with pytest.raises(ExternalError) as exc:
+        crawl_items(opts, max_runtime_sec=0.2)
+
+    assert "budget" in str(exc.value).lower()
+    # The overrun child was actively terminated/killed, not left running.
+    assert proc.terminated or proc.killed
+
+
+def test_wedged_child_with_progress_cb_times_out(monkeypatch):
+    """The progress-poll loop is also bounded by the same deadline."""
+    from cpost.cli.crawl_posts import crawl_items
+    from cpost.core.errors import ExternalError
+
+    proc = _FakeProc(alive_after_join=True)
+    _patch_proc(monkeypatch, proc)
+
+    opts = {"start_urls": ["http://127.0.0.1:1/x"]}
+    with pytest.raises(ExternalError):
+        crawl_items(opts, progress_cb=lambda s: None, poll_sec=0.01,
+                    max_runtime_sec=0.2)
+    assert proc.terminated or proc.killed
+
+
+def test_child_finishing_under_budget_is_not_killed(monkeypatch, tmp_path):
+    """Edge: a child that exits within budget is joined normally, never killed."""
+    from cpost.cli import crawl_posts
+    from cpost.cli.crawl_posts import crawl_items
+
+    proc = _FakeProc(exits_on_join=True)  # exits the moment we join
+    _patch_proc(monkeypatch, proc)
+
+    # Stub out tempdir + result parsing so we exercise ONLY the timeout/join path
+    # without a real crawl: write a status with a response and one item.
+    real_mkdtemp = crawl_posts.tempfile.mkdtemp
+
+    def fake_mkdtemp(*a, **k):
+        d = real_mkdtemp(*a, **k)
+        import json as _json
+        import os as _os
+        with open(_os.path.join(d, "status.json"), "w") as fh:
+            _json.dump({"responses": 1, "items": 1, "error": None}, fh)
+        with open(_os.path.join(d, "items.ndjson"), "w") as fh:
+            fh.write(_json.dumps({"url": "http://x/a", "title": "A"}) + "\n")
+        return d
+
+    monkeypatch.setattr(crawl_posts.tempfile, "mkdtemp", fake_mkdtemp)
+
+    opts = {"start_urls": ["http://x/a"]}
+    items = crawl_items(opts, max_runtime_sec=5.0)
+
+    assert items == [{"url": "http://x/a", "title": "A"}]
+    assert not proc.terminated and not proc.killed
+
+
+def test_env_var_overrides_default_budget(monkeypatch):
+    """CPOST_CRAWL_MAX_RUNTIME_SEC overrides the default when no arg is given."""
+    from cpost.cli.crawl_posts import _resolve_max_runtime
+
+    monkeypatch.setenv("CPOST_CRAWL_MAX_RUNTIME_SEC", "12.5")
+    assert _resolve_max_runtime(None) == 12.5
+    # An explicit argument still wins over the env var.
+    assert _resolve_max_runtime(3.0) == 3.0
+    # A malformed env var falls back to the default.
+    monkeypatch.setenv("CPOST_CRAWL_MAX_RUNTIME_SEC", "not-a-number")
+    from cpost.cli.crawl_posts import DEFAULT_CRAWL_MAX_RUNTIME_SEC
+    assert _resolve_max_runtime(None) == DEFAULT_CRAWL_MAX_RUNTIME_SEC
+
+
+def test_default_budget_is_generous_and_finite():
+    """The default budget is finite and comfortably above a normal crawl."""
+    from cpost.cli.crawl_posts import DEFAULT_CRAWL_MAX_RUNTIME_SEC
+
+    assert 60.0 <= DEFAULT_CRAWL_MAX_RUNTIME_SEC < float("inf")
