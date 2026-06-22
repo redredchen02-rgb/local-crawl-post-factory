@@ -8,7 +8,12 @@ from pathlib import Path
 import pytest
 
 from cpost.core import url_utils
-from cpost.cli.render_caption import _render, load_template, render_record
+from cpost.cli.render_caption import (
+    _render,
+    load_template,
+    make_content_hash,
+    render_record,
+)
 
 ROOT = Path(__file__).resolve().parent.parent
 REAL_TEMPLATE = ROOT / "templates" / "fixed-format.zh.yaml"
@@ -43,6 +48,44 @@ def test_render_record_sets_caption_and_content_hash(template_cfg):
     expected = url_utils.content_hash(
         rec["canonical_url"], rec["title"], rec["caption"])
     assert rec["content_hash"] == expected
+
+
+# --- make_content_hash (L9 extraction) -------------------------------------
+
+# Pre-refactor expectation for the fixed fixture below, computed against the
+# real zh template before extracting make_content_hash. If this changes, the
+# publish-gate dedup hash changed — that is a behavior change, not a test bug.
+_EXPECTED_FIXTURE_HASH = (
+    "571ebbe861b6fe333406aa96fdc1a6ac3df6d970d7b2e58728a42c595a2c469a"
+)
+
+
+def test_make_content_hash_stable_and_agrees_with_render_record(template_cfg):
+    """Happy: stable expected hash; extracted fn and render_record agree."""
+    rec = render_record(_full_record(), template_cfg)
+    direct = make_content_hash(rec)
+    # Extracted function reproduces the exact inline inputs/order.
+    assert direct == url_utils.content_hash(
+        rec["canonical_url"], rec["title"], rec["caption"])
+    # render_record stored exactly what make_content_hash computes.
+    assert rec["content_hash"] == direct
+    # Stable: same item -> same hash.
+    assert make_content_hash(dict(rec)) == direct
+
+
+def test_make_content_hash_missing_optional_fields_no_crash():
+    """Edge: item missing every optional field hashes the empty-field formula."""
+    assert make_content_hash({}) == url_utils.content_hash("", "", "")
+    # Partial item: only canonical_url present; title/caption default to "".
+    item = {"canonical_url": "https://example.com/x"}
+    assert make_content_hash(item) == url_utils.content_hash(
+        "https://example.com/x", "", "")
+
+
+def test_render_record_content_hash_matches_pre_refactor_fixture(template_cfg):
+    """Regression: byte-identical hash for a fixed fixture vs pre-refactor."""
+    rec = render_record(_full_record(), template_cfg)
+    assert rec["content_hash"] == _EXPECTED_FIXTURE_HASH
 
 
 def test_missing_description_blank_rest_intact(template_cfg):

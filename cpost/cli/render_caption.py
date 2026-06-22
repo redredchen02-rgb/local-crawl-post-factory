@@ -97,6 +97,22 @@ def render(record: dict, template_cfg: dict) -> str:
 _render = render  # deprecated: remove in vNEXT (use render)
 
 
+def make_content_hash(item: dict) -> str:
+    """Compute the reviewed-content dedup hash for a rendered ``item``.
+
+    Inputs and order are exactly those of the publish-gate dedup formula:
+    ``canonical_url``, ``title``, ``caption`` (each missing field -> ""). The
+    item is expected to already carry a rendered ``caption`` (as set by
+    :func:`render_record`); pass an item without one only when the empty-caption
+    hash is what you want. Pure and deterministic.
+    """
+    return url_utils.content_hash(
+        str(item.get("canonical_url", "")),
+        str(item.get("title", "")),
+        str(item.get("caption", "")),
+    )
+
+
 def render_record(record: dict, template_cfg: dict) -> dict:
     """Set ``caption`` + ``content_hash`` on ``record`` in place; return it.
 
@@ -104,13 +120,8 @@ def render_record(record: dict, template_cfg: dict) -> dict:
     in-process pipeline (U5b) so the content_hash inputs/formula live in one
     place.
     """
-    caption = render(record, template_cfg)
-    record["caption"] = caption
-    record["content_hash"] = url_utils.content_hash(
-        str(record.get("canonical_url", "")),
-        str(record.get("title", "")),
-        caption,
-    )
+    record["caption"] = render(record, template_cfg)
+    record["content_hash"] = make_content_hash(record)
     return record
 
 
