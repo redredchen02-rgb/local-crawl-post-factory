@@ -9,7 +9,7 @@ time_window_hours: 72       # 兩筆都帶 published_at 時，須落在此時間
 
 # --- 打分（core.scoring）---
 confidence_source_cap: 3        # 置信度封頂的獨立來源數（達此值即滿分 1.0）
-quality_full_text_chars: 1000   # 完整度正規化基準：正文達此字數視為「完整」
+quality_full_text_chars: 3500   # 完整度正規化基準：正文達此字數視為「完整」（2026-06-22 校準：實測單源正文 1870-3627 字，1000 會讓人人滿分無區分）
 quality_recency_window_hours: 168  # 時近度衰減窗（7 天內最高分）
 quality_material_cap: 3         # 素材量（成員數）正規化封頂
 
