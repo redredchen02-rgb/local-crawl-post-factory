@@ -177,7 +177,7 @@ def run_pipeline(items: list[dict], webui_cfg: dict,
 # ---------------------------------------------------------------------------
 
 def _retry(fn: Callable[[], object], times: int = 3,
-           delay: float = 1.0) -> tuple:  # (result, error_or_None)
+           delay: float = 1.0) -> tuple[object, None] | tuple[None, Exception]:
     """Call fn() up to *times* attempts, sleeping *delay* seconds between retries."""
     last_exc: Exception | None = None
     for attempt in range(times):
@@ -187,6 +187,7 @@ def _retry(fn: Callable[[], object], times: int = 3,
             last_exc = exc
             if attempt < times - 1:
                 time.sleep(delay)
+    assert last_exc is not None  # all attempts failed → at least one exception caught
     return None, last_exc
 
 
@@ -233,6 +234,9 @@ def run_auto_pipeline(
     drafted_ok: list[PipelineItem] = []
     verify_ok: list[PipelineItem] = []
     failed: list[PipelineFailed] = []
+    draft_fail = 0
+    verify_fail = 0
+    publish_fail = 0
 
     # --- DRAFT LOOP ---
     _report(f"自動建草稿（共 {total} 篇）…")
@@ -242,6 +246,7 @@ def run_auto_pipeline(
         manifest_path = Path(item["manifest_path"])
         if not manifest_path.exists():
             failed.append({"post_id": pid, "stage": "draft", "error": "找不到此貼文包"})
+            draft_fail += 1
             continue
         ns = SimpleNamespace(
             manifest=str(manifest_path),
@@ -261,6 +266,7 @@ def run_auto_pipeline(
         else:
             _note_expiry(err)
             failed.append({"post_id": pid, "stage": "draft", "error": str(err)})
+            draft_fail += 1
             runs.record_run(cfg["state_path"], stage="draft", post_id=pid,
                             status="failed", error=str(err), run_id=run_id, severity="error")
 
@@ -274,6 +280,7 @@ def run_auto_pipeline(
         manifest_path = Path(item["manifest_path"])
         if not manifest_path.exists():
             failed.append({"post_id": pid, "stage": "verify", "error": "找不到此貼文包"})
+            verify_fail += 1
             continue
         ns = SimpleNamespace(
             manifest=str(manifest_path),
@@ -293,6 +300,7 @@ def run_auto_pipeline(
         else:
             _note_expiry(err)
             failed.append({"post_id": pid, "stage": "verify", "error": str(err)})
+            verify_fail += 1
             runs.record_run(cfg["state_path"], stage="verify", post_id=pid,
                             status="failed", error=str(err), run_id=run_id, severity="error")
 
@@ -308,6 +316,7 @@ def run_auto_pipeline(
         manifest_path = Path(item["manifest_path"])
         if not manifest_path.exists():
             failed.append({"post_id": pid, "stage": "publish", "error": "找不到 manifest"})
+            publish_fail += 1
             continue
         m = json.loads(manifest_path.read_text(encoding="utf-8"))
         cid = reviewed.content_id(m)
@@ -316,6 +325,7 @@ def run_auto_pipeline(
         except Exception as exc:  # noqa: BLE001
             failed.append({"post_id": pid, "stage": "publish",
                            "error": f"reviewed.mark 失敗：{exc}"})
+            publish_fail += 1
             continue
         ns = SimpleNamespace(
             manifest=str(manifest_path),
@@ -331,14 +341,20 @@ def run_auto_pipeline(
         _rv, err = _retry(lambda ns=ns: publish_post.run(ns))  # type: ignore[misc]
         if err is None:
             publish_ok += 1
+            published_url = (json.loads(manifest_path.read_text(encoding="utf-8"))
+                             .get("backend", {}).get("published_url"))
+            runs.record_run(cfg["state_path"], stage="publish", post_id=pid,
+                            status="ok", detail=published_url,
+                            run_id=run_id, severity="info")
         else:
             _note_expiry(err)
             failed.append({"post_id": pid, "stage": "publish", "error": str(err)})
+            publish_fail += 1
             runs.record_run(cfg["state_path"], stage="publish", post_id=pid,
                             status="failed", error=str(err), run_id=run_id, severity="error")
 
     _report(
-        f"自動發布完成：成功 {publish_ok} / 失敗 {len(failed)} / "
-        f"跳過 {verify_fail_count}（驗證失敗 {verify_fail_count}）"
+        f"自動發布完成：成功 {publish_ok} / "
+        f"草稿失敗 {draft_fail} / 驗證失敗 {verify_fail} / 發布失敗 {publish_fail}"
     )
     return {"ok": publish_ok, "failed": failed, "verify_fail_count": verify_fail_count}

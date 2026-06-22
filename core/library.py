@@ -45,6 +45,15 @@ CREATE TABLE IF NOT EXISTS clusters (
   updated_at           TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_clusters_score ON clusters(score);
+
+CREATE TABLE IF NOT EXISTS generations (
+  cache_key   TEXT PRIMARY KEY,
+  cluster_id  TEXT,
+  title       TEXT NOT NULL,
+  body        TEXT NOT NULL,
+  model       TEXT,
+  created_at  TEXT NOT NULL
+);
 """
 
 
@@ -161,6 +170,15 @@ def list_clusters(conn: sqlite3.Connection, *, by_score: bool = False,
     return [dict(r) for r in conn.execute(sql, params).fetchall()]
 
 
+def get_cluster(conn: sqlite3.Connection, cluster_id: str) -> dict | None:
+    """Return one cluster summary row as a dict, or None when absent."""
+    conn.row_factory = sqlite3.Row
+    row = conn.execute(
+        "SELECT * FROM clusters WHERE cluster_id = ? LIMIT 1", (cluster_id,)
+    ).fetchone()
+    return dict(row) if row else None
+
+
 def get_cluster_members(conn: sqlite3.Connection, cluster_id: str) -> list[dict]:
     """Return the library items belonging to ``cluster_id`` (for scoring/generation)."""
     conn.row_factory = sqlite3.Row
@@ -179,4 +197,33 @@ def set_cluster_scores(conn: sqlite3.Connection, cluster_id: str, *,
         "UPDATE clusters SET confidence = ?, quality = ?, score = ?, updated_at = ? "
         "WHERE cluster_id = ?",
         (confidence, quality, score, now, cluster_id),
+    )
+
+
+# --- generations: cache of LLM-synthesized articles (plan U4) -------------------
+# Keyed by a (member fingerprint + model + prompt version) hash so a re-run over
+# an unchanged scoop reuses the same article (stable + no re-billing). Membership
+# changes the key, so stale fabricated content is never served for a changed scoop.
+
+def get_generation(conn: sqlite3.Connection, cache_key: str) -> dict | None:
+    """Return a cached generation (title/body) for ``cache_key``, or None."""
+    conn.row_factory = sqlite3.Row
+    row = conn.execute(
+        "SELECT * FROM generations WHERE cache_key = ? LIMIT 1", (cache_key,)
+    ).fetchone()
+    return dict(row) if row else None
+
+
+def put_generation(conn: sqlite3.Connection, *, cache_key: str, cluster_id: str,
+                   title: str, body: str, model: str | None, now: str) -> None:
+    """Insert or replace a cached generation."""
+    conn.execute(
+        """
+        INSERT INTO generations (cache_key, cluster_id, title, body, model, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(cache_key) DO UPDATE SET
+            title=excluded.title, body=excluded.body,
+            model=excluded.model, created_at=excluded.created_at
+        """,
+        (cache_key, cluster_id, title, body, model, now),
     )

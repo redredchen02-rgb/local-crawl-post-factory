@@ -1,0 +1,30 @@
+<div id="scoop-list">
+  {% if single_source %}
+  <p class="hint">單源資料：可信度（來源數）暫不具區分力，排序以品質為主。</p>
+  {% endif %}
+  {% if not rows %}
+  <p class="empty">目前沒有可選的瓜。按上方「開始備稿」抓取並聚合最新資訊。</p>
+  {% else %}
+  <form hx-post="/today/generate" hx-target="#gen-status" hx-swap="innerHTML">
+    <table class="scoops">
+      <thead>
+        <tr><th></th><th>瓜（代表標題）</th><th>來源數</th><th>品質</th><th>綜合分</th><th>來源</th></tr>
+      </thead>
+      <tbody>
+        {% for c in rows %}
+        <tr>
+          <td><input type="checkbox" name="cluster_ids" value="{{ c.cluster_id }}"></td>
+          <td>{{ c.representative_title or c.cluster_id }}</td>
+          <td>{{ c.source_count }}</td>
+          <td>{{ '%.2f'|format(c.quality or 0) }}</td>
+          <td>{{ '%.2f'|format(c.score or 0) }}</td>
+          <td>{{ c.sources | join(', ') }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <button type="submit">生成選取的瓜</button>
+  </form>
+  <div id="gen-status"></div>
+  {% endif %}
+</div>

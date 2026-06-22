@@ -15,6 +15,7 @@ from webui.routers import (
     dashboard,
     history_audit,
     packages,
+    scoops,
     settings_auth,
     trash,
 )
@@ -34,6 +35,7 @@ def create_app(config_path: str = WEBUI_CONFIG_PATH) -> FastAPI:
     app.include_router(dashboard.router)
     app.include_router(settings_auth.router)
     app.include_router(crawl.router)
+    app.include_router(scoops.router)
     app.include_router(packages.router)
     app.include_router(actions.router)
     app.include_router(trash.router)
