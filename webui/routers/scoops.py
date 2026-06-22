@@ -20,9 +20,13 @@ router = APIRouter()
 def _scoops(cfg: dict, min_confidence: int, min_score: float) -> tuple[list[dict], bool]:
     """Return (rows, single_source): score-sorted clusters, filtered, with sources.
 
-    ``min_confidence`` filters on source_count (number of independent sources);
-    ``min_score`` on the combined score. ``single_source`` reflects the *whole*
-    library (pre-filter) so the UI can flag that confidence is not yet meaningful.
+    ``min_confidence`` filters on source_count -- "appeared in >=N distinct-canonical
+    sources" (best-effort, INFORMATIONAL, NOT corroboration: mirrors sharing a
+    canonical_url collapse to 1). Default 0 never empties a single-source library.
+    ``min_score`` gates the combined score, which is quality-only (the confidence
+    axis is neutralized via ``weight_confidence: 0.0``). ``single_source`` reflects
+    the *whole* library (pre-filter) so the UI can flag that source_count carries
+    no real distinguishing power yet.
     """
     with library.connect(cfg["state_path"]) as conn:
         clusters = library.list_clusters(conn, by_score=True)

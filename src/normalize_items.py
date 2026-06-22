@@ -7,8 +7,10 @@ command with exit 2.
 """
 
 import argparse
+from urllib.parse import urlparse
 
 from core import cli, io_ndjson, url_utils, validators
+from core.errors import ValidationError
 from core.schema import CRAWLED_REQUIRED
 
 # Text fields that get whitespace-collapsed/trimmed.
@@ -23,6 +25,10 @@ def normalize_one(obj: dict) -> dict:
     Normalizes url/canonical_url, derives canonical_url from url when missing,
     cleans text fields, drops empty optional keys, and validates that
     canonical_url is a valid URL and title is non-empty.
+
+    ``source_id`` is auto-derived from the canonical_url host (lowercased) when
+    not explicitly provided, so the legacy single-site/CLI path (no --source-id)
+    still yields a non-empty origin (U9 R4) instead of being rejected.
     """
     out = dict(obj)
 
@@ -50,6 +56,17 @@ def normalize_one(obj: dict) -> dict:
 
     validators.require_url(out.get("canonical_url", ""), field="canonical_url")
     validators.require_nonempty(out.get("title") or "", field="title")
+    # source_id is provenance (display/filter only, NOT corroboration) but is a
+    # CRAWLED_REQUIRED field, so it must be non-empty (plan U9 R4). The legacy
+    # single-site/CLI path crawls without a --source-id, so rather than rejecting
+    # those records, derive source_id from the canonical_url host (already
+    # validated to have a hostname above). Only error if neither is available.
+    source_id = out.get("source_id")
+    if not isinstance(source_id, str) or not source_id.strip():
+        host = urlparse(out["canonical_url"]).hostname
+        if not host:
+            raise ValidationError("missing or empty field: source_id")
+        out["source_id"] = host.lower()
 
     return out
 

@@ -18,6 +18,9 @@ weight_completeness: 0.5
 weight_recency: 0.2
 weight_material: 0.3
 
-# 綜合分 = w_confidence*置信度 + w_quality*品質
-weight_confidence: 0.6
-weight_quality: 0.4
+# 綜合分 = w_confidence*置信度 + w_quality*品質。
+# 信心軸已中性化（plan U9 / Key Decision）：confidence 仍照算並填入資訊欄，
+# 但權重設 0 → combined() 完全忽略它，排序由品質單獨決定。total weight 仍 > 0。
+# confidence/source_count 為「資訊性，非佐證」（鏡像/同 canonical 會塌成 1）。
+weight_confidence: 0.0
+weight_quality: 1.0

@@ -71,10 +71,13 @@ def cluster_items(items: list[dict], *, ngram: int = 2,
          representative_url, representative_title,
          earliest_published, latest_published}
 
-    ``source_count`` counts *distinct* ``source_id`` values -- the multi-source
-    corroboration signal that confidence scoring builds on. The representative is
-    the member with the longest ``source_text`` (most material), tie-broken by
-    ``canonical_url`` for determinism.
+    ``source_count`` counts *distinct* ``source_id`` values -- an INFORMATIONAL
+    signal only, NOT corroboration: members are keyed by ``canonical_url``, so
+    mirrors/reposts sharing a URL collapse to one row and ``source_count`` cannot
+    represent "same URL, N sources" (best-effort). Confidence scoring is
+    neutralized (``weight_confidence: 0.0``), so this never drives ranking. The
+    representative is the member with the longest ``source_text`` (most material),
+    tie-broken by ``canonical_url`` for determinism.
     """
     items = sorted(items, key=lambda it: it["canonical_url"])
     n = len(items)

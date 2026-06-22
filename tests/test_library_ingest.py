@@ -48,6 +48,41 @@ def test_to_library_fields_missing_title_raises():
         to_library_fields(_rec(title=""))
 
 
+def test_to_library_fields_always_yields_nonempty_source_id():
+    # source_id is provenance (display/filter only) but must never be blank in
+    # the library; a valid record maps through with its source_id intact (U9 R4).
+    fields = to_library_fields(_rec(source_id="site-x"))
+    assert fields["source_id"] == "site-x"
+
+
+def test_to_library_fields_blank_source_id_raises():
+    with pytest.raises(ValidationError):
+        to_library_fields(_rec(source_id=""))
+    with pytest.raises(ValidationError):
+        to_library_fields(_rec(source_id="   "))
+
+
+def test_to_library_fields_missing_source_id_raises():
+    rec = _rec()
+    del rec["source_id"]
+    with pytest.raises(ValidationError):
+        to_library_fields(rec)
+
+
+def test_ingest_persists_nonempty_source_id(tmp_path):
+    # End-to-end through the stage: every persisted row carries a non-empty
+    # source_id (the provenance-completeness guarantee, R4).
+    db = _db(tmp_path)
+    recs = [_rec(canonical_url="https://a.com/1", source_id="site-a"),
+            _rec(canonical_url="https://b.com/1", source_id="site-b")]
+    with library.connect(db) as conn:
+        list(ingest(iter(recs), conn, "2026-06-18T00:00:00+00:00"))
+    with library.connect(db) as conn:
+        for url in ("https://a.com/1", "https://b.com/1"):
+            sid = library.get(conn, url)["source_id"]
+            assert sid and sid.strip()
+
+
 # --- stage behaviour ---
 
 def test_ingest_persists_and_passes_through(tmp_path):

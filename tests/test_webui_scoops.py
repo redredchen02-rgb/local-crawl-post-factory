@@ -2,7 +2,7 @@
 
 from fastapi.testclient import TestClient
 
-from core import library, webui_config
+from core import library, scoring, scoring_config, webui_config
 from webui.app import create_app
 
 
@@ -57,6 +57,37 @@ def test_min_confidence_filters_to_multi_source(tmp_path):
     ])
     r = client.get("/today/list", params={"min_confidence": 2})
     assert "多源瓜內容" in r.text and "單源瓜內容" not in r.text
+
+
+def test_ranking_driven_by_quality_not_confidence(tmp_path):
+    # Confidence axis is neutralized (weight_confidence: 0.0 in configs/scoring.yaml):
+    # a high-quality single-source scoop must outrank a low-quality multi-source
+    # one. Scores are computed through the real scoring config so reverting the
+    # weight back to >0 (which would let source_count dominate) fails this test.
+    cfg = scoring_config.load("configs/scoring.yaml")
+    assert cfg["weight_confidence"] == 0.0  # guard: neutralization must hold
+
+    def _score(source_count, quality_v):
+        conf = scoring.confidence(source_count,
+                                  source_cap=int(cfg["confidence_source_cap"]))
+        return scoring.combined(conf, quality_v,
+                                w_confidence=float(cfg["weight_confidence"]),
+                                w_quality=float(cfg["weight_quality"]))
+
+    # Low source_count + high quality vs high source_count + low quality.
+    lo_src_hi_q = _score(1, 0.9)
+    hi_src_lo_q = _score(3, 0.2)
+    assert lo_src_hi_q > hi_src_lo_q  # quality alone decides ordering
+
+    client, state = _client_and_state(tmp_path)
+    _seed(state, [
+        ("c_multi_lowq", "多源低品質瓜內容", ["s1", "s2", "s3"], hi_src_lo_q, 0.2),
+        ("c_single_hiq", "單源高品質瓜內容", ["s1"], lo_src_hi_q, 0.9),
+    ])
+    r = client.get("/today")
+    assert r.status_code == 200
+    # High-quality single-source scoop ranks first despite fewer sources.
+    assert r.text.index("單源高品質瓜內容") < r.text.index("多源低品質瓜內容")
 
 
 def test_single_source_default_not_emptied_and_flagged(tmp_path):
