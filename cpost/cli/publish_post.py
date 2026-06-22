@@ -41,6 +41,21 @@ def _run(args) -> int:
     # Gate 1: explicit approval (R8).
     if not args.approve:
         raise ValidationError("refusing to publish without --approve")
+
+    post_id = manifest.get("post_id")
+    assert isinstance(post_id, str)
+    run_id = manifest.get("backend", {}).get("run_id")  # Q7: None for CLI-built manifests
+
+    # Idempotent re-entry (U3/R2): a prior attempt may have published LIVE and saved
+    # status='published', then crashed in the post-publish bookkeeping (receipt /
+    # state / audit). The orchestrator's _retry then re-invokes us. Re-clicking publish
+    # would double-post; failing Gate 2 ('draft not verified') would report a LIVE post
+    # as failed AND mask the real first error. Instead, recognise the already-published
+    # manifest and (re-)complete the idempotent bookkeeping, returning success.
+    if manifest.get("backend", {}).get("status") == "published":
+        published_url = manifest.get("backend", {}).get("published_url") or ""
+        return _finalize_published(args, manifest, post_id, published_url, run_id)
+
     # Gate 2: draft must be verified (R8).
     if manifest.get("backend", {}).get("status") != "draft_verified":
         raise ValidationError("refusing: draft not verified")
@@ -52,19 +67,29 @@ def _run(args) -> int:
     if expected_cid is not None and reviewed.content_id(manifest) != expected_cid:
         raise ValidationError("refusing: content changed since review")
 
-    post_id = manifest.get("post_id")
-    assert isinstance(post_id, str)
     draft_url = manifest.get("backend", {}).get("draft_url")
-    run_id = manifest.get("backend", {}).get("run_id")  # Q7: None for CLI-built manifests (not self-generated)
-
     with backend_driver.session(args.storage_state, args.headless, args.timeout_ms) as page:
         result = backend_driver.publish_draft(
             page, cfg, draft_url, pkg_dir=str(Path(args.manifest).parent),
             **backend_driver.retry_kwargs(cfg, args.retries))
 
     published_url = result["published_url"]
+    # Flip the manifest to 'published' FIRST so a crash in the bookkeeping below is
+    # recoverable: the re-entry guard above converges this post to success on retry
+    # rather than re-publishing it live.
     mf.set_backend(manifest, status="published", published_url=published_url)
     mf.save(args.manifest, manifest)
+    return _finalize_published(args, manifest, post_id, published_url, run_id)
+
+
+def _finalize_published(args, manifest, post_id, published_url, run_id) -> int:
+    """Post-publish bookkeeping, safe to re-run after a tail crash (U3/R2).
+
+    Every step is idempotent: the receipt is overwritten, the state row is an upsert,
+    and the audit/stdout success lines describe an already-live post. (The run record
+    can still double-write in the narrow fail-after-record window; making run recording
+    itself idempotent is U9's job, tracked separately.)
+    """
     _write_receipt(args.manifest, post_id, published_url)
     _mark_published(args.state, manifest, post_id, published_url)
     if args.state:
