@@ -12,6 +12,8 @@ fails the whole command with exit 2 (CLI contract).
 """
 
 import argparse
+import sqlite3
+from collections.abc import Generator, Iterable
 from datetime import datetime, timezone
 
 from core import cli, library
@@ -43,7 +45,8 @@ def to_library_fields(record: dict) -> dict:
     }
 
 
-def ingest(records, conn, now):
+def ingest(records: Iterable[dict], conn: sqlite3.Connection,
+           now: str) -> Generator[dict, None, None]:
     """Upsert each record into ``conn`` and yield it unchanged (transparent stage).
 
     A single shared connection is used for the whole stream (no per-record
