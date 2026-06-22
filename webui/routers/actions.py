@@ -1,12 +1,11 @@
 import html
 import json
-from types import SimpleNamespace
 
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse
 
-from browser import backend_driver
 from core import jobs as _jobs, reviewed, runs
+from core.backend_args import BackendInvocation
 from core.errors import SessionExpiredError
 from src import draft_post, publish_post, verify_draft
 from webui._helpers import (
@@ -56,12 +55,10 @@ def action_publish(request: Request, post_id: str, title: str = Form("")):
     if msg:
         return HTMLResponse(f'<p class="error">{msg}</p>', status_code=400)
 
-    ns = SimpleNamespace(
+    ns = BackendInvocation(
         manifest=str(pkg / "manifest.json"), backend=cfg["backend_config"],
-        storage_state=cfg["storage_state"], headless=True,
-        timeout_ms=backend_driver.DEFAULT_TIMEOUT_MS, retries=None,
-        state=cfg["state_path"], approve=True,
-        expected_content_id=stored_cid)
+        storage_state=cfg["storage_state"], state=cfg["state_path"],
+        approve=True, expected_content_id=stored_cid)
     return submit_job(request, "publish", post_id, cfg, lambda: publish_post.run(ns))
 
 

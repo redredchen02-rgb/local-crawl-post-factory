@@ -211,15 +211,209 @@ def test_reviewed_mark_called_before_publish(
 @patch("core.pipeline.draft_post.run")
 def test_reviewed_mark_failure_skips_publish(
         mock_draft, mock_verify, mock_publish, mock_mark, mock_record, tmp_path):
+    """If reviewed.mark raises for a publish item, the publish runner is NOT
+    invoked for it and the item is recorded in result['failed'] at stage
+    'publish'. This locks the gate: a failed approval pre-step never reaches
+    publish_post.run."""
     cfg = _make_cfg(tmp_path)
     built = [_make_built("p1", tmp_path)]
     progress = []
     mock_mark.side_effect = RuntimeError("db error")
 
-    run_auto_pipeline(built, cfg, on_progress=progress.append)
+    result = run_auto_pipeline(built, cfg, on_progress=progress.append)
 
+    assert mock_publish.call_count == 0
     mock_publish.assert_not_called()
     assert "失敗 1" in progress[-1]
+    assert result["ok"] == 0
+    assert len(result["failed"]) == 1
+    f = result["failed"][0]
+    assert f["post_id"] == "p1" and f["stage"] == "publish"
+
+
+# ---------------------------------------------------------------------------
+# R14 characterization: locks the CURRENT observable behavior so the
+# single-stage-runner refactor cannot change it. (Behavior-preserving.)
+# ---------------------------------------------------------------------------
+
+@patch("core.pipeline.runs.record_run")
+@patch("core.pipeline.reviewed.mark")
+@patch("core.pipeline.publish_post.run")
+@patch("core.pipeline.verify_draft.run")
+@patch("core.pipeline.draft_post.run")
+def test_stage_sequencing_draft_then_verify_then_publish(
+        mock_draft, mock_verify, mock_publish, mock_mark, mock_record, tmp_path):
+    """Each item flows draft -> verify -> publish in that global per-stage order:
+    ALL drafts happen before ANY verify, ALL verifies before ANY publish."""
+    cfg = _make_cfg(tmp_path)
+    built = [_make_built("p1", tmp_path), _make_built("p2", tmp_path)]
+    order = []
+    mock_draft.side_effect = lambda ns: order.append(("draft", ns.manifest))
+    mock_verify.side_effect = lambda ns: order.append(("verify", ns.manifest))
+    mock_publish.side_effect = lambda ns: order.append(("publish", ns.manifest))
+
+    run_auto_pipeline(built, cfg)
+
+    stages = [s for s, _ in order]
+    # All drafts, then all verifies, then all publishes (no interleaving).
+    assert stages == ["draft", "draft", "verify", "verify", "publish", "publish"]
+
+
+@patch("core.pipeline.runs.record_run")
+@patch("core.pipeline.reviewed.mark")
+@patch("core.pipeline.publish_post.run")
+@patch("core.pipeline.verify_draft.run")
+@patch("core.pipeline.draft_post.run")
+def test_returns_autopipeline_result_shape_and_counters(
+        mock_draft, mock_verify, mock_publish, mock_mark, mock_record, tmp_path):
+    """The returned dict keeps the AutoPipelineResult contract: ok / failed /
+    verify_fail_count, with the exact counters for an all-success batch."""
+    cfg = _make_cfg(tmp_path)
+    built = [_make_built("p1", tmp_path), _make_built("p2", tmp_path)]
+
+    result = run_auto_pipeline(built, cfg)
+
+    assert set(result.keys()) == {"ok", "failed", "verify_fail_count"}
+    assert result == {"ok": 2, "failed": [], "verify_fail_count": 0}
+
+
+@patch("core.pipeline.time.sleep")
+@patch("core.pipeline.runs.record_run")
+@patch("core.pipeline.reviewed.mark")
+@patch("core.pipeline.publish_post.run")
+@patch("core.pipeline.verify_draft.run")
+@patch("core.pipeline.draft_post.run")
+def test_failed_list_records_failing_stage_per_item(
+        mock_draft, mock_verify, mock_publish, mock_mark, mock_record, mock_sleep, tmp_path):
+    """An item failing one stage is recorded in result['failed'] tagged with that
+    stage; a sibling item that succeeds is NOT aborted by it."""
+    cfg = _make_cfg(tmp_path)
+    built = [_make_built("p1", tmp_path), _make_built("p2", tmp_path)]
+    # p1 fails at verify (all retries); p2 sails through.
+    mock_verify.side_effect = [RuntimeError("v fail"), RuntimeError("v fail"),
+                               RuntimeError("v fail"), None]
+
+    result = run_auto_pipeline(built, cfg)
+
+    assert result["ok"] == 1                       # p2 published
+    assert result["verify_fail_count"] == 1        # p1 failed verify
+    assert len(result["failed"]) == 1
+    f = result["failed"][0]
+    assert f["post_id"] == "p1" and f["stage"] == "verify"
+    assert mock_publish.call_count == 1            # only p2 reached publish
+
+
+@patch("core.pipeline.runs.record_run")
+@patch("core.pipeline.reviewed.mark")
+@patch("core.pipeline.publish_post.run")
+@patch("core.pipeline.verify_draft.run")
+@patch("core.pipeline.draft_post.run")
+def test_record_run_invoked_per_stage_with_status_ok(
+        mock_draft, mock_verify, mock_publish, mock_mark, mock_record, tmp_path):
+    """runs.record_run is called once per stage per item with status=ok; the
+    publish success record carries detail=published_url (read back from manifest)."""
+    cfg = _make_cfg(tmp_path)
+    # manifest records published_url so the publish detail is observable.
+    pkg = tmp_path / "out" / "p1"
+    pkg.mkdir(parents=True, exist_ok=True)
+    (pkg / "manifest.json").write_text(json.dumps({
+        "content": {"title": "T", "body": "b"},
+        "source": {"canonical_url": "https://x.com/p1"},
+        "backend": {"status": "draft_verified", "published_url": "https://pub/p1"},
+        "audit": {},
+    }), encoding="utf-8")
+    built = [{"post_id": "p1", "title": "T",
+              "manifest_path": str(pkg / "manifest.json")}]
+
+    run_auto_pipeline(built, cfg)
+
+    by_stage = {}
+    for call in mock_record.call_args_list:
+        kw = call.kwargs
+        if kw.get("status") == "ok":
+            by_stage[kw["stage"]] = kw
+    assert set(by_stage) == {"draft", "verify", "publish"}
+    assert by_stage["publish"]["detail"] == "https://pub/p1"
+    assert by_stage["draft"].get("detail") is None  # draft/verify carry no detail
+
+
+@patch("core.pipeline.time.sleep")
+@patch("core.pipeline.runs.record_run")
+@patch("core.pipeline.reviewed.mark")
+@patch("core.pipeline.publish_post.run")
+@patch("core.pipeline.verify_draft.run")
+@patch("core.pipeline.draft_post.run")
+def test_retry_applied_per_stage(
+        mock_draft, mock_verify, mock_publish, mock_mark, mock_record, mock_sleep, tmp_path):
+    """Each stage runner is wrapped by _retry (3 attempts) — verify failing all
+    three attempts is retried exactly 3 times, like the pre-refactor loops."""
+    cfg = _make_cfg(tmp_path)
+    built = [_make_built("p1", tmp_path)]
+    mock_verify.side_effect = RuntimeError("v")
+
+    run_auto_pipeline(built, cfg)
+
+    assert mock_draft.call_count == 1     # succeeded first attempt
+    assert mock_verify.call_count == 3    # retried to exhaustion
+
+
+@patch("core.pipeline.time.sleep")
+@patch("core.pipeline.runs.record_run")
+@patch("core.pipeline.reviewed.mark")
+@patch("core.pipeline.publish_post.run")
+@patch("core.pipeline.verify_draft.run")
+@patch("core.pipeline.draft_post.run")
+def test_note_expiry_called_on_session_expiry_each_stage(
+        mock_draft, mock_verify, mock_publish, mock_mark, mock_record, mock_sleep, tmp_path):
+    """on_session_expired fires when a stage raises SessionExpiredError — checked
+    at the draft stage (same _note_expiry path used by verify/publish)."""
+    from core.errors import SessionExpiredError
+    cfg = _make_cfg(tmp_path)
+    built = [_make_built("p1", tmp_path)]
+    mock_draft.side_effect = SessionExpiredError("expired")
+    expired = []
+
+    run_auto_pipeline(built, cfg, on_session_expired=lambda c: expired.append(c))
+
+    assert expired == [cfg]               # called once with cfg
+    mock_verify.assert_not_called()       # draft failure stops the item
+
+
+@patch("core.pipeline.runs.record_run")
+@patch("core.pipeline.reviewed.mark")
+@patch("core.pipeline.publish_post.run")
+@patch("core.pipeline.verify_draft.run")
+@patch("core.pipeline.draft_post.run")
+def test_publish_passes_approve_and_expected_content_id(
+        mock_draft, mock_verify, mock_publish, mock_mark, mock_record, tmp_path):
+    """Publish-only contract: the invocation handed to publish_post.run carries
+    approve=True and expected_content_id (the reviewed content-id), while
+    draft/verify invocations do not approve and never leak the gate fields.
+
+    The draft/verify assertions are Gate-2 leak guards: if a future refactor
+    leaks approve/expected_content_id into the draft or verify invocation, the
+    publish approval gate is no longer the only place those fields are set."""
+    cfg = _make_cfg(tmp_path)
+    built = [_make_built("p1", tmp_path)]
+    seen = {}
+    mock_draft.side_effect = lambda ns: seen.__setitem__("draft", ns)
+    mock_verify.side_effect = lambda ns: seen.__setitem__("verify", ns)
+    mock_publish.side_effect = lambda ns: seen.__setitem__("publish", ns)
+
+    run_auto_pipeline(built, cfg)
+
+    # DRAFT must not carry the publish gate fields.
+    assert seen["draft"].approve is False
+    assert seen["draft"].dry_run is False
+    assert seen["draft"].expected_content_id is None
+    # VERIFY must not carry the publish gate fields either.
+    assert seen["verify"].approve is False
+    assert seen["verify"].expected_content_id is None
+    # PUBLISH alone approves and carries the reviewed content-id.
+    assert seen["publish"].approve is True
+    # expected_content_id is the cid passed to reviewed.mark for the same item.
+    cid = mock_mark.call_args[0][2]
+    assert seen["publish"].expected_content_id == cid
 
 
 # ---------------------------------------------------------------------------
@@ -275,6 +469,43 @@ def test_manifest_missing_at_publish_skips(mock_draft, mock_verify, mock_publish
 
     mock_publish.assert_not_called()
     assert "失敗 1" in progress[-1]
+
+
+@patch("core.pipeline.runs.record_run")
+@patch("core.pipeline.reviewed.mark")
+@patch("core.pipeline.publish_post.run")
+@patch("core.pipeline.verify_draft.run")
+@patch("core.pipeline.draft_post.run")
+def test_missing_manifest_error_strings_are_stage_distinct(
+        mock_draft, mock_verify, mock_publish, mock_mark, mock_record, tmp_path):
+    """The per-stage missing-manifest error string differs by stage: draft/verify
+    record '找不到此貼文包', publish records '找不到 manifest'. Catches a
+    copy-paste swap of the two strings that every other test would miss."""
+    cfg = _make_cfg(tmp_path)
+    # p_draft: manifest never exists -> fails at DRAFT with '找不到此貼文包'.
+    p_draft = {"post_id": "p_draft", "title": "D",
+               "manifest_path": str(tmp_path / "out" / "p_draft" / "manifest.json")}
+    # p_pub: manifest exists through verify, then vanishes -> fails at PUBLISH
+    # with '找不到 manifest'.
+    _make_built("p_pub", tmp_path)
+    pub_manifest = tmp_path / "out" / "p_pub" / "manifest.json"
+    p_pub = {"post_id": "p_pub", "title": "P", "manifest_path": str(pub_manifest)}
+
+    def remove_pub_manifest(ns):
+        if ns.manifest == str(pub_manifest):
+            pub_manifest.unlink(missing_ok=True)
+
+    mock_verify.side_effect = remove_pub_manifest
+
+    result = run_auto_pipeline([p_draft, p_pub], cfg)
+
+    by_pid = {f["post_id"]: f for f in result["failed"]}
+    assert by_pid["p_draft"]["stage"] == "draft"
+    assert by_pid["p_draft"]["error"] == "找不到此貼文包"
+    assert by_pid["p_pub"]["stage"] == "publish"
+    assert by_pid["p_pub"]["error"] == "找不到 manifest"
+    # Guard against the swap specifically.
+    assert by_pid["p_draft"]["error"] != by_pid["p_pub"]["error"]
 
 
 # ---------------------------------------------------------------------------
@@ -405,3 +636,38 @@ def test_auto_pipeline_wired_empty_built(tmp_path):
         mock_auto.assert_called_once()
         call_job, call_cfg, call_built = mock_auto.call_args[0]
         assert call_built == []
+
+
+# ---------------------------------------------------------------------------
+# R14: the single typed backend-invocation contract (replaces SimpleNamespace)
+# ---------------------------------------------------------------------------
+
+def test_backend_invocation_timeout_default_unifies_on_constant():
+    """The contract's timeout_ms default == backend_driver.DEFAULT_TIMEOUT_MS.
+
+    This locks the audit's drift fix: core/pipeline.py used to hardcode 30_000
+    while the webui used the named constant. Now there is one canonical default.
+    """
+    from browser import backend_driver
+    from core.backend_args import BackendInvocation
+
+    inv = BackendInvocation(manifest="m", backend="b", storage_state="s", state="st")
+    assert inv.timeout_ms == backend_driver.DEFAULT_TIMEOUT_MS
+
+
+def test_backend_invocation_attribute_access_for_runners():
+    """Runners read args by attribute (args.manifest, args.dry_run, args.approve,
+    args.expected_content_id). The dataclass must expose all of them with the
+    inert defaults the draft/verify path relies on."""
+    from core.backend_args import BackendInvocation
+
+    inv = BackendInvocation(manifest="m", backend="b", storage_state="s", state="st")
+    assert inv.manifest == "m"
+    assert inv.backend == "b"
+    assert inv.storage_state == "s"
+    assert inv.state == "st"
+    assert inv.headless is True
+    assert inv.retries is None
+    assert inv.dry_run is False
+    assert inv.approve is False           # inert for draft/verify
+    assert inv.expected_content_id is None  # inert for draft/verify

@@ -11,9 +11,9 @@ import json
 import time
 from collections.abc import Callable
 from pathlib import Path
-from types import SimpleNamespace
 
 from core import reviewed, runs, state
+from core.backend_args import BackendInvocation
 from core.errors import SessionExpiredError, ValidationError
 from core.schema import AutoPipelineResult, PipelineFailed, PipelineItem, PipelineResult
 from src import (
@@ -281,127 +281,119 @@ def run_auto_pipeline(
 
     total = len(built)
     run_id = runs.new_run_id()
-    drafted_ok: list[PipelineItem] = []
-    verify_ok: list[PipelineItem] = []
     failed: list[PipelineFailed] = []
-    draft_fail = 0
-    verify_fail = 0
-    publish_fail = 0
 
-    # --- DRAFT LOOP ---
-    _report(f"自動建草稿（共 {total} 篇）…")
-    for i, item in enumerate(built):
-        pid = item["post_id"]
-        _setstatus(f"建草稿 {i + 1}/{total}：{item.get('title', pid)}")
-        manifest_path = Path(item["manifest_path"])
-        if not manifest_path.exists():
-            failed.append({"post_id": pid, "stage": "draft", "error": "找不到此貼文包"})
-            draft_fail += 1
-            continue
-        ns = SimpleNamespace(
+    def _invocation(manifest_path: Path, *, approve: bool = False,
+                    expected_content_id: str | None = None) -> BackendInvocation:
+        """One typed backend-args contract (R14) — replaces the per-stage SimpleNamespace."""
+        return BackendInvocation(
             manifest=str(manifest_path),
             backend=cfg["backend_config"],
             storage_state=cfg["storage_state"],
+            state=cfg["state_path"],
             headless=True,
             timeout_ms=timeout_ms,
             retries=None,
-            state=cfg["state_path"],
-            dry_run=False,
+            approve=approve,
+            expected_content_id=expected_content_id,
         )
-        _rv, err = _retry(lambda ns=ns: draft_post.run(ns))  # type: ignore[misc]
-        if err is None:
-            drafted_ok.append(item)
-            runs.record_run(cfg["state_path"], stage="draft", post_id=pid,
-                            status="ok", run_id=run_id, severity="info")
-        else:
-            _note_expiry(err)
-            failed.append({"post_id": pid, "stage": "draft", "error": str(err)})
-            draft_fail += 1
-            runs.record_run(cfg["state_path"], stage="draft", post_id=pid,
-                            status="failed", error=str(err), run_id=run_id, severity="error")
 
+    def _run_stage(
+        stage: str,
+        header: str,
+        status_label: str,
+        runner: Callable[[BackendInvocation], object],
+        items: list[PipelineItem],
+        *,
+        missing_error: str,
+        prepare: Callable[[Path, PipelineItem], BackendInvocation | None] | None = None,
+        on_ok: Callable[[Path], str | None] | None = None,
+    ) -> tuple[list[PipelineItem], int]:
+        """Run one draft/verify/publish stage over *items*.
+
+        Does ONCE what the three loops used to duplicate: header report, per-item
+        status, manifest-existence check, BackendInvocation construction, _retry
+        wrapping, _note_expiry, runs.record_run, and ok/failed bookkeeping.
+
+        Stage-specific extras are threaded as hooks, never re-duplicated:
+        - *prepare* (publish only): runs the pre-step (reviewed.mark) and returns the
+          invocation; returning ``None`` means it already recorded the failure and
+          the item must be skipped. When absent, a default invocation is built.
+        - *on_ok* (publish only): derives the ``detail`` for the success run record.
+
+        Returns ``(ok_items, fail_count)``.
+        """
+        _report(header)
+        ok_items: list[PipelineItem] = []
+        fail_count = 0
+        n = len(items)
+        for i, item in enumerate(items):
+            pid = item["post_id"]
+            _setstatus(f"{status_label} {i + 1}/{n}：{item.get('title', pid)}")
+            manifest_path = Path(item["manifest_path"])
+            if not manifest_path.exists():
+                failed.append({"post_id": pid, "stage": stage, "error": missing_error})
+                fail_count += 1
+                continue
+            if prepare is not None:
+                inv = prepare(manifest_path, item)
+                if inv is None:  # pre-step failed and already recorded — skip item
+                    fail_count += 1
+                    continue
+            else:
+                inv = _invocation(manifest_path)
+            _rv, err = _retry(lambda inv=inv: runner(inv))  # type: ignore[misc]
+            if err is None:
+                ok_items.append(item)
+                detail = on_ok(manifest_path) if on_ok is not None else None
+                runs.record_run(cfg["state_path"], stage=stage, post_id=pid,
+                                status="ok", detail=detail, run_id=run_id, severity="info")
+            else:
+                _note_expiry(err)
+                failed.append({"post_id": pid, "stage": stage, "error": str(err)})
+                fail_count += 1
+                runs.record_run(cfg["state_path"], stage=stage, post_id=pid,
+                                status="failed", error=str(err), run_id=run_id, severity="error")
+        return ok_items, fail_count
+
+    # --- DRAFT ---
+    drafted_ok, draft_fail = _run_stage(
+        "draft", f"自動建草稿（共 {total} 篇）…", "建草稿",
+        draft_post.run, built, missing_error="找不到此貼文包")
     _report(f"建草稿完成：{len(drafted_ok)}/{total} 成功")
 
-    # --- VERIFY LOOP ---
-    _report(f"自動驗證（共 {len(drafted_ok)} 篇）…")
-    for i, item in enumerate(drafted_ok):
-        pid = item["post_id"]
-        _setstatus(f"驗證 {i + 1}/{len(drafted_ok)}：{item.get('title', pid)}")
-        manifest_path = Path(item["manifest_path"])
-        if not manifest_path.exists():
-            failed.append({"post_id": pid, "stage": "verify", "error": "找不到此貼文包"})
-            verify_fail += 1
-            continue
-        ns = SimpleNamespace(
-            manifest=str(manifest_path),
-            backend=cfg["backend_config"],
-            storage_state=cfg["storage_state"],
-            headless=True,
-            timeout_ms=timeout_ms,
-            retries=None,
-            state=cfg["state_path"],
-            dry_run=False,
-        )
-        _rv, err = _retry(lambda ns=ns: verify_draft.run(ns))  # type: ignore[misc]
-        if err is None:
-            verify_ok.append(item)
-            runs.record_run(cfg["state_path"], stage="verify", post_id=pid,
-                            status="ok", run_id=run_id, severity="info")
-        else:
-            _note_expiry(err)
-            failed.append({"post_id": pid, "stage": "verify", "error": str(err)})
-            verify_fail += 1
-            runs.record_run(cfg["state_path"], stage="verify", post_id=pid,
-                            status="failed", error=str(err), run_id=run_id, severity="error")
-
+    # --- VERIFY ---
+    verify_ok, verify_fail = _run_stage(
+        "verify", f"自動驗證（共 {len(drafted_ok)} 篇）…", "驗證",
+        verify_draft.run, drafted_ok, missing_error="找不到此貼文包")
     verify_fail_count = len(drafted_ok) - len(verify_ok)
     _report(f"驗證完成：{len(verify_ok)}/{len(drafted_ok)} 成功")
 
-    # --- PUBLISH LOOP ---
-    _report(f"自動發布（共 {len(verify_ok)} 篇）…")
-    publish_ok = 0
-    for i, item in enumerate(verify_ok):
-        pid = item["post_id"]
-        _setstatus(f"發布 {i + 1}/{len(verify_ok)}：{item.get('title', pid)}")
-        manifest_path = Path(item["manifest_path"])
-        if not manifest_path.exists():
-            failed.append({"post_id": pid, "stage": "publish", "error": "找不到 manifest"})
-            publish_fail += 1
-            continue
+    # --- PUBLISH ---
+    # Publish carries two extras the draft/verify path lacks: a reviewed.mark
+    # pre-step (gate/approve) and a published_url detail on the success record.
+    def _prepare_publish(manifest_path: Path,
+                         item: PipelineItem) -> BackendInvocation | None:
         m = json.loads(manifest_path.read_text(encoding="utf-8"))
         cid = reviewed.content_id(m)
         try:
-            reviewed.mark(cfg["state_path"], pid, cid)
+            reviewed.mark(cfg["state_path"], item["post_id"], cid)
         except Exception as exc:  # noqa: BLE001
-            failed.append({"post_id": pid, "stage": "publish",
+            failed.append({"post_id": item["post_id"], "stage": "publish",
                            "error": f"reviewed.mark 失敗：{exc}"})
-            publish_fail += 1
-            continue
-        ns = SimpleNamespace(
-            manifest=str(manifest_path),
-            backend=cfg["backend_config"],
-            storage_state=cfg["storage_state"],
-            headless=True,
-            timeout_ms=timeout_ms,
-            retries=None,
-            state=cfg["state_path"],
-            approve=True,
-            expected_content_id=cid,
-        )
-        _rv, err = _retry(lambda ns=ns: publish_post.run(ns))  # type: ignore[misc]
-        if err is None:
-            publish_ok += 1
-            published_url = (json.loads(manifest_path.read_text(encoding="utf-8"))
-                             .get("backend", {}).get("published_url"))
-            runs.record_run(cfg["state_path"], stage="publish", post_id=pid,
-                            status="ok", detail=published_url,
-                            run_id=run_id, severity="info")
-        else:
-            _note_expiry(err)
-            failed.append({"post_id": pid, "stage": "publish", "error": str(err)})
-            publish_fail += 1
-            runs.record_run(cfg["state_path"], stage="publish", post_id=pid,
-                            status="failed", error=str(err), run_id=run_id, severity="error")
+            return None
+        return _invocation(manifest_path, approve=True, expected_content_id=cid)
+
+    def _publish_detail(manifest_path: Path) -> str | None:
+        m = json.loads(manifest_path.read_text(encoding="utf-8"))
+        url: str | None = m.get("backend", {}).get("published_url")
+        return url
+
+    published_ok, publish_fail = _run_stage(
+        "publish", f"自動發布（共 {len(verify_ok)} 篇）…", "發布",
+        publish_post.run, verify_ok, missing_error="找不到 manifest",
+        prepare=_prepare_publish, on_ok=_publish_detail)
+    publish_ok = len(published_ok)
 
     _report(
         f"自動發布完成：成功 {publish_ok} / "
