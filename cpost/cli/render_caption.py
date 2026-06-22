@@ -46,34 +46,11 @@ def load_template(path: str) -> dict:
     return cfg
 
 
-def _strip_url(body: str, url: str) -> str:
-    """Remove the url (and any leading fragment of it) from the end of ``body``.
-
-    The caption is built from a template that embeds the url mid-string, so a
-    naive ``caption[:budget]`` can leave the url intact or — worse — as a
-    partial fragment in the body. We re-append the url ourselves, so any whole
-    or partial occurrence trailing the truncated body must go first.
-    """
-    if not url:
-        return body
-    idx = body.find(url)
-    if idx != -1:
-        # Whole url present: cut from its first occurrence onward.
-        return body[:idx]
-    # No whole url, but the truncation may have severed it: drop the longest
-    # suffix of body that is a prefix of url (a partial url fragment).
-    for cut in range(len(body)):
-        if url.startswith(body[cut:]):
-            return body[:cut]
-    return body
-
-
 def _enforce_max_chars(caption: str, canonical_url: str, max_chars: int) -> str:
     """Truncate to ``max_chars`` while keeping the canonical_url intact.
 
-    Deterministic: if over budget, cut the caption to fit, strip any whole or
-    partial url left in the body, then re-append the canonical_url on its own
-    line so the source link survives exactly once and is never fragmented.
+    Deterministic: if over budget, cut the caption to fit and re-append the
+    canonical_url on its own line so the source link is never lost.
     """
     if max_chars <= 0 or len(caption) <= max_chars:
         return caption
@@ -86,7 +63,7 @@ def _enforce_max_chars(caption: str, canonical_url: str, max_chars: int) -> str:
     if budget < 0:
         # url alone exceeds budget: keep the url, drop the rest.
         return url[:max_chars]
-    body = _strip_url(caption[:budget], url).rstrip()
+    body = caption[:budget].rstrip()
     return body + tail
 
 

@@ -7,8 +7,6 @@ cookies are exported to ``storage_state`` for the non-interactive pipeline
 commands to reuse. The system never bypasses login or CAPTCHA (origin §15).
 """
 
-import os
-import tempfile
 import time
 from pathlib import Path
 
@@ -49,22 +47,8 @@ def capture_login(login_url, storage_state, until_contains,
                     )
                 time.sleep(poll_sec)
                 waited += 1
-            dest = Path(storage_state)
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            # Write to a temp sibling (same dir/filesystem) then os.replace, so a
-            # crash mid-export can't leave a truncated storage_state behind.
-            fd, tmp_name = tempfile.mkstemp(dir=str(dest.parent),
-                                            prefix=dest.name + ".", suffix=".tmp")
-            os.close(fd)
-            try:
-                context.storage_state(path=tmp_name)
-                os.replace(tmp_name, dest)
-            except BaseException:
-                try:
-                    os.unlink(tmp_name)
-                except OSError:
-                    pass
-                raise
+            Path(storage_state).parent.mkdir(parents=True, exist_ok=True)
+            context.storage_state(path=storage_state)
         finally:
             context.close()
             browser.close()

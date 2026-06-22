@@ -12,9 +12,7 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
-from cpost.core.errors import (
-    DependencyError, ExternalError, SessionExpiredError, ValidationError,
-)
+from cpost.core.errors import DependencyError, ExternalError, SessionExpiredError
 from cpost.browser.selector_recipe import get_selector
 
 DEFAULT_TIMEOUT_MS = 30000
@@ -32,20 +30,13 @@ def retry_kwargs(cfg, retries_override=None):
 def _check_session(cfg, page):
     """Raise SessionExpiredError if the page was redirected to a login page.
 
-    U15(1): the marker ``verify.login_required_url_contains`` is REQUIRED (enforced
-    by :func:`selector_recipe.load_backend`). A missing marker is therefore a config
-    error caught at load time, NOT a silent no-op here that would let an expired
-    session drive the login page undetected and misreport as a generic timeout. If
-    a caller hands us a cfg that skipped that validation (no marker), we surface the
-    config error explicitly rather than no-op. Distinguished from a generic timeout
-    because the remedy is re-login, not retry.
+    The marker is configured in backend.yaml as
+    ``verify.login_required_url_contains`` (the real signal must be verified
+    against the actual admin). Distinguished from a generic timeout because the
+    remedy is re-login, not retry.
     """
     marker = (cfg.get("verify") or {}).get("login_required_url_contains")
-    if not marker:
-        raise ValidationError(
-            "backend config missing verify key: login_required_url_contains"
-        )
-    if marker in (page.url or ""):
+    if marker and marker in (page.url or ""):
         raise SessionExpiredError(
             "login session expired (redirected to login) — re-run auth-login"
         )
@@ -121,42 +112,26 @@ def session(storage_state=None, headless=True, timeout_ms=DEFAULT_TIMEOUT_MS):
             browser = pw.chromium.launch(headless=headless)
         except PlaywrightError as exc:
             raise DependencyError(f"browser not installed: {exc}")
-        # U15(4): new_context/new_page are inside the try/finally that closes the
-        # browser. Previously they ran BEFORE the try, so a failure here (e.g.
-        # new_context raising on a corrupt storage_state) left the launched browser
-        # process leaked. Now any init failure still closes the browser explicitly.
-        context = None
+        context = browser.new_context(storage_state=state)
+        context.set_default_timeout(timeout_ms)
+        page = context.new_page()
         try:
-            context = browser.new_context(storage_state=state)
-            context.set_default_timeout(timeout_ms)
-            page = context.new_page()
             yield page
         finally:
-            if context is not None:
-                context.close()
+            context.close()
             browser.close()
 
 
 def create_draft(page, cfg, manifest, manifest_path, *,
                  retries=DEFAULT_RETRIES, backoff_sec=DEFAULT_BACKOFF_SEC, pkg_dir=None):
     """Fill the create form and save a draft. Returns {'draft_url': ...}."""
-    # U15(2): validate required manifest fields BEFORE driving the browser. A
-    # manifest missing content/content.title previously raised a bare KeyError once
-    # the browser was already open — surfacing as exit 5 (internal error) and
-    # leaking an open browser. Validate up front so it is a clean ValidationError
-    # (exit 2) with no browser side effects, and read fields with .get() so the only
-    # gate is this explicit check.
-    content = manifest.get("content")
-    if not isinstance(content, dict):
-        raise ValidationError("manifest missing required field: content")
-    if not content.get("title"):
-        raise ValidationError("manifest missing required field: content.title")
+    content = manifest["content"]
     pkg_dir = pkg_dir or (Path(manifest_path).parent if manifest_path else None)
 
     def steps():
         page.goto(cfg["create_url"])
         _check_session(cfg, page)
-        page.fill(get_selector(cfg, "title"), content.get("title") or "")
+        page.fill(get_selector(cfg, "title"), content["title"] or "")
         page.fill(get_selector(cfg, "body"), content.get("body") or "")
 
         if content.get("category") and "category" in cfg["selectors"]:
@@ -182,37 +157,12 @@ def verify_draft(page, cfg, title, *,
         _check_session(cfg, page)
         page.fill(verify["search_input"], title)
         page.click(verify["search_button"])
-        _wait_for_result_title(page, verify["result_title"], title)
+        selector = verify["result_title"].replace("{title}", title)
+        page.wait_for_selector(selector)
         return True
 
     return _run_with_retry("verify", steps, page,
                            retries=retries, backoff_sec=backoff_sec, pkg_dir=pkg_dir)
-
-
-def _wait_for_result_title(page, result_title, title):
-    """Wait for the search-result row carrying ``title`` as exact text.
-
-    U15(3): selector-injection hardening. The recipe is ``"<container> >> text={title}"``;
-    naively substituting the title re-parses Playwright selector syntax — a title
-    containing ``>>`` (chaining) or ``text=``/quotes splits the selector and yields a
-    FALSE transient failure (the post is fine, the locator is broken). Instead, build
-    a STRUCTURED locator: scope to the container before ``>> text={title}`` and match
-    the title via ``get_by_text(title, exact=True)``, which treats the title as data,
-    not selector syntax. Recipes that don't use the ``text={title}`` convention fall
-    back to a literal-substring wait (substitution still applied, but the matched text
-    is passed through Playwright's text engine quoting via a structured text locator).
-    """
-    placeholder = "text={title}"
-    if placeholder in result_title:
-        container = result_title.split(">>")[0].strip() if ">>" in result_title else None
-        scope = page.locator(container) if container else page
-        scope.get_by_text(title, exact=True).first.wait_for()
-        return
-    # Recipe without the text={title} convention: still avoid re-parsing the title as
-    # selector syntax by waiting on a structured text locator built from the prefix.
-    prefix = result_title.split("{title}")[0].rstrip()
-    base = page.locator(prefix) if prefix else page
-    base.get_by_text(title, exact=False).first.wait_for()
 
 
 def publish_draft(page, cfg, draft_url, *,

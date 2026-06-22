@@ -2,39 +2,9 @@
 
 import os
 import shutil
-import tempfile
 from pathlib import Path
 
 from cpost.core.errors import ValidationError
-
-
-def atomic_write_text(dest: str | Path, text: str) -> Path:
-    """Write ``text`` to ``dest`` atomically; a crash never truncates ``dest``.
-
-    The temp file is created in ``dest.parent`` (the SAME filesystem) so the
-    final ``os.replace`` is atomic — a regression to the default temp dir would
-    raise "Invalid cross-device link". ``flush`` + ``os.fsync`` make the bytes
-    durable before the rename, so a mid-write failure leaves the original file
-    intact (old-or-new, never half-written). Callers pass pre-serialized text
-    and keep their own json.dumps options.
-    """
-    dest_p = Path(dest)
-    ensure_dir(dest_p.parent)
-    fd, tmp_name = tempfile.mkstemp(dir=str(dest_p.parent),
-                                    prefix=dest_p.name + ".", suffix=".tmp")
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as fh:
-            fh.write(text)
-            fh.flush()
-            os.fsync(fh.fileno())
-        os.replace(tmp_name, dest_p)
-    except BaseException:
-        try:
-            os.unlink(tmp_name)
-        except OSError:
-            pass
-        raise
-    return dest_p
 
 
 def ensure_dir(path: str | Path) -> Path:

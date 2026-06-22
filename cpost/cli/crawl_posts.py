@@ -55,28 +55,6 @@ CONFIG_DEFAULTS = {
     "no_robots": False,
 }
 
-# Hard wall-clock ceiling for a single crawl child process (U11/R5). A wedged
-# Scrapy/Twisted reactor can otherwise hang the caller -- and the WebUI worker
-# thread -- forever. On overrun the child is terminated/killed and the call
-# raises ExternalError. Overridable per-call (``max_runtime_sec``) or globally
-# via the CPOST_CRAWL_MAX_RUNTIME_SEC env var. Default a few minutes: well above
-# any normal same-site crawl bounded by max_pages/limit, but finite.
-DEFAULT_CRAWL_MAX_RUNTIME_SEC = 300.0
-
-
-def _resolve_max_runtime(max_runtime_sec: float | None) -> float:
-    """Resolve the wall-clock budget: explicit arg > env var > default."""
-    if max_runtime_sec is not None:
-        return float(max_runtime_sec)
-    env = os.environ.get("CPOST_CRAWL_MAX_RUNTIME_SEC")
-    if env:
-        try:
-            return float(env)
-        except ValueError:
-            pass
-    return DEFAULT_CRAWL_MAX_RUNTIME_SEC
-
-
 BASE_SPIDER_SETTINGS = {
     "RETRY_ENABLED": True,
     "RETRY_TIMES": 2,
@@ -107,20 +85,6 @@ def _read_progress(progress_path: str) -> dict | None:
             return json.load(f)
     except (OSError, json.JSONDecodeError):
         return None
-
-
-def _kill_child(proc, grace_sec: float = 2.0) -> None:
-    """Stop a crawl child that overran its budget, leaving no orphan.
-
-    Sends SIGTERM first, waits a short grace period, then SIGKILLs if the child
-    is still alive. Always joins so the process table is cleaned up.
-    """
-    if proc.is_alive():
-        proc.terminate()
-        proc.join(timeout=grace_sec)
-    if proc.is_alive():
-        proc.kill()
-        proc.join(timeout=grace_sec)
 
 
 # --------------------------------------------------------------------------- #
@@ -219,13 +183,8 @@ def _crawl_worker(opts: dict, out_path: str, status_path: str,
                     emit = False
                 if emit and status["items"] < opts["limit"]:
                     item = self._extract(response)
-                    # Defense in depth (U7): never emit a title-less item. A page
-                    # with no <title>/<h1> would be quarantined by normalize-items
-                    # anyway, so skip it at the source instead of writing a record
-                    # downstream is guaranteed to reject.
                     if (
-                        item["title"]
-                        and len(item["text"]) >= opts["min_text_chars"]
+                        len(item["text"]) >= opts["min_text_chars"]
                     ):
                         out_file.write(
                             json.dumps(item, ensure_ascii=False, sort_keys=True) + "\n"
@@ -414,8 +373,7 @@ def _run(args) -> int:
     return 0
 
 
-def crawl_items(opts: dict, progress_cb=None, poll_sec: float = 0.5,
-                max_runtime_sec: float | None = None) -> list:
+def crawl_items(opts: dict, progress_cb=None, poll_sec: float = 0.5) -> list:
     """Run the crawl in a fresh child process and return the items as a list.
 
     Shared by the CLI (`_run`) and the in-process pipeline orchestrator so both
@@ -425,20 +383,11 @@ def crawl_items(opts: dict, progress_cb=None, poll_sec: float = 0.5,
     When *progress_cb* is given, the parent polls a side-channel progress file
     ~every 0.5 s while the child is alive and calls ``progress_cb(snapshot)``
     with ``{responses, items, last_url, last_title}``.
-
-    The child is bounded by a wall-clock budget (``max_runtime_sec``, default
-    :data:`DEFAULT_CRAWL_MAX_RUNTIME_SEC`, env-overridable via
-    ``CPOST_CRAWL_MAX_RUNTIME_SEC``). On overrun the child is terminated/killed
-    and the call raises :class:`ExternalError`, so a wedged Twisted reactor can
-    never hang the caller (or the WebUI worker thread) forever (U11/R5).
     """
     try:
         import scrapy  # noqa: F401
     except ImportError as exc:
         raise DependencyError(f"Scrapy is not installed: {exc}")
-
-    budget = _resolve_max_runtime(max_runtime_sec)
-    deadline = time.monotonic() + budget
 
     tmpdir = tempfile.mkdtemp(prefix="crawl_posts_")
     out_path = os.path.join(tmpdir, "items.ndjson")
@@ -452,14 +401,10 @@ def crawl_items(opts: dict, progress_cb=None, poll_sec: float = 0.5,
     )
     proc.start()
 
-    timed_out = False
     if progress_cb:
         assert progress_path is not None
         _last_progress = None
         while proc.is_alive():
-            if time.monotonic() >= deadline:
-                timed_out = True
-                break
             snap = _read_progress(progress_path)
             if snap is not None and snap != _last_progress:
                 _last_progress = snap
@@ -467,27 +412,11 @@ def crawl_items(opts: dict, progress_cb=None, poll_sec: float = 0.5,
             time.sleep(poll_sec)
         # One final read in case the child wrote progress between the last
         # poll and process exit.
-        if not timed_out:
-            snap = _read_progress(progress_path)
-            if snap is not None and snap != _last_progress:
-                progress_cb(snap)
+        snap = _read_progress(progress_path)
+        if snap is not None and snap != _last_progress:
+            progress_cb(snap)
 
-    if not timed_out:
-        # Bound the blocking join by whatever budget remains; if the child is
-        # still alive afterwards it has overrun.
-        remaining = max(0.0, deadline - time.monotonic())
-        proc.join(timeout=remaining)
-        if proc.is_alive():
-            timed_out = True
-
-    if timed_out:
-        _kill_child(proc)
-        import shutil
-        shutil.rmtree(tmpdir, ignore_errors=True)
-        raise ExternalError(
-            f"crawl failed: exceeded wall-clock budget of {budget:g}s "
-            "(child terminated)"
-        )
+    proc.join()
 
     try:
         status = {"responses": 0, "items": 0, "error": None}

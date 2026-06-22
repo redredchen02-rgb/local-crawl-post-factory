@@ -12,7 +12,6 @@ from __future__ import annotations
 from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import cast
 
 from cpost.core import library, llm, scoring_config
 from cpost.core.pipeline import crawl_all_sources
@@ -39,9 +38,7 @@ def _utcnow() -> str:
 
 def run_prep_pipeline(webui_cfg: dict,
                       progress_cb: Callable[[str], object] | None = None,
-                      on_source: Callable[[str, object], object] | None = None,
-                      crawl_progress_cb: Callable[[dict], object] | None = None,
-                      ) -> PrepPipelineResult:
+                      on_source: Callable[[str, object], object] | None = None) -> PrepPipelineResult:
     """Crawl (multi-source) → normalize → library-ingest → cluster → score.
 
     Produces ranked scoops in the library for the ``/today`` selection page,
@@ -50,13 +47,6 @@ def run_prep_pipeline(webui_cfg: dict,
     ``failed`` and never aborts the batch. ``on_source`` is threaded into
     :func:`crawl_all_sources` so per-source failures on the ``/today`` path are
     visible instead of silently swallowed (flow G3).
-
-    ``progress_cb`` carries human-readable *stage* reports (string). The
-    realtime crawl telemetry from :func:`crawl_all_sources` is dict-shaped
-    (``{responses, items, last_url, last_title}`` snapshots), so it travels on a
-    *separate* ``crawl_progress_cb`` -- routing it through ``progress_cb`` would
-    append stringified dicts to the job log (U18). When ``crawl_progress_cb`` is
-    None the crawl phase emits no live telemetry; stage reports still flow.
     """
     def _report(msg: str) -> None:
         if progress_cb:
@@ -65,14 +55,7 @@ def run_prep_pipeline(webui_cfg: dict,
     now = _utcnow()
     cfg = scoring_config.load(webui_cfg.get("scoring_config"))
 
-    # crawl_all_sources' progress_cb is annotated Callable[[str], ...] but fires
-    # dict snapshots into it (it threads it straight into crawl_items). Our
-    # crawl_progress_cb is the honestly-typed dict callback; cast to bridge the
-    # upstream annotation without widening it here.
-    raw = crawl_all_sources(
-        webui_cfg,
-        progress_cb=cast("Callable[[str], object] | None", crawl_progress_cb),
-        on_source=on_source)
+    raw = crawl_all_sources(webui_cfg, progress_cb=progress_cb, on_source=on_source)
     _report(f"爬取完成：{len(raw)} 篇")
 
     normalized: list[dict] = []

@@ -53,21 +53,15 @@ _CLUSTER_ID_RE = re.compile(r"[A-Za-z0-9_-]+")
 
 
 def cache_key(members: list[dict], model: str, prompt_key: str) -> str:
-    """Hash the exact model inputs + model + prompt (any change -> new key).
-
-    Hashes ``build_material(members)`` -- the precise string fed to the model --
-    so EVERY field that reaches the model (title, source_text, description
-    fallback, source_id) is covered. Hashing only a hand-picked subset (e.g.
-    canonical_url + source_text) silently served a stale article when an
-    uncovered input changed (a member's ``description`` while ``source_text``
-    stayed empty).
-    """
+    """Hash member content + model + prompt (membership/prompt change -> new key)."""
     h = hashlib.sha256()
     h.update(prompt_key.encode("utf-8"))
     h.update(b"\x00")
     h.update((model or "").encode("utf-8"))
-    h.update(b"\x00")
-    h.update(build_material(members).encode("utf-8"))
+    for m in sorted(members, key=lambda r: r["canonical_url"]):
+        h.update(b"\x00")
+        h.update(m["canonical_url"].encode("utf-8"))
+        h.update((m.get("source_text") or "").encode("utf-8"))
     return h.hexdigest()
 
 

@@ -23,10 +23,6 @@ def normalize_url(url: str) -> str:
     scheme = parts.scheme.lower()
     host = parts.hostname or ""
     host = host.lower()
-    if ":" in host:
-        # IPv6 literal: parts.hostname strips the brackets, so re-wrap before
-        # re-attaching a port, otherwise "::1" + ":443" is ambiguous.
-        host = f"[{host}]"
     netloc = host
     if parts.port and not _is_default_port(scheme, parts.port):
         netloc = f"{host}:{parts.port}"

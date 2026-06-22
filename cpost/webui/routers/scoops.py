@@ -69,20 +69,9 @@ def start_prep(request: Request):
 
     def _work(job):
         jobs.set_current(job, "準備備稿…")
-
-        def _crawl_cb(snap):
-            # Mirror crawl.py:_crawl_cb — map the dict snapshot to a live status
-            # line. Routing these dicts through progress_cb (jobs.report) would
-            # append raw dict reprs to the log (U18).
-            parts = [f"爬取進度 {snap['responses']} 頁"]
-            if snap.get("last_title"):
-                parts.append(snap["last_title"])
-            jobs.set_current(job, " — ".join(parts))
-
         result = scoop_pipeline.run_prep_pipeline(
             cfg, progress_cb=lambda m: jobs.report(job, m),
-            on_source=lambda sid, r: jobs.report(job, f"來源 {sid}：{r}"),
-            crawl_progress_cb=_crawl_cb)
+            on_source=lambda sid, r: jobs.report(job, f"來源 {sid}：{r}"))
         return {**result, "kind": "prep"}
 
     job_id = jobs.submit(_work)
