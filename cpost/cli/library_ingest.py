@@ -67,9 +67,19 @@ def ingest(records: Iterable[dict], conn: sqlite3.Connection,
 
 def _run(args) -> int:
     now = datetime.now(timezone.utc).isoformat()
+    # Buffer every passed-through record and flush to stdout ONLY after the
+    # library transaction commits. db.connect commits at the end of the `with`
+    # body; a later malformed/invalid line raises before the commit and rolls
+    # the whole batch back, so emitting inside the loop would leave records on
+    # stdout that the DB never persisted. Buffering keeps the emitted stream and
+    # the committed DB state in agreement on every partial-failure path, and
+    # honors the CLI contract (failure -> stdout empty).
+    emitted: list[dict] = []
     with library.connect(args.state) as conn:
         for record in ingest(read_lines(), conn, now):
-            write_line(record)
+            emitted.append(record)
+    for record in emitted:
+        write_line(record)
     return 0
 
 

@@ -11,7 +11,9 @@ from cpost.core.errors import ValidationError, DependencyError
 
 REQUIRED_TOP_LEVEL = ("create_url", "selectors", "verify")
 REQUIRED_SELECTORS = ("title", "body", "save_draft", "publish")
-REQUIRED_VERIFY = ("draft_success_text", "publish_success_text")
+REQUIRED_VERIFY = (
+    "draft_success_text", "publish_success_text", "login_required_url_contains",
+)
 
 
 def load_backend(path) -> dict:
