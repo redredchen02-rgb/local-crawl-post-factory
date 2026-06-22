@@ -14,10 +14,10 @@ supersedes: []
 |------|------|
 | Ruff | 0 errors ✅ |
 | Mypy | 82 files, 0 errors ✅ |
-| Tests | 273 passed, ~36s ✅ |
-| Coverage | 81% overall (2086 lines, 386 missed) |
-| Source files | ~30 Python files, ~8428 lines |
-| Test files | 12+ test files |
+| Tests | 全綠（即時通過數見 `make test-full`；2026-06-18 為 273，已隨後續 PR 成長） |
+| Coverage | 以 `make test-full` 為準（不再硬編快照數字，避免漂移） |
+| Source files | 見 repo 現況；數字會隨聚瓜/備稿等模組成長 |
+| Test files | 見 `tests/` 現況 |
 | Git since master plan | 6 PRs landed (#17-#22) |
 | Fast test gate | 250 passed / 23 deselected (~6s) |
 | Active execution plan | `docs/plans/2026-06-18-001-fix-workflow-pipeline-stabilization-plan.md` |

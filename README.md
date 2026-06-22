@@ -23,7 +23,7 @@ python3 -m pip install -e '.[dev]'   # 加 pytest / ruff / mypy / pre-commit
 ```bash
 make lint           # ruff check（CI 硬性閘門）
 make typecheck      # mypy 阻斷式型別檢查（0 error 才通過）
-make test           # 全部測試（273 passed）
+make test           # 全部測試（即時數字見 make test-full）
 make test-fast      # 快速測試（不含 slow/browser/integration/subprocess）
 make test-full      # 全部測試 + 覆蓋率報告
 pre-commit install  # 首次：提交前自動跑 ruff（與 CI 同一份 ruff 設定）
@@ -73,6 +73,32 @@ publish-post --manifest out/<id>/manifest.json --backend configs/backend.yaml --
 
 狀態流轉：`package_built → drafted → draft_verified → published`。`publish-post --state` 會把 `canonical_url` 標記為 `published`，下一輪 `dedupe-posts` 即會跳過。
 
+## 多源聚合：瓜（scoops）與備稿
+
+把多個來源爬到的文章先存進「庫」，再聚成「瓜」（scoop：同一事件的多源叢集）、打分、合成原創文章。CLI 階段一樣以 NDJSON / SQLite `--state` 串接、無狀態。
+
+```bash
+# 1. 入庫：normalize 後的 NDJSON 寫進庫，原樣透傳
+crawl-posts ... | normalize-items | library-ingest --state ./state/library.sqlite
+
+# 2. 聚瓜：把庫裡的條目聚成 scoops（叢集），回寫該檢視
+cluster-scoops --state ./state/library.sqlite --config ./configs/scoring.yaml
+
+# 3. 打分：每個瓜依「多源可信度 + 內容品質」打分，依分數排序輸出
+score-scoops --state ./state/library.sqlite --config ./configs/scoring.yaml
+
+# 4. 生稿：對單一瓜合成一篇原創文章（多源 members 為素材）
+generate-article --state ./state/library.sqlite --cluster-id <id> \
+  --llm-config ./configs/llm.yaml --prompt ./configs/scoop_prompt.zh.md
+```
+
+- **可信度只在真獨立媒體成立**：`confidence` 看的是該瓜的獨立來源數；鏡像站共用 canonical 會塌縮成單一來源，故不計入。
+- **生稿快取**：以 members 內容 + 模型 + prompt 雜湊為 key，membership 或 prompt 變動才重新生成。
+
+### WebUI：今日備稿（`/today`）
+
+導覽列的「今日備稿」是把上面三步收進單頁的工作台：**開始備稿**（跑聚瓜＋打分的 prep job）→ 瓜清單（可依分數／來源數排序與篩選、多選）→ **生成選取**（對勾選的瓜批次生稿）。與 CLI 共用同一個 `core/scoop_pipeline`，邏輯不重複；全庫仍是單一來源時會在 UI 標明「可信度尚無意義」。
+
 ## 狀態與去重
 
 - 狀態存於 SQLite（`--state`）。`crawl-posts` 不寫狀態；`build-manifest` 起寫 `package_built`；`publish-post` 寫 `published`。
@@ -82,7 +108,7 @@ publish-post --manifest out/<id>/manifest.json --backend configs/backend.yaml --
 ## 測試
 
 ```bash
-python3 -m pytest -q     # 273 passed (含 Playwright 端到端 + 控制台閘門)
+python3 -m pytest -q     # 含 Playwright 端到端 + 控制台閘門；即時通過數見 make test-full
 make test-fast           # ~10 秒快速迭代
 make test-full           # 全部測試 + 覆蓋率
 ```
