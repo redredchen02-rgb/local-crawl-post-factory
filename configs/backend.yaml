@@ -22,3 +22,10 @@ verify:
 retry:
   count: 2          # total attempts per backend action on transient failure
   backoff_sec: 0.5  # delay grows linearly: backoff_sec * attempt
+
+# Per-action timeout is NOT a backend.yaml key. It is a CLI flag only:
+#   --timeout-ms  (default 30000; = backend_driver.DEFAULT_TIMEOUT_MS)
+# Accepted by draft_post / verify_draft / publish_post, it sets Playwright's
+# default timeout for the whole session (context.set_default_timeout). Pass it
+# on the command line to override; do not add a `timeout_ms` key here — the
+# driver reads timeout from the CLI flag, not from this file.
