@@ -12,14 +12,16 @@ non-deterministic field is the timestamp stamped into audit/manifest.
 
 import argparse
 import json
+from collections.abc import Mapping
 from datetime import datetime, timezone
 from html import escape
 from pathlib import Path
+from typing import Any
 
 from core import audit, cli, io_ndjson
 from core.errors import ValidationError
 from core.filesystem import ensure_dir, write_text_no_overwrite
-from core.schema import empty_manifest
+from core.schema import PackageInput, empty_manifest
 from core.url_utils import slug
 
 _REQUIRED = ("title", "canonical_url", "caption")
@@ -30,7 +32,7 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _date_prefix(record: dict) -> str:
+def _date_prefix(record: Mapping[str, Any]) -> str:
     """Derive a deterministic YYYYMMDD from the record, else current UTC date."""
     for key in ("published_at", "discovered_at"):
         value = record.get(key)
@@ -50,8 +52,12 @@ def _preview_html(title: str, caption: str) -> str:
     )
 
 
-def build(record: dict, out_dir: str, log_path: str) -> str:
+def build(record: dict | PackageInput, out_dir: str, log_path: str) -> str:
     """Build the package folder for one record; return its manifest path.
+
+    ``record`` is the R8 normalized item -- a plain NDJSON ``dict`` from the CLI
+    path or a ``PackageInput`` TypedDict from the generation track; both are
+    accepted (read-only ``.get``/``[]`` access).
 
     Idempotent (R5): re-running with the same record reuses the same folder and
     leaves existing files untouched (no-overwrite helpers).

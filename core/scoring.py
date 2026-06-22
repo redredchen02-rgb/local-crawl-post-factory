@@ -1,14 +1,18 @@
-"""Score scoops on two axes: multi-source confidence + content quality (plan U4).
+"""Score scoops on two axes: source confidence (informational) + quality (plan U4).
 
-Confidence rises with the number of *independent* sources corroborating a scoop
-(the count of distinct ``source_id``, computed upstream in clustering -- so
-repeating the same source never inflates it). Quality blends content
-completeness, recency, and material volume.
+Confidence rises with the number of distinct ``source_id`` values on a scoop
+(computed upstream in clustering). It is INFORMATIONAL ONLY, **not** corroboration:
+mirrors/reposts that share a ``canonical_url`` collapse to one library row, so
+``source_count`` cannot represent "same URL, N sources" and is best-effort. The
+confidence axis is neutralized via ``weight_confidence: 0.0`` in
+``configs/scoring.yaml`` -- ``combined()`` therefore ignores it and ranking is
+driven by quality alone (confidence is still computed and surfaced as an info
+field). Quality blends content completeness, recency, and material volume.
 
-Both axes are kept separate (so the selection UI can filter on either) and also
-combined into one sortable score. Every function is pure and deterministic;
-``now`` is passed in so recency is testable. All outputs are clamped to 0..1 and
-never NaN, even on empty/degenerate input.
+Both axes are kept separate (so the selection UI can still display/filter on
+either) and also combined into one sortable score. Every function is pure and
+deterministic; ``now`` is passed in so recency is testable. All outputs are
+clamped to 0..1 and never NaN, even on empty/degenerate input.
 """
 
 from __future__ import annotations
@@ -21,7 +25,7 @@ def _clamp01(x: float) -> float:
 
 
 def confidence(source_count: int, *, source_cap: int) -> float:
-    """0..1 multi-source corroboration, saturating at ``source_cap`` sources."""
+    """0..1 source-count signal (informational, NOT corroboration), saturating at ``source_cap``."""
     if source_cap <= 0:
         return 1.0 if source_count > 0 else 0.0
     return _clamp01(source_count / source_cap)
@@ -68,6 +72,9 @@ def quality(*, completeness_v: float, recency_v: float, material_v: float,
 
 def combined(confidence_v: float, quality_v: float, *,
              w_confidence: float, w_quality: float) -> float:
+    # With weight_confidence=0 (the shipped default in configs/scoring.yaml) this
+    # reduces to quality alone; _weighted needs total weight > 0, which holds as
+    # long as w_quality > 0. confidence stays informational, not corroboration.
     return _weighted([(confidence_v, w_confidence), (quality_v, w_quality)])
 
 

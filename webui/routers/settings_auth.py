@@ -21,6 +21,21 @@ def _extract_field(message: str) -> str | None:
 router = APIRouter()
 
 
+def _sources_view(cfg: dict) -> tuple[list[dict], bool]:
+    """Return (dict-only sources, malformed-flag) for the read-only panel.
+
+    load() never validates ``sources``, so a hand-edited YAML may carry scalar
+    entries (or not even be a list). Filtering to dict entries here keeps the
+    read-only panel from rendering — and crashing on — malformed input. The flag
+    surfaces the malformation as a visible hint instead of silently dropping it.
+    """
+    raw = cfg.get("sources")
+    items = raw if isinstance(raw, list) else []
+    clean = [s for s in items if isinstance(s, dict)]
+    malformed = len(clean) != len(items) or (bool(raw) and not isinstance(raw, list))
+    return clean, malformed
+
+
 def _diag(cfg: dict, config_path: str) -> dict:
     from pathlib import Path as _P
     return {
@@ -37,8 +52,10 @@ def _diag(cfg: dict, config_path: str) -> dict:
 @router.get("/settings", response_class=HTMLResponse)
 def settings_page(request: Request):
     cfg = cfg_from_request(request)
+    sources, malformed = _sources_view(cfg)
     return templates.TemplateResponse(
         request, "settings.html", {"cfg": cfg, "saved": False,
+                                   "sources": sources, "sources_malformed": malformed,
                                    "diag": _diag(cfg, request.app.state.config_path)})
 
 
@@ -65,15 +82,19 @@ def save_settings(request: Request,
     except ValidationError as exc:
         field = _extract_field(exc.message)
         cfg_in = cfg_from_request(request)
+        sources_in, malformed_in = _sources_view(cfg_in)
         return templates.TemplateResponse(
             request, "settings.html", {"cfg": cfg_in, "saved": False,
+                                        "sources": sources_in, "sources_malformed": malformed_in,
                                         "field_error": {field: exc.message} if field else None,
                                         "diag": _diag(cfg_in, config_path)})
     except CliError as exc:
         return HTMLResponse(f'<p class="error">{exc.message}</p>', status_code=400)
     cfg = cfg_from_request(request)  # re-load resolved, for accurate diag display
+    sources, malformed = _sources_view(cfg)
     return templates.TemplateResponse(
         request, "settings.html", {"cfg": cfg, "saved": True,
+                                   "sources": sources, "sources_malformed": malformed,
                                    "diag": _diag(cfg, config_path)})
 
 

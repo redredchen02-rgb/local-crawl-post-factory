@@ -4,12 +4,24 @@ Reads a cluster's multi-source members from the crawl library, calls the LLM
 (reusing ``core.llm``) with the multi-source synthesis prompt, and emits ONE
 synthesized normalized item (NDJSON) ready for build-manifest.
 
-Two contract details that the build/publish chain depends on:
+The emitted item is a ``core.schema.PackageInput`` -- the shared contract for
+build-manifest used by BOTH this scoop track and the legacy repost track.
+
+Three contract details that the build/publish chain depends on:
 - the generated body is carried in the ``caption`` field -- build-manifest maps
   ``content.body = caption`` (a record's ``text`` only lands in source_text.txt);
-- the synthetic identity is ``https://scoop.local/<cluster_id>`` -- a real
-  http(s) URL so ``core.validators.valid_url`` accepts it (a ``scoop://`` scheme
-  would be rejected and never reach build-manifest).
+- the synthetic identity is ``https://scoop.cpost.local/<cluster_id>`` -- a real
+  http(s) URL (self-describing synthetic host) so ``core.validators.valid_url``
+  accepts it (a ``scoop://`` scheme, or a hostless URL, would be rejected and
+  never reach build-manifest). ``cluster_id`` is content-derived (``c_<hex>``),
+  so the same membership yields the same canonical -> cross-run dedup stays
+  correct (build-manifest derives ``post_id = slug(canonical)`` truncated to 60;
+  the ``scoop.cpost.local`` prefix leaves ample budget for ``c_<12 hex>``);
+- G5 provenance decision: ``source_id`` is the fixed ``SCOOP_SOURCE_ID`` ("scoop").
+  The aggregated article is a NEW synthesized artifact, not from any single
+  source, so per-source provenance is NOT carried into the manifest -- it lives
+  in the cluster members / library (tracked by R4). R4's per-member ``source_id``
+  does not flow here.
 
 The title is parsed from the model's first line, falling back to the cluster's
 ``representative_title``. A (member fingerprint + model + prompt version) cache
@@ -27,9 +39,14 @@ from pathlib import Path
 from core import cli, library, llm
 from core.errors import ValidationError
 from core.io_ndjson import write_line
+from core.schema import PackageInput
 
 _PROMPT_VERSION = "scoop-v1"
 SCOOP_SOURCE_ID = "scoop"
+# Self-describing synthetic host for aggregated scoops. Must stay http(s)+hostname
+# (valid_url rejects custom schemes / hostless URLs). Content-derived cluster_id
+# keeps the canonical stable across runs -> cross-run dedup correct.
+_SCOOP_HOST = "scoop.cpost.local"
 # Real cluster ids are ``c_<12 hex>`` (core.cluster._cluster_id); this guard
 # rejects malformed form-supplied ids before they reach the synthetic URL.
 _CLUSTER_ID_RE = re.compile(r"[A-Za-z0-9_-]+")
@@ -83,8 +100,8 @@ def split_title_body(article: str, fallback_title: str) -> tuple[str, str]:
 
 
 def generate(conn, cluster_id: str, llm_cfg: dict, system_prompt: str, now: str,
-             *, _chat=llm.chat) -> dict:
-    """Synthesize one article for ``cluster_id``; return a normalized item dict."""
+             *, _chat=llm.chat) -> PackageInput:
+    """Synthesize one article for ``cluster_id``; return a ``PackageInput``."""
     if not _CLUSTER_ID_RE.fullmatch(cluster_id or ""):
         raise ValidationError(f"invalid cluster_id: {cluster_id!r}")
     cluster = library.get_cluster(conn, cluster_id)
@@ -108,16 +125,19 @@ def generate(conn, cluster_id: str, llm_cfg: dict, system_prompt: str, now: str,
                                title=title, body=body, model=model, now=now)
 
     published = cluster.get("latest_published") or cluster.get("earliest_published")
-    return {
+    item: PackageInput = {
         "title": title,
         "caption": body,                 # build-manifest maps content.body = caption
         "text": body,                    # also kept as a source_text copy
-        "canonical_url": f"https://scoop.local/{cluster_id}",
+        "canonical_url": f"https://{_SCOOP_HOST}/{cluster_id}",
+        # G5: synthesized artifact, not from one source -> fixed "scoop"; per-source
+        # provenance stays in the library/cluster members (R4), not the manifest.
         "source_id": SCOOP_SOURCE_ID,
         "url": cluster.get("representative_url"),
         "published_at": published,
         "discovered_at": now,
     }
+    return item
 
 
 def _run(args) -> int:
@@ -126,7 +146,7 @@ def _run(args) -> int:
     system_prompt = Path(args.prompt).read_text(encoding="utf-8")
     with library.connect(args.state) as conn:
         item = generate(conn, args.cluster_id, llm_cfg, system_prompt, now)
-    write_line(item)
+    write_line(dict(item))
     return 0
 
 

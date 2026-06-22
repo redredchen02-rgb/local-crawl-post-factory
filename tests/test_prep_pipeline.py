@@ -27,7 +27,7 @@ def _cfg(tmp_path):
 
 def _patch_crawl(monkeypatch, items):
     monkeypatch.setattr(scoop_pipeline, "crawl_all_sources",
-                        lambda cfg, progress_cb=None: list(items))
+                        lambda cfg, progress_cb=None, on_source=None: list(items))
 
 
 def test_prep_produces_scored_scoops(tmp_path, monkeypatch):
@@ -73,6 +73,22 @@ def test_empty_crawl_no_error(tmp_path, monkeypatch):
                       "single_source": False, "top": [], "failed": []}
 
 
+def test_prep_threads_on_source(tmp_path, monkeypatch):
+    """flow G3: run_prep_pipeline must thread on_source into crawl_all_sources so
+    the /today path surfaces per-source failures instead of swallowing them."""
+    def fake_all_sources(cfg, progress_cb=None, on_source=None):
+        if on_source:
+            on_source("src_x", "failed: boom")
+        return []
+
+    monkeypatch.setattr(scoop_pipeline, "crawl_all_sources", fake_all_sources)
+    seen = []
+    result = scoop_pipeline.run_prep_pipeline(
+        _cfg(tmp_path), on_source=lambda sid, r: seen.append((sid, r)))
+    assert seen == [("src_x", "failed: boom")]
+    assert result["ingested"] == 0  # clean finish on empty crawl
+
+
 def test_bad_item_isolated(tmp_path, monkeypatch):
     _patch_crawl(monkeypatch, [
         _raw("good", "正常的一則新聞標題"),
@@ -82,6 +98,24 @@ def test_bad_item_isolated(tmp_path, monkeypatch):
     assert result["ingested"] == 1
     assert len(result["failed"]) == 1
     assert result["failed"][0]["stage"] == "normalize"
+
+
+def test_prep_result_declared_keys(tmp_path, monkeypatch):
+    """R7: run_prep_pipeline returns exactly the PrepPipelineResult keys, and
+    each top entry exactly the PrepTopScoop keys."""
+    same = "藝人A被爆新戀情震驚全網一夜洗版"
+    _patch_crawl(monkeypatch, [
+        _raw("a1", same, source_id="src_a"),
+        _raw("b1", same, source_id="src_b"),
+    ])
+    result = scoop_pipeline.run_prep_pipeline(_cfg(tmp_path))
+    assert set(result) == {
+        "ingested", "clusters", "scored", "single_source", "top", "failed"}
+    assert result["top"]
+    for entry in result["top"]:
+        assert set(entry) == {
+            "cluster_id", "representative_title", "source_count",
+            "confidence", "quality", "score"}
 
 
 def test_idempotent_rerun(tmp_path, monkeypatch):

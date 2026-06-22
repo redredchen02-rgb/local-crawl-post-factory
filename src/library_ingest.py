@@ -25,18 +25,26 @@ def to_library_fields(record: dict) -> dict:
     """Map a normalized record to ``library.upsert`` kwargs (pure).
 
     Maps the full-body ``text`` field to ``source_text``. Raises ValidationError
-    when the required ``canonical_url`` or ``title`` is missing.
+    when the required ``canonical_url``/``title``/``source_id`` is missing.
+
+    ``source_id`` is provenance for display/filter only (NOT corroboration), but
+    it must be non-empty so the library never stores a blank origin. This is a
+    persistence-boundary guard: normalize-items already rejects blanks, but a
+    record reaching the library by any other path is caught here too (U9 R4).
     """
     canonical_url = record.get("canonical_url")
     title = record.get("title")
+    source_id = record.get("source_id")
     if not canonical_url:
         raise ValidationError("record missing required field 'canonical_url'")
     if not title:
         raise ValidationError("record missing required field 'title'")
+    if not source_id or not str(source_id).strip():
+        raise ValidationError("record missing required field 'source_id'")
     return {
         "canonical_url": canonical_url,
         "title": title,
-        "source_id": record.get("source_id"),
+        "source_id": source_id,
         "url": record.get("url"),
         "source_text": record.get("text"),
         "description": record.get("description"),

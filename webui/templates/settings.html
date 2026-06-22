@@ -4,6 +4,10 @@
 {% block content %}
 {% if saved %}<p class="ok">已儲存 ✓</p>{% endif %}
 
+{% include "_sources_list.html" %}
+
+<hr>
+<h2>單一來源設定</h2>
 <form hx-post="/settings" hx-target="this" hx-swap="outerHTML">
   <label>來源 URL（start_url）</label>
   <input type="text" name="start_url" value="{{ cfg.start_url }}" placeholder="https://example.com/news">

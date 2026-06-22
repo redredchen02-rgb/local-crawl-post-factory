@@ -2,7 +2,8 @@ import io
 import json
 from types import SimpleNamespace
 
-from core import cli, library
+from core import cli, library, scoop_pipeline, webui_config
+from src import generate_article
 from src.cluster_scoops import cluster_library
 from src.score_scoops import _run, score_all
 
@@ -118,3 +119,24 @@ def test_cli_empty_library_ok(tmp_path, monkeypatch):
     code, out, err = _run_command(db, monkeypatch)
     assert code == 0
     assert json.loads(out.strip()) == {"scored": 0, "by_cluster": []}
+
+
+def test_generation_result_declared_keys(tmp_path, monkeypatch):
+    """R7: run_generation_pipeline returns exactly the GenerationPipelineResult
+    keys; each built entry exactly the GenerationBuilt keys."""
+    cfgp = tmp_path / "webui.yaml"
+    webui_config.save(str(cfgp), {"start_url": "https://example.com",
+                                  "out_dir": str(tmp_path / "out")})
+    cfg = webui_config.load(str(cfgp))
+    monkeypatch.setattr(
+        generate_article, "generate",
+        lambda conn, cid, lc, pr, now, **kw: {
+            "title": f"標題{cid}", "caption": f"正文{cid}", "text": f"正文{cid}",
+            "canonical_url": f"https://scoop.cpost.local/{cid}", "source_id": "scoop",
+            "url": "https://rep.example.com/x",
+            "published_at": "2026-06-15T10:00:00+08:00", "discovered_at": now})
+    result = scoop_pipeline.run_generation_pipeline(["c1"], cfg)
+    assert set(result) == {"built", "failed", "kind"}
+    assert result["built"]
+    for entry in result["built"]:
+        assert set(entry) == {"post_id", "title"}

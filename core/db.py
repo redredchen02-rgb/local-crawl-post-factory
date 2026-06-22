@@ -43,6 +43,7 @@ def connect(path: str, schema: str,
         raise DependencyError(f"sqlite unavailable: {exc}")
     try:
         conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA busy_timeout=5000")
         conn.executescript(schema)
         if migrations:
             _apply_migrations(conn, migrations)

@@ -1,6 +1,8 @@
 """Append-only JSONL audit log (origin spec §8)."""
 
 import json
+import os
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -8,8 +10,12 @@ from typing import Any
 def purge_before(log_path: str, cutoff_iso: str) -> int:
     """Remove audit entries older than ``cutoff_iso`` (UTC ISO 8601).
 
-    Rewrites the JSONL file in place. Returns the number of removed lines.
-    No-op if the file doesn't exist.
+    Rewrites the JSONL file in place (atomically). Returns the number of
+    removed lines. No-op if the file doesn't exist.
+
+    The rewrite goes through a temp file beside the destination (same
+    filesystem, so ``os.replace`` is atomic) with flush+fsync for durability;
+    a crash mid-write leaves the original file intact rather than truncated.
     """
     p = Path(log_path)
     if not p.exists():
@@ -29,8 +35,26 @@ def purge_before(log_path: str, cutoff_iso: str) -> int:
         except json.JSONDecodeError:
             pass  # keep unparseable lines
         kept.append(line)
-    p.write_text("\n".join(kept) + "\n", encoding="utf-8")
+    _atomic_write_text(p, "\n".join(kept) + "\n")
     return removed
+
+
+def _atomic_write_text(dest: Path, text: str) -> None:
+    """Write ``text`` to ``dest`` atomically (temp beside dest + fsync + replace)."""
+    fd, tmp_name = tempfile.mkstemp(dir=str(dest.parent), prefix=dest.name + ".",
+                                    suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(text)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(tmp_name, dest)
+    except BaseException:
+        try:
+            os.unlink(tmp_name)
+        except OSError:
+            pass
+        raise
 
 
 def record(log_path: str, post_id: str, stage: str, status: str, ts: str,

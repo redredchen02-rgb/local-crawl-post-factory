@@ -8,6 +8,12 @@ def test_none_path_returns_defaults():
     assert scoring_config.load(None) == scoring_config.DEFAULTS
 
 
+def test_in_code_defaults_neutralize_confidence():
+    """In-code DEFAULTS mirror configs/scoring.yaml: confidence weight 0, quality 1."""
+    assert scoring_config.DEFAULTS["weight_confidence"] == 0.0
+    assert scoring_config.DEFAULTS["weight_quality"] == 1.0
+
+
 def test_missing_file_returns_defaults(tmp_path):
     cfg = scoring_config.load(str(tmp_path / "nope.yaml"))
     assert cfg == scoring_config.DEFAULTS

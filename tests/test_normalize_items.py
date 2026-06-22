@@ -57,6 +57,20 @@ def test_invalid_canonical_raises_validation():
         _normalize(item)
 
 
+def test_blank_source_id_derived_from_host():
+    """Legacy CLI/single-site path (no --source-id) → source_id = canonical host."""
+    item = _base_item(source_id="")
+    out = _normalize(item)
+    assert out["source_id"] == "example.com"
+
+
+def test_explicit_source_id_preserved():
+    """An explicit non-empty source_id is never overwritten by the host."""
+    item = _base_item(source_id="my-site")
+    out = _normalize(item)
+    assert out["source_id"] == "my-site"
+
+
 def _run_command(stdin_text, monkeypatch):
     monkeypatch.setattr("sys.stdin", io.StringIO(stdin_text))
     out = io.StringIO()

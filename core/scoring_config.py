@@ -25,8 +25,11 @@ DEFAULTS = {
     "weight_completeness": 0.5,
     "weight_recency": 0.2,
     "weight_material": 0.3,
-    "weight_confidence": 0.6,
-    "weight_quality": 0.4,
+    # Confidence axis neutralized (plan U9): combined() ignores it, ranking by
+    # quality alone. Mirrors configs/scoring.yaml so the in-code default holds
+    # even when no yaml is loaded.
+    "weight_confidence": 0.0,
+    "weight_quality": 1.0,
 }
 
 
