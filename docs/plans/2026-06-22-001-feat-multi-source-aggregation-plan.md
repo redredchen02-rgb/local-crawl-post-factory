@@ -1,7 +1,7 @@
 ---
 title: "feat: 多來源匯整 — 把 sources 做成一級概念 + 地基修補（信心軸已砍）"
 type: feat
-status: active
+status: completed
 date: 2026-06-22
 origin: docs/brainstorms/2026-06-22-multi-source-aggregation-maturity-requirements.md
 deepened: 2026-06-22
@@ -353,7 +353,7 @@ flowchart TB
 
 ### 第三刀（可選）
 
-- [ ] **U13：可維護性重構（R14）** — `core/pipeline.py:run_auto_pipeline` 三段 draft/verify/publish 迴圈收斂為單一參數化 stage runner;以單一型別化後台呼叫契約取代 4 處重建的 `SimpleNamespace`。Test：`tests/test_pipeline.py` 既有 auto_pipeline 測試需全綠（行為不變）。場景:三階段行為與重構前一致（characterization）。**Execution note:** 先補 characterization 測試鎖住現有 draft/verify/publish 行為,再重構。
+- [x] **U13：可維護性重構（R14）** — `core/pipeline.py:run_auto_pipeline` 三段 draft/verify/publish 迴圈收斂為單一參數化 stage runner;以單一型別化後台呼叫契約取代 4 處重建的 `SimpleNamespace`。Test：`tests/test_pipeline.py` 既有 auto_pipeline 測試需全綠（行為不變）。場景:三階段行為與重構前一致（characterization）。**Execution note:** 先補 characterization 測試鎖住現有 draft/verify/publish 行為,再重構。
 
 ## System-Wide Impact
 
