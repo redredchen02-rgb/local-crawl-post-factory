@@ -132,7 +132,9 @@ make vendor-htmx        # 下載 htmx（首次，UI 互動需要）
 make webui              # 啟動 → http://127.0.0.1:8000
 ```
 
-設定存 `configs/webui.yaml`（與 CLI 共用爬蟲/模板/浮水印的既有 yaml）。WebUI 與 CLI 跑的是**同一條** `cpost.core.pipeline` orchestrator，邏輯不重複。
+`make webui` 底層呼叫的是 console script `crawl-post-webui`（`pip install -e '.[webui]'` 後可直接執行）；要自訂 host/port 或不經 make 時可直接跑 `crawl-post-webui`。
+
+設定存 `configs/webui.yaml`（與 CLI 共用爬蟲/模板的既有 yaml）。WebUI 與 CLI 跑的是**同一條** `cpost.core.pipeline` orchestrator，邏輯不重複。
 
 ## 日常營運（硬化）
 
@@ -144,9 +146,9 @@ make webui              # 啟動 → http://127.0.0.1:8000
 - **爬取禮貌**：設定頁可調 `download_delay` 與 `concurrency`。
 - **配置可移植**：輸出路徑（state/out/download/audit/storage_state）相對設定檔目錄解析；可用 `CPOST_STATE_PATH`/`CPOST_OUT_DIR`/`CPOST_DOWNLOAD_DIR` 環境變數覆蓋。
 
-## 排程 / Agent 自動化
+## 可跑範例 / 自動化排程
 
-見 [`examples/scheduling.md`](examples/scheduling.md) — cron 建草稿範本、退出碼處理、登入態到期、人工發布。
+完整的可跑範例（cron 多來源匯整 + 建草稿、退出碼處理、登入態到期、人工發布、opt-in 自動發布）見 [`examples/scheduling.md`](examples/scheduling.md)。所有命令都是上面 `[project.scripts]` 裝出的 console script（`pip install -e .` 後即可用）。
 預設排程仍建議停在建草稿或驗證；若要排程觸發自動發布，必須先明確開啟 `auto_pipeline`，並接受它會預先滿足審核門的風險。
 
 ## 設計與計畫
