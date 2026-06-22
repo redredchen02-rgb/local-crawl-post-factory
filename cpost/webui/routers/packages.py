@@ -85,8 +85,15 @@ def edit_package(request: Request, post_id: str,
         m.setdefault("content", {})["title"] = title
     if caption:
         (pkg / "caption.txt").write_text(caption, encoding="utf-8")
+        # caption.txt is only displayed; the publishable body (and the reviewed
+        # content_id) come from content.body. Keep them in sync — mirroring
+        # generate_article — so a caption edit actually reaches publish (R1).
+        m.setdefault("content", {})["body"] = caption
     (pkg / "manifest.json").write_text(
         json.dumps(m, ensure_ascii=False, indent=2), encoding="utf-8")
+    # The operator authored (and saw) this version: bind the review gate to it so
+    # the edited content is publishable rather than blocked as stale (Q9).
+    reviewed.mark(cfg["state_path"], post_id, reviewed.content_id(m))
     return HTMLResponse('<p class="ok">已儲存 ✓</p>')
 
 
