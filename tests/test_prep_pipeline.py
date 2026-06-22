@@ -89,6 +89,63 @@ def test_prep_threads_on_source(tmp_path, monkeypatch):
     assert result["ingested"] == 0  # clean finish on empty crawl
 
 
+def test_crawl_snapshots_go_to_crawl_cb_not_progress(tmp_path, monkeypatch):
+    """U18: the dict-shaped crawl telemetry must travel on crawl_progress_cb;
+    progress_cb (the string log) must never receive a dict.
+
+    crawl_all_sources threads progress_cb into crawl_items, which fires it with
+    {responses, items, last_url, last_title} dict snapshots. Routing that through
+    the job-log callback would stringify dicts into job.progress.
+    """
+    snap = {"responses": 3, "items": 2, "last_url": "u", "last_title": "標題甲"}
+
+    def fake_all_sources(cfg, progress_cb=None, on_source=None):
+        if progress_cb:
+            progress_cb(snap)            # crawl telemetry is a dict
+        return []
+
+    monkeypatch.setattr(scoop_pipeline, "crawl_all_sources", fake_all_sources)
+    crawl_seen: list = []
+    progress_seen: list = []
+    scoop_pipeline.run_prep_pipeline(
+        _cfg(tmp_path),
+        progress_cb=progress_seen.append,
+        crawl_progress_cb=crawl_seen.append)
+
+    assert crawl_seen == [snap]                         # dict landed on crawl cb
+    assert all(isinstance(m, str) for m in progress_seen)  # log stays human-readable
+    assert snap not in progress_seen                    # no raw dict in the log
+    assert all("responses" not in m for m in progress_seen)  # no stringified dict
+
+
+def test_stage_reports_still_strings(tmp_path, monkeypatch):
+    """Happy path: stage reports keep flowing to progress_cb as plain strings."""
+    _patch_crawl(monkeypatch, [_raw("a1", "正常的一則新聞標題")])
+    progress_seen: list = []
+    scoop_pipeline.run_prep_pipeline(
+        _cfg(tmp_path), progress_cb=progress_seen.append)
+    assert progress_seen                                # stage reports emitted
+    assert all(isinstance(m, str) for m in progress_seen)
+    assert any("爬取完成" in m for m in progress_seen)
+
+
+def test_no_crawl_cb_omits_telemetry_but_keeps_stage_reports(tmp_path, monkeypatch):
+    """crawl_progress_cb=None -> crawl_all_sources gets progress_cb=None (no live
+    telemetry), yet the string stage reports still flow."""
+    received = {}
+
+    def fake_all_sources(cfg, progress_cb=None, on_source=None):
+        received["progress_cb"] = progress_cb
+        return []
+
+    monkeypatch.setattr(scoop_pipeline, "crawl_all_sources", fake_all_sources)
+    progress_seen: list = []
+    scoop_pipeline.run_prep_pipeline(
+        _cfg(tmp_path), progress_cb=progress_seen.append)
+    assert received["progress_cb"] is None              # crawl phase silent
+    assert any("爬取完成" in m for m in progress_seen)   # stage reports still flow
+
+
 def test_bad_item_isolated(tmp_path, monkeypatch):
     _patch_crawl(monkeypatch, [
         _raw("good", "正常的一則新聞標題"),

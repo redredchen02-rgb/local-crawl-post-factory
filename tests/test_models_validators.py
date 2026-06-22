@@ -1,5 +1,6 @@
 import pytest
 
+from cpost.core import manifest as mf
 from cpost.core import url_utils, validators
 from cpost.core.errors import ValidationError
 
@@ -42,3 +43,30 @@ def test_title_hash_ignores_whitespace_and_case():
 def test_slug_is_filesystem_safe():
     assert url_utils.slug("https://example.com/news/a?x=1") == "https_example_com_news_a_x_1"
     assert url_utils.slug("") == "item"
+
+
+# --- U12: set_backend published_url clear-vs-leave-unchanged ------------------
+
+def test_set_backend_explicit_none_clears_published_url():
+    """Rollback consistency: after publish (sets url) -> rollback (status back to
+    draft_verified, url cleared), the manifest must not still carry a stale url."""
+    m = {"backend": {}}
+    mf.set_backend(m, status="published", published_url="https://x.com/p/1")
+    assert m["backend"]["published_url"] == "https://x.com/p/1"
+    mf.set_backend(m, status="draft_verified", published_url=None)
+    assert m["backend"]["status"] == "draft_verified"
+    assert m["backend"]["published_url"] is None
+
+
+def test_set_backend_unset_leaves_published_url_unchanged():
+    m = {"backend": {"published_url": "https://x.com/p/1"}}
+    mf.set_backend(m, published_url=mf.UNSET)
+    assert m["backend"]["published_url"] == "https://x.com/p/1"
+
+
+def test_set_backend_default_leaves_published_url_unchanged():
+    """Existing callers (draft/verify) that omit published_url must not clear it."""
+    m = {"backend": {"published_url": "https://x.com/p/1"}}
+    mf.set_backend(m, status="draft_verified")
+    assert m["backend"]["published_url"] == "https://x.com/p/1"
+    assert m["backend"]["status"] == "draft_verified"

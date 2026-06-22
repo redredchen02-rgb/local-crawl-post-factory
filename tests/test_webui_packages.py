@@ -3,9 +3,11 @@
 import json
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 
 from cpost.webui.app import create_app
+from cpost.webui.routers import packages as packages_router
 from cpost.core import webui_config
 
 
@@ -418,3 +420,105 @@ def test_rollback_non_published_rejected(tmp_path):
 def test_rollback_unknown_404(tmp_path):
     client = _client(tmp_path, tmp_path / "out")
     assert client.post("/packages/nope/rollback").status_code == 404
+
+
+def test_rollback_clears_stale_published_url(tmp_path):
+    """U12: after rollback the manifest must not report draft_verified while
+    still carrying a stale published_url."""
+    out = tmp_path / "out"
+    _pkg(out, "20260615_a", "甲文", status="published")
+    pkg_dir = out / "20260615_a"
+    m = json.loads((pkg_dir / "manifest.json").read_text(encoding="utf-8"))
+    m["backend"]["published_url"] = "https://example.com/p/1"
+    (pkg_dir / "manifest.json").write_text(json.dumps(m), encoding="utf-8")
+    client = _client(tmp_path, out)
+    r = client.post("/packages/20260615_a/rollback")
+    assert r.status_code == 200
+    manifest = json.loads((pkg_dir / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["backend"]["status"] == "draft_verified"
+    assert manifest["backend"]["published_url"] is None
+
+
+# --- U14: generate_article dual-write consistency -----------------------------
+
+def _stub_llm(monkeypatch, article):
+    from cpost.core import llm
+    monkeypatch.setattr(llm, "load_config", lambda _p: {})
+    monkeypatch.setattr(llm, "load_system_prompt", lambda _c: "sys")
+    monkeypatch.setattr(llm, "build_user_content", lambda _t, _m: "user")
+    monkeypatch.setattr(llm, "chat", lambda _c, _s, _u: article)
+
+
+def test_generate_article_dual_write_happy(tmp_path, monkeypatch):
+    out = tmp_path / "out"
+    _pkg(out, "20260615_a", "甲文", caption="原始素材")
+    pkg = out / "20260615_a"
+    (pkg / "source_text.txt").write_text("來源全文素材", encoding="utf-8")
+    _stub_llm(monkeypatch, "AI 生成後的新文章")
+    client = _client(tmp_path, out)
+    r = client.post("/packages/20260615_a/generate")
+    assert r.status_code == 200
+    assert (pkg / "caption.txt").read_text(encoding="utf-8") == "AI 生成後的新文章"
+    m = json.loads((pkg / "manifest.json").read_text(encoding="utf-8"))
+    assert m["content"]["body"] == "AI 生成後的新文章"
+
+
+def test_generate_article_failed_second_write_keeps_pair_consistent(tmp_path, monkeypatch):
+    """If the caption.txt write fails after the manifest is written, the body is
+    rolled back so caption.txt and content.body stay consistent (no permanent
+    desync)."""
+    out = tmp_path / "out"
+    _pkg(out, "20260615_a", "甲文", caption="原始文案")
+    pkg = out / "20260615_a"
+    (pkg / "source_text.txt").write_text("來源全文素材", encoding="utf-8")
+    # Seed a known body so we can assert it is restored.
+    m = json.loads((pkg / "manifest.json").read_text(encoding="utf-8"))
+    m.setdefault("content", {})["body"] = "原始文案"
+    (pkg / "manifest.json").write_text(json.dumps(m), encoding="utf-8")
+    _stub_llm(monkeypatch, "新文章")
+
+    real_atomic = packages_router.atomic_write_text
+
+    def fail_on_caption(dest, text):
+        if str(dest).endswith("caption.txt"):
+            raise OSError("disk full")
+        return real_atomic(dest, text)
+
+    monkeypatch.setattr(packages_router, "atomic_write_text", fail_on_caption)
+    client = _client(tmp_path, out)
+    with pytest.raises(OSError, match="disk full"):
+        client.post("/packages/20260615_a/generate")
+    # caption.txt unchanged AND manifest body rolled back -> still consistent.
+    assert (pkg / "caption.txt").read_text(encoding="utf-8") == "原始文案"
+    m2 = json.loads((pkg / "manifest.json").read_text(encoding="utf-8"))
+    assert m2["content"]["body"] == "原始文案"
+
+
+# --- U19: failure-image path resolution ---------------------------------------
+
+def test_failure_image_relative_path_in_package_served(tmp_path):
+    """A relative screenshot path stored in failure.json must resolve against the
+    package dir and be served (not 404)."""
+    out = tmp_path / "out"
+    _pkg(out, "20260615_f", "失敗文")
+    pkg = out / "20260615_f"
+    (pkg / "shot.png").write_bytes(b"\x89PNG\r\n")
+    (pkg / "failure.json").write_text(json.dumps({
+        "stage": "draft", "screenshot": "shot.png"}), encoding="utf-8")
+    client = _client(tmp_path, out)
+    img = client.get("/packages/20260615_f/failure-image")
+    assert img.status_code == 200
+    assert img.headers["content-type"].startswith("image/")
+
+
+def test_failure_image_relative_traversal_still_blocked(tmp_path):
+    """A relative path escaping the package dir must still be rejected."""
+    out = tmp_path / "out"
+    _pkg(out, "20260615_f", "失敗文")
+    pkg = out / "20260615_f"
+    (pkg / "failure.json").write_text(json.dumps({
+        "stage": "draft", "screenshot": "../escape.png"}), encoding="utf-8")
+    # create the escape target so existence isn't what blocks it
+    (out / "escape.png").write_bytes(b"\x89PNG\r\n")
+    client = _client(tmp_path, out)
+    assert client.get("/packages/20260615_f/failure-image").status_code == 404
