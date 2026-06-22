@@ -37,9 +37,18 @@ DEFAULTS = {
     "min_confidence": 0,
     "min_score": 0.0,
     "auto_pipeline": False,
+    # min_text_chars: drop crawled items whose text is shorter than this many
+    # chars. 0 = no clamp (behavior-preserving: no short-post dropping). Read by
+    # pipeline.crawl_items; lives here so save() round-trips it instead of dropping.
+    "min_text_chars": 0,
+    # sources: per-source crawl config list (multi-source aggregation). Empty
+    # list = single-site behavior via crawl_all_sources' start_url fallback.
+    # Each entry is a dict, validated by _validate_sources (NOT _coerce).
+    "sources": [],
 }
 
-_INT_FIELDS = ("limit", "max_pages", "concurrency", "max_text_chars", "min_confidence")
+_INT_FIELDS = ("limit", "max_pages", "concurrency", "max_text_chars",
+               "min_confidence", "min_text_chars")
 _FLOAT_FIELDS = ("download_delay", "min_score")
 # Checkbox fields: form POST sends "on" when checked, absent when unchecked.
 _BOOL_FIELDS = ("auto_pipeline",)
@@ -160,10 +169,60 @@ def validate(cfg: dict) -> None:
         raise ValidationError("concurrency must be >= 1")
     if int(cfg.get("max_text_chars", 0)) < 0:
         raise ValidationError("max_text_chars must be >= 0")
+    if int(cfg.get("min_text_chars", 0)) < 0:
+        raise ValidationError("min_text_chars must be >= 0")
     if int(cfg.get("min_confidence", 0)) < 0:
         raise ValidationError("min_confidence must be >= 0")
     if float(cfg.get("min_score", 0)) < 0:
         raise ValidationError("min_score must be >= 0")
+    _validate_sources(cfg)
+
+
+# Optional per-source string overrides. Whitelisted in full here (incl. R6
+# extraction selectors consumed later by U10) so adding the selectors does not
+# require reopening this validator — avoids a hidden U1<->U10 back-edge.
+_SOURCE_STR_OVERRIDES = (
+    "item_regex", "allow_regex", "deny_regex",
+    "body_selector", "image_selector", "date_selector",
+)
+
+
+def _validate_sources(cfg: dict) -> None:
+    """Validate the ``sources`` list[dict] (multi-source aggregation).
+
+    ``sources`` is a list of per-source dicts — not a scalar — so it bypasses
+    ``_coerce``. Each entry needs a non-empty ``source_id`` and a valid
+    ``start_url``; the string overrides and ``enabled`` (bool, default true)
+    are optional.
+    """
+    sources = cfg.get("sources", [])
+    if not isinstance(sources, list):
+        raise ValidationError("sources must be a list")
+    seen: dict[str, int] = {}
+    dupes: list[str] = []
+    for i, src in enumerate(sources):
+        if not isinstance(src, dict):
+            raise ValidationError(f"sources[{i}] must be a mapping")
+        source_id = src.get("source_id")
+        if not isinstance(source_id, str) or not source_id.strip():
+            raise ValidationError(f"sources[{i}].source_id must be a non-empty string")
+        start_url = src.get("start_url")
+        if not isinstance(start_url, str) or not valid_url(start_url):
+            raise ValidationError(f"sources[{i}].start_url is not a valid url: {start_url!r}")
+        for key in _SOURCE_STR_OVERRIDES:
+            if key in src and not isinstance(src[key], str):
+                raise ValidationError(f"sources[{i}].{key} must be a string")
+        if "enabled" in src and not isinstance(src["enabled"], bool):
+            raise ValidationError(f"sources[{i}].enabled must be a boolean")
+        # source_id is the per-source identity (used as crawl source_id and the
+        # library cluster key); duplicates would silently overwrite each other.
+        key_id = source_id.strip()
+        if key_id in seen and key_id not in dupes:
+            dupes.append(key_id)
+        seen[key_id] = i
+    if dupes:
+        raise ValidationError(
+            f"duplicate source_id in sources: {', '.join(sorted(dupes))}")
 
 
 def _coerce(cfg: dict) -> None:

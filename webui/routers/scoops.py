@@ -66,7 +66,8 @@ def start_prep(request: Request):
     def _work(job):
         jobs.set_current(job, "準備備稿…")
         result = scoop_pipeline.run_prep_pipeline(
-            cfg, progress_cb=lambda m: jobs.report(job, m))
+            cfg, progress_cb=lambda m: jobs.report(job, m),
+            on_source=lambda sid, r: jobs.report(job, f"來源 {sid}：{r}"))
         return {**result, "kind": "prep"}
 
     job_id = jobs.submit(_work)

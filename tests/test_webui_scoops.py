@@ -84,7 +84,7 @@ def test_prep_trigger_returns_job_view(tmp_path, monkeypatch):
     client, _ = _client_and_state(tmp_path)
     import core.scoop_pipeline as sp
     monkeypatch.setattr(sp, "run_prep_pipeline",
-                        lambda cfg, progress_cb=None: {
+                        lambda cfg, progress_cb=None, on_source=None: {
                             "ingested": 0, "clusters": 0, "scored": 0,
                             "single_source": False, "top": [], "failed": []})
     r = client.post("/today/prep")

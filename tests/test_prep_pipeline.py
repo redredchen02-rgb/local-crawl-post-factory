@@ -27,7 +27,7 @@ def _cfg(tmp_path):
 
 def _patch_crawl(monkeypatch, items):
     monkeypatch.setattr(scoop_pipeline, "crawl_all_sources",
-                        lambda cfg, progress_cb=None: list(items))
+                        lambda cfg, progress_cb=None, on_source=None: list(items))
 
 
 def test_prep_produces_scored_scoops(tmp_path, monkeypatch):
@@ -71,6 +71,22 @@ def test_empty_crawl_no_error(tmp_path, monkeypatch):
     result = scoop_pipeline.run_prep_pipeline(_cfg(tmp_path))
     assert result == {"ingested": 0, "clusters": 0, "scored": 0,
                       "single_source": False, "top": [], "failed": []}
+
+
+def test_prep_threads_on_source(tmp_path, monkeypatch):
+    """flow G3: run_prep_pipeline must thread on_source into crawl_all_sources so
+    the /today path surfaces per-source failures instead of swallowing them."""
+    def fake_all_sources(cfg, progress_cb=None, on_source=None):
+        if on_source:
+            on_source("src_x", "failed: boom")
+        return []
+
+    monkeypatch.setattr(scoop_pipeline, "crawl_all_sources", fake_all_sources)
+    seen = []
+    result = scoop_pipeline.run_prep_pipeline(
+        _cfg(tmp_path), on_source=lambda sid, r: seen.append((sid, r)))
+    assert seen == [("src_x", "failed: boom")]
+    assert result["ingested"] == 0  # clean finish on empty crawl
 
 
 def test_bad_item_isolated(tmp_path, monkeypatch):

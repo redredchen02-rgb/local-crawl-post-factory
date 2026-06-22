@@ -8,8 +8,22 @@ download_dir: ../out/assets
 item_regex: archives/\d+
 limit: 30
 max_text_chars: 20000
+# min_text_chars: drop crawled items shorter than this many chars. 0 = no clamp.
+min_text_chars: 0
 out_dir: ../out
 source_id: '51cg'
+# sources: multi-source aggregation. Empty list = single-site (uses start_url).
+# Each entry needs source_id + start_url; the rest are optional overrides.
+# Example (uncomment + edit to enable multi-source crawling):
+# sources:
+#   - source_id: 51cg
+#     start_url: https://51cg1.com/
+#     enabled: true
+#     item_regex: archives/\d+      # optional, overrides base item_regex
+#     body_selector: ""             # optional (R6), empty = built-in fallback
+#     image_selector: ""            # optional (R6)
+#     date_selector: ""             # optional (R6)
+sources: []
 start_url: https://51cg1.com/
 state_path: ../state/published.sqlite
 storage_state: ../auth/storage-state.json

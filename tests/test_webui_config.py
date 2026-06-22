@@ -216,3 +216,151 @@ def test_legacy_cover_keys_ignored(tmp_path):
     for k in ("cover_enabled", "cover_retries", "cover_backoff_sec",
               "cover_download_concurrency", "watermark_config"):
         assert k not in cfg
+
+
+# --- U1 (R1): min_text_chars round-trip (closes save()-drop hole) -------------
+
+def test_min_text_chars_defaults_zero_no_clamp(tmp_path):
+    cfg = webui_config.load(str(tmp_path / "nope.yaml"))
+    assert cfg["min_text_chars"] == 0
+
+
+def test_min_text_chars_absent_in_yaml_effective_zero(tmp_path):
+    """No min_text_chars in yaml -> effective 0 (no new short-post dropping)."""
+    p = _write(tmp_path, "start_url: https://example.com/news\n")
+    cfg = webui_config.load(str(p))
+    assert cfg["min_text_chars"] == 0
+
+
+def test_min_text_chars_roundtrip(tmp_path):
+    p = str(tmp_path / "webui.yaml")
+    saved = webui_config.save(p, {"min_text_chars": 50})
+    assert saved["min_text_chars"] == 50
+    assert webui_config.load(p)["min_text_chars"] == 50
+
+
+def test_min_text_chars_negative_rejected(tmp_path):
+    with pytest.raises(ValidationError, match="min_text_chars"):
+        webui_config.save(str(tmp_path / "webui.yaml"), {"min_text_chars": -1})
+
+
+# --- U1 (R1): sources is a first-class list[dict] field ----------------------
+
+_SRC_A = {"source_id": "51cg", "start_url": "https://51cg1.com/",
+          "enabled": True, "item_regex": "archives/\\d+"}
+_SRC_B = {"source_id": "ph", "start_url": "https://example.com/feed",
+          "enabled": False}
+
+
+def test_sources_defaults_empty(tmp_path):
+    cfg = webui_config.load(str(tmp_path / "nope.yaml"))
+    assert cfg["sources"] == []
+
+
+def test_load_raw_preserves_sources_list(tmp_path):
+    p = _write(tmp_path,
+               "sources:\n"
+               "  - source_id: 51cg\n"
+               "    start_url: https://51cg1.com/\n"
+               "    enabled: true\n"
+               "    item_regex: archives/\\d+\n")
+    raw = webui_config.load_raw(str(p))
+    assert raw["sources"] == [_SRC_A]
+
+
+def test_sources_save_load_roundtrip(tmp_path):
+    """Previously sources was dropped by save() (not in DEFAULTS); now it survives."""
+    p = str(tmp_path / "webui.yaml")
+    saved = webui_config.save(p, {"sources": [_SRC_A, _SRC_B]})
+    assert saved["sources"] == [_SRC_A, _SRC_B]
+    loaded = webui_config.load(p)
+    assert loaded["sources"] == [_SRC_A, _SRC_B]
+    assert loaded["sources"][0]["enabled"] is True
+    assert loaded["sources"][1]["enabled"] is False
+
+
+def test_two_sources_survive_yaml_roundtrip_with_types(tmp_path):
+    """Verification: add two sources in yaml, save then load, both survive typed."""
+    p = _write(tmp_path,
+               "sources:\n"
+               "  - source_id: a\n"
+               "    start_url: https://a.example.com/\n"
+               "  - source_id: b\n"
+               "    start_url: https://b.example.com/\n"
+               "    enabled: false\n")
+    cfg = webui_config.load(str(p))
+    webui_config.save(str(p), cfg)
+    reloaded = webui_config.load(str(p))
+    assert [s["source_id"] for s in reloaded["sources"]] == ["a", "b"]
+    assert reloaded["sources"][1]["enabled"] is False
+
+
+def test_sources_empty_list_legal_and_no_single_site_impact(tmp_path):
+    p = str(tmp_path / "webui.yaml")
+    saved = webui_config.save(p, {"sources": [], "start_url": "https://x.com"})
+    assert saved["sources"] == []
+    assert saved["start_url"] == "https://x.com"
+
+
+def test_sources_entry_minimal_legal(tmp_path):
+    """Entry with only source_id + start_url (no overrides) is legal."""
+    p = str(tmp_path / "webui.yaml")
+    saved = webui_config.save(p, {"sources": [{"source_id": "x",
+                                               "start_url": "https://x.com/"}]})
+    assert saved["sources"][0]["source_id"] == "x"
+
+
+def test_sources_not_a_list_rejected(tmp_path):
+    with pytest.raises(ValidationError, match="sources must be a list"):
+        webui_config.save(str(tmp_path / "webui.yaml"),
+                          {"sources": {"source_id": "x"}})
+
+
+def test_sources_entry_missing_source_id_rejected(tmp_path):
+    with pytest.raises(ValidationError, match="source_id"):
+        webui_config.save(str(tmp_path / "webui.yaml"),
+                          {"sources": [{"start_url": "https://x.com/"}]})
+
+
+def test_sources_entry_empty_source_id_rejected(tmp_path):
+    with pytest.raises(ValidationError, match="source_id"):
+        webui_config.save(str(tmp_path / "webui.yaml"),
+                          {"sources": [{"source_id": "  ",
+                                        "start_url": "https://x.com/"}]})
+
+
+def test_sources_entry_bad_start_url_rejected(tmp_path):
+    with pytest.raises(ValidationError, match="start_url"):
+        webui_config.save(str(tmp_path / "webui.yaml"),
+                          {"sources": [{"source_id": "x", "start_url": "not-a-url"}]})
+
+
+def test_sources_entry_non_bool_enabled_rejected(tmp_path):
+    with pytest.raises(ValidationError, match="enabled"):
+        webui_config.save(str(tmp_path / "webui.yaml"),
+                          {"sources": [{"source_id": "x",
+                                        "start_url": "https://x.com/",
+                                        "enabled": "yes"}]})
+
+
+def test_sources_entry_non_dict_rejected(tmp_path):
+    with pytest.raises(ValidationError, match=r"sources\[0\]"):
+        webui_config.save(str(tmp_path / "webui.yaml"),
+                          {"sources": ["not-a-dict"]})
+
+
+def test_sources_entry_non_str_override_rejected(tmp_path):
+    with pytest.raises(ValidationError, match="item_regex"):
+        webui_config.save(str(tmp_path / "webui.yaml"),
+                          {"sources": [{"source_id": "x",
+                                        "start_url": "https://x.com/",
+                                        "item_regex": 123}]})
+
+
+def test_sources_duplicate_source_id_rejected(tmp_path):
+    """Two entries sharing a source_id would silently overwrite each other in the
+    crawl/library keying -> reject with a clear error listing the duplicate."""
+    with pytest.raises(ValidationError, match="duplicate source_id"):
+        webui_config.save(str(tmp_path / "webui.yaml"),
+                          {"sources": [{"source_id": "dup", "start_url": "https://a.com/"},
+                                       {"source_id": "dup", "start_url": "https://b.com/"}]})

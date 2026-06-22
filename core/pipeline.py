@@ -58,31 +58,75 @@ def crawl_items(webui_cfg: dict,
     return crawl_posts.crawl_items(opts, progress_cb=progress_cb, poll_sec=poll_sec)
 
 
+def enabled_sources(webui_cfg: dict) -> list[dict]:
+    """Return the enabled per-source dicts from ``webui_cfg["sources"]``.
+
+    Validates the shape so a malformed config surfaces a clean
+    :class:`ValidationError` (→ 400 at the router) instead of a later
+    ``.get``-on-non-dict ``AttributeError`` (→ 500). ``enabled`` defaults to
+    true when the key is absent; a falsy ``enabled`` drops the entry.
+    """
+    sources = webui_cfg.get("sources") or []
+    if not isinstance(sources, list):
+        raise ValidationError("webui config 'sources' must be a list")
+    enabled: list[dict] = []
+    for src in sources:
+        if not isinstance(src, dict):
+            raise ValidationError(
+                f"each 'sources' entry must be a mapping, got {type(src).__name__}")
+        if src.get("enabled", True):
+            enabled.append(src)
+    return enabled
+
+
+def _safe_cb(cb: Callable[..., object] | None, *args: object) -> None:
+    """Invoke an observability callback so it can never break the crawl."""
+    if cb is None:
+        return
+    try:
+        cb(*args)
+    except Exception:  # noqa: BLE001 - a broken callback must not abort the crawl
+        pass
+
+
 def crawl_all_sources(webui_cfg: dict,
                       progress_cb: Callable[[str], object] | None = None,
-                      poll_sec: float = 0.5) -> list[dict]:
-    """Crawl every configured source and return the combined raw items.
+                      poll_sec: float = 0.5,
+                      on_source: Callable[[str, object], object] | None = None) -> list[dict]:
+    """Crawl every enabled source and return the combined raw items.
 
     Reads ``webui_cfg["sources"]`` -- a list of per-source dicts that override
-    the base config (e.g. ``start_url``, ``source_id``, ``item_regex``). Falls
-    back to a single crawl of ``webui_cfg["start_url"]`` when no ``sources`` list
-    is present (backward compatible). One source failing is reported via
-    ``progress_cb`` and never aborts the others -- mirroring the per-item
-    isolation of :func:`run_pipeline`.
+    the base config (e.g. ``start_url``, ``source_id``, ``item_regex``). Sources
+    with ``enabled: false`` are skipped (``enabled`` defaults to true when the
+    key is absent). Falls back to a single crawl of ``webui_cfg["start_url"]``
+    when there are no enabled sources -- covering BOTH "no sources list" and
+    "every source disabled" (backward compatible; single-site = N=1).
+
+    Per-source results are reported via ``on_source(source_id, count_or_error)``:
+    an ``int`` item count on success, an error-message ``str`` on failure. One
+    source failing never aborts the others -- mirroring the per-item isolation of
+    :func:`run_pipeline`. ``progress_cb`` is reserved for the realtime dict-snapshot
+    crawl telemetry threaded into :func:`crawl_items`; per-source success/failure
+    must NOT go there (the router's dict-shaped callback would crash on a str).
     """
-    sources = webui_cfg.get("sources")
-    if not sources:
+    enabled = enabled_sources(webui_cfg)
+    if not enabled:
         return crawl_items(webui_cfg, progress_cb=progress_cb, poll_sec=poll_sec)
 
     combined: list[dict] = []
-    for src in sources:
+    for src in enabled:
         merged = {**webui_cfg, **src}
         label = src.get("source_id") or src.get("start_url") or "?"
         try:
-            combined.extend(crawl_items(merged, progress_cb=progress_cb, poll_sec=poll_sec))
+            items = crawl_items(merged, progress_cb=progress_cb, poll_sec=poll_sec)
+            combined.extend(items)
         except Exception as exc:  # noqa: BLE001 - one bad source must not abort the batch
-            if progress_cb:
-                progress_cb(f"source {label} failed: {exc}")
+            # on_source is called OUTSIDE the crawl's try below; only the crawl
+            # itself is guarded here so a failing callback can't be mislabeled
+            # as a crawl failure.
+            _safe_cb(on_source, label, f"failed: {exc}")
+            continue
+        _safe_cb(on_source, label, len(items))
     return combined
 
 

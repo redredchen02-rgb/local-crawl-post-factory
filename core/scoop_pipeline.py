@@ -30,13 +30,16 @@ def _utcnow() -> str:
 
 
 def run_prep_pipeline(webui_cfg: dict,
-                      progress_cb: Callable[[str], object] | None = None) -> dict:
+                      progress_cb: Callable[[str], object] | None = None,
+                      on_source: Callable[[str, object], object] | None = None) -> dict:
     """Crawl (multi-source) → normalize → library-ingest → cluster → score.
 
     Produces ranked scoops in the library for the ``/today`` selection page,
     wiring the generation-track data-prep that plan 004 U2 deferred. Returns a
     summary dict for the job done view. A single bad item is recorded under
-    ``failed`` and never aborts the batch.
+    ``failed`` and never aborts the batch. ``on_source`` is threaded into
+    :func:`crawl_all_sources` so per-source failures on the ``/today`` path are
+    visible instead of silently swallowed (flow G3).
     """
     def _report(msg: str) -> None:
         if progress_cb:
@@ -45,7 +48,7 @@ def run_prep_pipeline(webui_cfg: dict,
     now = _utcnow()
     cfg = scoring_config.load(webui_cfg.get("scoring_config"))
 
-    raw = crawl_all_sources(webui_cfg, progress_cb=progress_cb)
+    raw = crawl_all_sources(webui_cfg, progress_cb=progress_cb, on_source=on_source)
     _report(f"爬取完成：{len(raw)} 篇")
 
     normalized: list[dict] = []

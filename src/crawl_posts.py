@@ -43,6 +43,11 @@ CONFIG_DEFAULTS = {
     "min_text_chars": 0,
     "max_text_chars": 20000,
     "source_id": "",
+    # Per-source extraction overrides (empty = use built-in hardcoded fallback).
+    # U10 consumes these; the keys must exist now so the CLI path never KeyErrors.
+    "body_selector": "",
+    "image_selector": "",
+    "date_selector": "",
     "user_agent": "crawl-posts/1.0 (+local-crawl-post-factory)",
     "timeout_sec": 30,
     "concurrency": 8,

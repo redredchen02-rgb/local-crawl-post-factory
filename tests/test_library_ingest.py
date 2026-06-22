@@ -130,15 +130,17 @@ def test_crawl_all_sources_combines(monkeypatch):
         return [{"source_id": cfg["source_id"], "canonical_url": f"https://{cfg['source_id']}/1"}]
 
     monkeypatch.setattr(pipeline, "crawl_items", fake_crawl_items)
+    reports = []
     cfg = {"sources": [{"source_id": "a", "start_url": "https://a"},
                        {"source_id": "b", "start_url": "https://b"}]}
-    items = pipeline.crawl_all_sources(cfg)
+    items = pipeline.crawl_all_sources(cfg, on_source=lambda sid, r: reports.append((sid, r)))
     assert calls == ["a", "b"]
     assert {i["source_id"] for i in items} == {"a", "b"}
+    assert dict(reports) == {"a": 1, "b": 1}  # each source's count via on_source
 
 
 def test_crawl_all_sources_one_failure_does_not_abort(monkeypatch):
-    notes = []
+    reports = []
 
     def fake_crawl_items(cfg, progress_cb=None, poll_sec=0.5):
         if cfg["source_id"] == "bad":
@@ -148,9 +150,14 @@ def test_crawl_all_sources_one_failure_does_not_abort(monkeypatch):
     monkeypatch.setattr(pipeline, "crawl_items", fake_crawl_items)
     cfg = {"sources": [{"source_id": "bad", "start_url": "https://bad"},
                        {"source_id": "good", "start_url": "https://good"}]}
-    items = pipeline.crawl_all_sources(cfg, progress_cb=notes.append)
+    # Per-source outcomes go to on_source now (NOT progress_cb): the dict-snapshot
+    # progress_cb is reserved for realtime crawl telemetry (arch F1).
+    items = pipeline.crawl_all_sources(
+        cfg, on_source=lambda sid, r: reports.append((sid, r)))
     assert [i["source_id"] for i in items] == ["good"]  # good source still crawled
-    assert any("bad" in n and "failed" in n for n in notes)  # failure reported, not raised
+    by_src = dict(reports)
+    assert by_src["good"] == 1                          # success count reported
+    assert "boom" in by_src["bad"]                      # failure reported, not raised
 
 
 def test_crawl_all_sources_falls_back_to_single(monkeypatch):
