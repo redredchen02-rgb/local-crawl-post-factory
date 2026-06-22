@@ -9,7 +9,7 @@ item_regex: archives/\d+
 limit: 30
 max_text_chars: 20000
 out_dir: ../out
-source_id: ''
+source_id: '51cg'
 start_url: https://51cg1.com/
 state_path: ../state/published.sqlite
 storage_state: ../auth/storage-state.json
