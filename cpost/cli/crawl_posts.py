@@ -456,18 +456,27 @@ def crawl_items(opts: dict, progress_cb=None, poll_sec: float = 0.5,
     if progress_cb:
         assert progress_path is not None
         _last_progress = None
+        deadline_hit = False
         while proc.is_alive():
             if time.monotonic() >= deadline:
-                timed_out = True
+                deadline_hit = True
                 break
             snap = _read_progress(progress_path)
             if snap is not None and snap != _last_progress:
                 _last_progress = snap
                 progress_cb(snap)
             time.sleep(poll_sec)
-        # One final read in case the child wrote progress between the last
-        # poll and process exit.
+        if deadline_hit:
+            # The poll window straddled the deadline. Mirror the non-progress
+            # branch: give the child a short grace join and only declare an
+            # overrun if it is STILL alive, so a child that finished exactly at
+            # the boundary keeps its results instead of being spuriously killed.
+            proc.join(timeout=poll_sec)
+            if proc.is_alive():
+                timed_out = True
         if not timed_out:
+            # One final read in case the child wrote progress between the last
+            # poll and process exit.
             snap = _read_progress(progress_path)
             if snap is not None and snap != _last_progress:
                 progress_cb(snap)

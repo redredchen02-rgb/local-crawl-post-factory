@@ -190,29 +190,33 @@ def verify_draft(page, cfg, title, *,
 
 
 def _wait_for_result_title(page, result_title, title):
-    """Wait for the search-result row carrying ``title`` as exact text.
+    """Wait for the search-result row carrying ``title`` as text.
 
-    U15(3): selector-injection hardening. The recipe is ``"<container> >> text={title}"``;
-    naively substituting the title re-parses Playwright selector syntax — a title
-    containing ``>>`` (chaining) or ``text=``/quotes splits the selector and yields a
-    FALSE transient failure (the post is fine, the locator is broken). Instead, build
-    a STRUCTURED locator: scope to the container before ``>> text={title}`` and match
-    the title via ``get_by_text(title, exact=True)``, which treats the title as data,
-    not selector syntax. Recipes that don't use the ``text={title}`` convention fall
-    back to a literal-substring wait (substitution still applied, but the matched text
-    is passed through Playwright's text engine quoting via a structured text locator).
+    U15(3): selector-injection hardening for the canonical recipe only. The shipped
+    recipe is ``"<container> >> text={title}"``; naively substituting the title
+    re-parses Playwright selector syntax — a title containing ``>>`` (chaining) or
+    ``text=``/quotes splits the selector and yields a FALSE transient failure (the
+    post is fine, the locator is broken). For that recipe we build a STRUCTURED
+    locator: scope to the container before ``>> text={title}`` and match the title
+    via ``get_by_text(title, exact=False)``, which treats the title as data (not
+    selector syntax) and preserves the original ``text=`` SUBSTRING/case-insensitive
+    semantics — so a same-node suffix (e.g. ``"<title> (草稿)"``) still matches.
+
+    Recipes WITHOUT the ``text={title}`` convention are custom selectors (e.g.
+    ``'tr:has-text("{title}")'``). For those we substitute the title into the full
+    selector and wait on the complete result — splitting on ``{title}`` would yield a
+    broken selector fragment (``'tr:has-text("'``) that raises a PlaywrightError and
+    re-introduces the false-transient-failure class this guard exists to prevent.
     """
     placeholder = "text={title}"
     if placeholder in result_title:
         container = result_title.split(">>")[0].strip() if ">>" in result_title else None
         scope = page.locator(container) if container else page
-        scope.get_by_text(title, exact=True).first.wait_for()
+        scope.get_by_text(title, exact=False).first.wait_for()
         return
-    # Recipe without the text={title} convention: still avoid re-parsing the title as
-    # selector syntax by waiting on a structured text locator built from the prefix.
-    prefix = result_title.split("{title}")[0].rstrip()
-    base = page.locator(prefix) if prefix else page
-    base.get_by_text(title, exact=False).first.wait_for()
+    # Custom recipe: substitute the title into the full selector. This is a valid
+    # locator for custom recipes; do NOT feed a split fragment into page.locator().
+    page.wait_for_selector(result_title.replace("{title}", title))
 
 
 def publish_draft(page, cfg, draft_url, *,

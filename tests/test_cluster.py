@@ -160,6 +160,43 @@ def test_published_missing_and_empty_skipped():
     assert c["latest_published"] == "2026-06-18T03:00:00+08:00"
 
 
+def test_published_unparseable_excluded_not_earliest():
+    """U5: a garbage published_at must never surface as the cluster's earliest/latest.
+
+    published_at is ingested raw with no validation. An unparseable value
+    (e.g. "2026/06/18 10:00") must be dropped from the earliest/latest
+    computation -- not coerced to datetime.min (which would sort it FIRST and
+    make garbage the displayed "oldest" timestamp).
+    """
+    items = [
+        _it("https://a.com/1", "藝人A被爆隱婚生子", source_id="site-a",
+            published_at="2026/06/18 10:00"),                 # garbage, non-ISO
+        _it("https://b.com/2", "藝人A被爆隱婚生子內幕", source_id="site-b",
+            published_at="2026-06-18T08:00:00+00:00"),        # only real value
+    ]
+    clusters = cluster.cluster_items(items, similarity_threshold=0.3, time_window_hours=72)
+    assert len(clusters) == 1
+    c = clusters[0]
+    # The valid value is both earliest and latest; the garbage never appears.
+    assert c["earliest_published"] == "2026-06-18T08:00:00+00:00"
+    assert c["latest_published"] == "2026-06-18T08:00:00+00:00"
+
+
+def test_published_all_unparseable_yields_none():
+    """U5: if no member has a parseable published_at, earliest/latest are None."""
+    items = [
+        _it("https://a.com/1", "藝人A被爆隱婚生子", source_id="site-a",
+            published_at="2026/06/18 10:00"),                 # garbage
+        _it("https://b.com/2", "藝人A被爆隱婚生子內幕", source_id="site-b",
+            published_at="not-a-date"),                       # garbage
+    ]
+    clusters = cluster.cluster_items(items, similarity_threshold=0.3, time_window_hours=72)
+    assert len(clusters) == 1
+    c = clusters[0]
+    assert c["earliest_published"] is None
+    assert c["latest_published"] is None
+
+
 def test_empty_and_punctuation_only_titles_do_not_merge():
     items = [
         _it("https://a.com/1", "", source_id="site-a"),
