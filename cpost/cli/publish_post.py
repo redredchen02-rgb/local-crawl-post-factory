@@ -48,27 +48,25 @@ def _run(args) -> int:
     if manifest.get("backend", {}).get("status") == "published":
         # Re-entry after a successful publish whose post-publish bookkeeping tail
         # failed (e.g. a transient SQLite lock or disk error between the browser
-        # publish and _mark_published). The post is ALREADY live, so we must never
-        # re-click publish: just forward-complete the missing, idempotent
-        # bookkeeping and report success (R2). Without this, the per-stage _retry
-        # re-runs this runner, Gate 2 below raises 'draft not verified' on the now-
-        # 'published' manifest, and a live post is falsely reported as failed.
-        # (U4 extends this to the state-row-only mixed-state window below.)
+        # publish and the state/receipt/run writes). The post is ALREADY live, so we
+        # must never re-click publish: just forward-complete the missing, idempotent
+        # bookkeeping below and report success (R2). Without this, the per-stage
+        # _retry re-runs this runner, Gate 2 below raises 'draft not verified' on the
+        # now-'published' manifest, and a live post is falsely reported as failed.
         published_url = manifest.get("backend", {}).get("published_url")
-    elif _state_published_url(args.state, manifest) is not None:
-        # U4 mixed-state re-entry: the durable state row already says 'published'
-        # for this canonical_url but the manifest is still 'draft_verified'. This is
-        # the window the U4 reorder opens — a crash AFTER publish_draft + the
-        # _mark_published state write but BEFORE mf.save flips the manifest. The post
-        # is ALREADY live (the state row is the FIRST durable post-publish step), so
-        # we must NOT re-click publish: this pre-publish state check is AUTHORITATIVE
-        # over the manifest draft_verified gate, which would otherwise wave a
-        # duplicate publish through. Forward-complete the manifest + receipt + run
-        # record instead, leaving operator-visible state consistent (no silent
-        # orphan). Identity caveat: this inherits U1's URL-is-identity assumption —
-        # two distinct packages sharing a canonical_url (mirror) would skip the
-        # second publish. Accepted residual.
-        published_url = _state_published_url(args.state, manifest)
+    elif (state_url := _state_published_url(args.state, manifest)) is not None:
+        # U4 mixed-state re-entry: the durable state row already says 'published' for
+        # this canonical_url but the manifest is still 'draft_verified' — the window
+        # left if a crash lands AFTER the state marker but BEFORE the manifest was
+        # flipped. The post is ALREADY live, so this pre-publish state check is
+        # AUTHORITATIVE over the manifest draft_verified gate (which would otherwise
+        # wave a duplicate publish through): forward-complete the manifest instead of
+        # re-clicking. If the state row carries no published_url, keep the manifest's
+        # existing value rather than overwriting it with '' (avoid persisting an empty
+        # url). Identity caveat: inherits U1's URL-is-identity assumption — two
+        # distinct packages sharing a canonical_url (mirror) would skip the second
+        # publish. Accepted residual.
+        published_url = state_url or manifest.get("backend", {}).get("published_url")
         mf.set_backend(manifest, status="published", published_url=published_url)
         mf.save(args.manifest, manifest)
     else:
@@ -89,21 +87,19 @@ def _run(args) -> int:
                 page, cfg, draft_url, pkg_dir=str(Path(args.manifest).parent),
                 **backend_driver.retry_kwargs(cfg, args.retries))
         published_url = result["published_url"]
-        # U4: the durable dedup/published state row is the FIRST durable step after
-        # publish_draft returns, BEFORE flipping the manifest. This shrinks the
-        # unmarked-dedup window to the gap between the live publish and this write:
-        # if the process is killed here, the next run sees a 'published' state row
-        # via the authoritative pre-publish check above and forward-completes
-        # without re-publishing — closing the orphan window the reorder creates.
-        # A transient SQLite lock here must NOT silently skip the dedup marker: a
-        # swallowed write would let the next run re-publish a duplicate live post, so
-        # re-classify as ExternalError(exit 4) — a retryable signal, never silent.
-        try:
-            _mark_published(args.state, manifest, post_id, published_url)
-        except Exception as exc:  # noqa: BLE001 - signal, never silently skip marker
-            raise ExternalError(
-                f"published but failed to write dedup marker (recoverable, re-run): "
-                f"{exc}")
+        # U4 (durable-first, MANIFEST before state): flip the manifest to 'published'
+        # as the FIRST durable step after the live publish. manifest.save is an atomic
+        # single-process write (U13), far more robust than the cross-process SQLite
+        # dedup marker, which can hit a transient 'database is locked'. Establishing
+        # 'published' in the manifest first is what makes a later marker-write failure
+        # SAFE: if _mark_published (in the bookkeeping tail below) raises on a
+        # transient lock and the per-stage _retry re-invokes this runner, re-entry
+        # short-circuits on the manifest 'published' gate above and forward-completes
+        # the marker — instead of re-clicking publish and creating a DUPLICATE LIVE
+        # POST. (Writing the SQLite marker first, as the original U4 draft did,
+        # reintroduced exactly that duplicate-publish on a transient marker lock.) The
+        # remaining duplicate window is a hard crash strictly between publish_draft and
+        # this save — the documented residual that needs backend-side dedup.
         mf.set_backend(manifest, status="published", published_url=published_url)
         mf.save(args.manifest, manifest)
 
@@ -112,12 +108,13 @@ def _run(args) -> int:
     # safe to repeat on a re-entry: the receipt is write-once, _mark_published is an
     # idempotent upsert, and the run record is guarded so a re-entry never appends a
     # second 'ok' row (runs.record_run is a bare INSERT — see _publish_run_recorded).
-    # U4: the post is ALREADY live at this point. A failure in this tail is a
-    # recoverable published-but-unmarked state (the next run's authoritative
-    # pre-publish state check forward-completes it), NOT a generic internal error —
-    # surface it as ExternalError(exit 4) so the operator sees a retryable signal,
-    # and never silently swallow it (a swallowed _mark_published would let the next
-    # run re-publish a duplicate live post).
+    # U4: the post is ALREADY live AND (on the fresh-publish path) the manifest is
+    # already flipped to 'published', so a failure in this tail can never cause a
+    # re-publish — the per-stage _retry / the next run re-enters via the manifest
+    # 'published' short-circuit above. It is a recoverable published-but-unmarked
+    # state: surface it as ExternalError(exit 4) so retry / the next run
+    # forward-completes the missing state marker / receipt / run record, and never
+    # silently swallow it.
     try:
         _mark_published(args.state, manifest, post_id, published_url)
         _write_receipt(args.manifest, post_id, published_url)

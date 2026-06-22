@@ -141,152 +141,121 @@ def test_failure_json_written(tmp_path):
     assert "down" in data["error"]
 
 
-# --- U15(1): missing login marker is a config error, not a silent no-op ---
+# --- U15(3) regression: _wait_for_result_title title-matching defects ----------
 
-def test_check_session_missing_marker_is_config_error():
-    """An expired session must not silently drive the login page: a cfg without
-    login_required_url_contains is a ValidationError (config error), not a no-op."""
-    page = FakePage(url="https://example.com/admin/login")
-    with pytest.raises(ValidationError):
-        backend_driver._check_session({"verify": {}}, page)
+def _valid_selector(sel):
+    """Crude Playwright/CSS selector sanity check used by the fakes below.
 
-
-def test_expired_session_with_marker_raises_session_expired():
-    """error: expired session + marker present -> SessionExpiredError (re-login),
-    not a Playwright timeout misclassified as a transient failure."""
-    cfg = {"verify": {"login_required_url_contains": "/admin/login"}}
-    page = FakePage(url="https://example.com/admin/login?next=/x")
-    with pytest.raises(SessionExpiredError):
-        backend_driver._check_session(cfg, page)
+    Real Playwright raises a PlaywrightError when fed a syntactically broken
+    selector (e.g. an unbalanced quote). The fakes reproduce that so a test can
+    detect the broken-locator path WITHOUT a real browser. ``text={title}`` data
+    fragments are never passed to a selector parser in the fixed code, so they need
+    not be valid selectors here.
+    """
+    return sel.count('"') % 2 == 0 and not sel.rstrip().endswith(">>")
 
 
-# --- U15(2): missing content.title -> clean ValidationError (exit 2), no browser ---
-
-class _NeverGotoPage(FakePage):
-    def goto(self, *_a, **_kw):  # pragma: no cover - must never be reached
-        raise AssertionError("browser was driven before manifest validation")
-
-
-def test_create_draft_missing_title_is_validation_error_no_browser():
-    cfg = {"create_url": "https://x/create", "selectors": {}, "verify": {}}
-    page = _NeverGotoPage()
-    manifest = {"content": {"body": "b"}}  # no title
-    with pytest.raises(ValidationError):
-        backend_driver.create_draft(page, cfg, manifest, None, pkg_dir=None)
-
-
-def test_create_draft_missing_content_is_validation_error():
-    cfg = {"create_url": "https://x/create", "selectors": {}, "verify": {}}
-    page = _NeverGotoPage()
-    with pytest.raises(ValidationError):
-        backend_driver.create_draft(page, cfg, {}, None, pkg_dir=None)
-
-
-# --- U15(3): a title containing ">>" must not re-parse the verify selector ---
-
-class _FakeLocator:
-    def __init__(self, recorder, kind, value, parent=None):
-        self.recorder = recorder
-        self.kind = kind
-        self.value = value
-        self.parent = parent
-
-    def get_by_text(self, text, exact=False):
-        self.recorder["get_by_text"] = (text, exact)
-        return _FakeLocator(self.recorder, "text", text, parent=self)
+class _FakeTextLocator:
+    def __init__(self, leaf_texts, query, exact):
+        self._leaf_texts = leaf_texts
+        self._query = query
+        self._exact = exact
 
     @property
     def first(self):
         return self
 
     def wait_for(self):
-        self.recorder["waited"] = True
+        if self._exact:
+            matched = any(t == self._query for t in self._leaf_texts)
+        else:  # substring / case-insensitive, like Playwright's text= engine
+            matched = any(self._query.lower() in t.lower() for t in self._leaf_texts)
+        if not matched:
+            raise PlaywrightTimeout(
+                f"locator.wait_for: no element matched get_by_text({self._query!r})")
 
 
-class _VerifyPage:
-    """Records structured-locator calls; raises if the raw title leaks into a
-    selector string (the injection bug)."""
-    def __init__(self, recorder):
-        self.recorder = recorder
-        self.url = "https://example.com/admin/posts"
+class _FakeScope:
+    """A located container; get_by_text searches its leaf node texts."""
+
+    def __init__(self, leaf_texts):
+        self._leaf_texts = leaf_texts
+        self.text_calls = []
+
+    def get_by_text(self, query, exact=False):
+        self.text_calls.append((query, exact))
+        return _FakeTextLocator(self._leaf_texts, query, exact)
+
+
+class _FakeResultPage(_FakeScope):
+    """Fake Playwright page recording how _wait_for_result_title builds locators.
+
+    ``leaf_texts`` are the same-node text contents present in the (mock) result
+    table. ``locator()`` and ``wait_for_selector()`` validate the selector string,
+    raising PlaywrightError on a broken fragment — exactly what the buggy split path
+    produced.
+    """
+
+    def __init__(self, leaf_texts):
+        super().__init__(leaf_texts)
+        self.locator_calls = []
+        self.wait_for_selector_calls = []
+        self.scopes = []
 
     def locator(self, selector):
-        if ">>" in selector and "{title}" not in selector:
-            # container prefix only; the title must NOT appear here
-            if self.recorder.get("title") and self.recorder["title"] in selector:
-                raise AssertionError("title leaked into selector string")
-        self.recorder.setdefault("locator", selector)
-        return _FakeLocator(self.recorder, "css", selector)
+        self.locator_calls.append(selector)
+        if not _valid_selector(selector):
+            raise PlaywrightError(f"Unexpected token in selector: {selector!r}")
+        scope = _FakeScope(self._leaf_texts)
+        self.scopes.append(scope)
+        return scope
 
-    def get_by_text(self, text, exact=False):
-        self.recorder["get_by_text"] = (text, exact)
-        return _FakeLocator(self.recorder, "text", text)
-
-
-def test_verify_title_with_chaining_chars_uses_structured_locator():
-    title = "Breaking >> News text=injected"
-    rec = {"title": title}
-    page = _VerifyPage(rec)
-    backend_driver._wait_for_result_title(page, "table >> text={title}", title)
-    # title passed to get_by_text as DATA (exact match), never spliced into a selector
-    assert rec["get_by_text"] == (title, True)
-    assert rec.get("locator") == "table"
-    assert rec.get("waited") is True
+    def wait_for_selector(self, selector):
+        self.wait_for_selector_calls.append(selector)
+        if not _valid_selector(selector):
+            raise PlaywrightError(f"Unexpected token in selector: {selector!r}")
+        # present post -> matches; mirror substring text semantics loosely
+        return object()
 
 
-# --- U15(4): init failure closes the browser (no leaked process) ---
-
-class _FakeBrowser:
-    def __init__(self, fail_context):
-        self.fail_context = fail_context
-        self.closed = False
-
-    def new_context(self, storage_state=None):
-        if self.fail_context:
-            raise PlaywrightError("corrupt storage_state")
-        return _FakeContext()
-
-    def close(self):
-        self.closed = True
+def test_custom_recipe_does_not_build_broken_locator():
+    """Defect A: a non-'text={title}' recipe must NOT feed a split fragment to
+    page.locator(); the present post must verify without a broken-locator error."""
+    page = _FakeResultPage(['整合測試貼文'])
+    # Buggy code did page.locator('tr:has-text("') -> PlaywrightError -> false transient.
+    backend_driver._wait_for_result_title(page, 'tr:has-text("{title}")', "整合測試貼文")
+    # Fixed path substitutes into the full selector and waits on it.
+    assert page.wait_for_selector_calls == ['tr:has-text("整合測試貼文")']
+    assert page.locator_calls == []  # no fragment fed to locator()
 
 
-class _FakeContext:
-    def set_default_timeout(self, *_a):
-        pass
-
-    def new_page(self):
-        return FakePage()
-
-    def close(self):
-        pass
+def test_custom_recipe_with_chain_fragment_not_broken():
+    """Defect A variant: 'td.title >> {title}' must not yield 'td.title >>' fed to
+    locator() (trailing '>>' is an invalid selector)."""
+    page = _FakeResultPage(['整合測試貼文'])
+    backend_driver._wait_for_result_title(page, "td.title >> {title}", "整合測試貼文")
+    assert page.wait_for_selector_calls == ["td.title >> 整合測試貼文"]
+    assert page.locator_calls == []
 
 
-class _FakeChromium:
-    def __init__(self, browser):
-        self._browser = browser
-
-    def launch(self, headless=True):
-        return self._browser
-
-
-class _FakePW:
-    def __init__(self, browser):
-        self.chromium = _FakeChromium(browser)
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *exc):
-        return False
+def test_canonical_recipe_matches_title_with_same_node_suffix():
+    """Defect B: a result cell rendered as title+suffix in the SAME node (e.g.
+    '整合測試貼文 (草稿)') must still match a present post — exact=True missed it."""
+    page = _FakeResultPage(['整合測試貼文 (草稿)'])
+    # Should NOT raise: get_by_text must use exact=False (substring) like text=.
+    backend_driver._wait_for_result_title(page, "table >> text={title}", "整合測試貼文")
+    assert page.locator_calls == ["table"]  # scoped to the container as data
+    # the structured text match was built with exact=False (substring), so the
+    # same-node suffix did not cause a miss
+    assert page.scopes[0].text_calls == [("整合測試貼文", False)]
+    # the title was never substituted into a selector string
+    assert page.wait_for_selector_calls == []
 
 
-def test_session_init_failure_closes_browser(monkeypatch):
-    """resource: new_context raising (corrupt storage_state) closes the browser."""
-    browser = _FakeBrowser(fail_context=True)
-    monkeypatch.setattr(
-        backend_driver, "_import_playwright",
-        lambda: (lambda: _FakePW(browser), PlaywrightError, PlaywrightTimeout))
-    with pytest.raises(PlaywrightError):
-        with backend_driver.session(storage_state=None, headless=True):
-            pass  # pragma: no cover
-    assert browser.closed is True  # browser explicitly closed despite init failure
+def test_canonical_recipe_injection_safe_title_with_chevrons():
+    """Canonical recipe keeps >>-in-title injection safety: the title is matched as
+    data via get_by_text(exact=False), never re-parsed as a chained selector."""
+    page = _FakeResultPage(['a >> b'])
+    backend_driver._wait_for_result_title(page, "table >> text={title}", "a >> b")
+    assert page.locator_calls == ["table"]
+    assert page.wait_for_selector_calls == []

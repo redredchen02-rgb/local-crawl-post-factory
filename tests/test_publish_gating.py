@@ -219,3 +219,45 @@ def test_auto_pipeline_rerun_same_url_no_second_live_post(tmp_path):
             assert cli.run(lambda: publish_post._run(args)) == 0
         assert mpub.call_count == 1            # exactly one live publish
     assert len(_publish_ok_rows(state)) == 1   # exactly one ok row (U9 coupling)
+
+
+def test_marker_lock_then_retry_does_not_republish(tmp_path):
+    """BLOCKER regression: a transient _mark_published lock right after a live publish
+    must NOT cause a duplicate live post when the per-stage _retry re-invokes the
+    runner within the SAME run.
+
+    Durable-first ordering is MANIFEST-before-state: attempt 1 publishes live, flips
+    the manifest to 'published', then the state-marker write fails (lock) ->
+    ExternalError. _retry's re-invocation (attempt 2) sees the manifest already
+    'published', short-circuits, and forward-completes the marker — exactly one live
+    publish across all attempts.
+
+    Pre-fix (state marker written BEFORE the manifest flip) this fails: attempt 1
+    raises before the manifest is flipped, so attempt 2 finds a 'draft_verified'
+    manifest with no dedup row and re-clicks publish -> two live posts.
+    """
+    state = str(tmp_path / "state.sqlite")
+    args = _ns(manifest=_publishable_manifest(tmp_path), approve=True, state=state,
+               headless=True)
+    real_mark = publish_post._mark_published
+    calls = {"n": 0}
+
+    def flaky_mark(*a, **kw):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise type("Locked", (Exception,), {})("database is locked")
+        return real_mark(*a, **kw)  # lock cleared on retry
+
+    with patch.object(publish_post.backend_driver, "session", _fake_session), \
+         patch.object(publish_post.backend_driver, "publish_draft",
+                      return_value={"published_url": "https://pub/p1"}) as mpub, \
+         patch.object(publish_post, "_mark_published", side_effect=flaky_mark), \
+         patch.object(publish_post.audit, "record"):
+        with pytest.raises(ExternalError):
+            publish_post._run(args)                                # attempt 1: marker lock
+        assert cli.run(lambda: publish_post._run(args)) == 0       # _retry attempt 2: converges
+        assert mpub.call_count == 1                                # no duplicate live publish
+
+    m = json.loads(open(args.manifest, encoding="utf-8").read())
+    assert m["backend"]["status"] == "published"
+    assert len(_publish_ok_rows(state)) == 1                       # exactly one ok row (U9)

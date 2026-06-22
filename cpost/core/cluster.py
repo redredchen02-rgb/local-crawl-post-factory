@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import hashlib
 import re
-from datetime import datetime, timezone
+from datetime import datetime
 
 from cpost.core.timeutil import parse_iso
 
@@ -52,11 +52,6 @@ def _within_window(p1: str | None, p2: str | None, hours: float) -> bool:
     if d1 is None or d2 is None:
         return True
     return abs((d1 - d2).total_seconds()) <= hours * 3600
-
-
-def _published_key(value: str) -> datetime:
-    """Chronological sort key: the aware instant, or epoch UTC if unparseable."""
-    return parse_iso(value) or datetime.min.replace(tzinfo=timezone.utc)
 
 
 def _cluster_id(member_urls: list[str]) -> str:
@@ -123,12 +118,17 @@ def _summarize(members: list[dict]) -> dict:
     rep = max(members, key=lambda m: (len(m.get("source_text") or ""), m["canonical_url"]))
     # Sort by the parsed aware instant, not the raw string: mixed-offset values
     # (e.g. +08:00 vs +00:00) order differently lexically than chronologically.
-    # Keep the original string for display. Unparseable strings sort first (oldest)
-    # via a min-datetime fallback so they never crash on None comparison.
-    published = sorted(
-        (p for p in (m.get("published_at") for m in members) if p),
-        key=_published_key,
-    )
+    # Keep the original string for display. Drop missing/empty AND unparseable
+    # values: an unparseable string must never surface as a real earliest/latest
+    # timestamp (coercing it to datetime.min would make garbage the "oldest").
+    parsed: list[tuple[datetime, str]] = []
+    for m in members:
+        raw = m.get("published_at")
+        dt = parse_iso(raw)
+        if dt is not None and raw:
+            parsed.append((dt, raw))
+    parsed.sort(key=lambda pair: pair[0])
+    published = [raw for _, raw in parsed]
     sources = {m.get("source_id") for m in members if m.get("source_id")}
     return {
         "cluster_id": _cluster_id(urls),
