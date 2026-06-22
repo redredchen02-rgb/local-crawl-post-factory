@@ -1,7 +1,7 @@
 import pytest
 
-from browser.selector_recipe import load_backend, get_selector
-from core.errors import ValidationError
+from cpost.browser.selector_recipe import load_backend, get_selector
+from cpost.core.errors import ValidationError
 
 VALID = "configs/backend.yaml"
 

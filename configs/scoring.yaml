@@ -1,13 +1,13 @@
 # 聚類 + 打分可調參數（plan 2026-06-18-004，U3/U4）。
-# 缺檔或缺鍵時程式回退 core/scoring_config.py 的 DEFAULTS。
+# 缺檔或缺鍵時程式回退 cpost/core/scoring_config.py 的 DEFAULTS。
 # 門檻/權重待有真實多源資料時校準——只改這裡，不必改碼。
 
-# --- 聚類（core.cluster）---
+# --- 聚類（cpost.core.cluster）---
 ngram: 2                    # 標題字元 n-gram 大小（語言無關，適用中英）
 similarity_threshold: 0.5   # Jaccard 相似度門檻：>= 此值才視為同一件瓜
 time_window_hours: 72       # 兩筆都帶 published_at 時，須落在此時間窗內才聚合
 
-# --- 打分（core.scoring）---
+# --- 打分（cpost.core.scoring）---
 confidence_source_cap: 3        # 置信度封頂的獨立來源數（達此值即滿分 1.0）
 quality_full_text_chars: 3500   # 完整度正規化基準：正文達此字數視為「完整」（2026-06-22 校準：實測單源正文 1870-3627 字，1000 會讓人人滿分無區分）
 quality_recency_window_hours: 168  # 時近度衰減窗（7 天內最高分）

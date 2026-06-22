@@ -1,4 +1,4 @@
-from core import cluster
+from cpost.core import cluster
 
 
 def _it(url, title, **kw):

@@ -1,7 +1,7 @@
 import pytest
 
-from core import url_utils, validators
-from core.errors import ValidationError
+from cpost.core import url_utils, validators
+from cpost.core.errors import ValidationError
 
 
 def test_valid_url():

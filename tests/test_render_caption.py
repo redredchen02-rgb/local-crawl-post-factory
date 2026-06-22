@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from core import url_utils
-from src.render_caption import _render, load_template, render_record
+from cpost.core import url_utils
+from cpost.cli.render_caption import _render, load_template, render_record
 
 ROOT = Path(__file__).resolve().parent.parent
 REAL_TEMPLATE = ROOT / "templates" / "fixed-format.zh.yaml"
@@ -80,7 +80,7 @@ def test_determinism(template_cfg):
 
 def test_missing_template_file_exits_2():
     proc = subprocess.run(
-        [sys.executable, "-m", "src.render_caption", "--template", "/no/such/file.yaml"],
+        [sys.executable, "-m", "cpost.cli.render_caption", "--template", "/no/such/file.yaml"],
         input=json.dumps(_full_record()) + "\n",
         capture_output=True,
         text=True,
@@ -94,7 +94,7 @@ def test_missing_template_file_exits_2():
 def test_command_adds_caption_and_content_hash():
     record = _full_record()
     proc = subprocess.run(
-        [sys.executable, "-m", "src.render_caption", "--template", str(REAL_TEMPLATE)],
+        [sys.executable, "-m", "cpost.cli.render_caption", "--template", str(REAL_TEMPLATE)],
         input=json.dumps(record) + "\n",
         capture_output=True,
         text=True,

@@ -11,7 +11,7 @@ import re
 import subprocess
 from pathlib import Path
 
-from core import webui_config
+from cpost.core import webui_config
 
 _ROOT = Path(__file__).resolve().parent.parent
 

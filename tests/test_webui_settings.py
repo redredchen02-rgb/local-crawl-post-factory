@@ -5,8 +5,8 @@ This round is display-only — no add/edit/delete controls (those are R3b).
 
 from fastapi.testclient import TestClient
 
-from core import webui_config
-from webui.app import create_app
+from cpost.core import webui_config
+from cpost.webui.app import create_app
 
 
 def _client(tmp_path, sources):

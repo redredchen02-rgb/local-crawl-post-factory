@@ -7,9 +7,9 @@ import time
 
 from fastapi.testclient import TestClient
 
-from webui.app import create_app
-from core import webui_config, runs
-from src import draft_post, verify_draft
+from cpost.webui.app import create_app
+from cpost.core import webui_config, runs
+from cpost.cli import draft_post, verify_draft
 
 
 def _mkpkg(out, post_id, status="package_built"):

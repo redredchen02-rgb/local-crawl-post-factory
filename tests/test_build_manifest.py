@@ -3,10 +3,10 @@ import json
 
 import pytest
 
-from core import cli
-from core.errors import ValidationError
-from core.schema import PACKAGE_INPUT_REQUIRED, PackageInput
-from src.build_manifest import _REQUIRED, _build, _run
+from cpost.core import cli
+from cpost.core.errors import ValidationError
+from cpost.core.schema import PACKAGE_INPUT_REQUIRED, PackageInput
+from cpost.cli.build_manifest import _REQUIRED, _build, _run
 
 
 def _record(tmp_path, **overrides):

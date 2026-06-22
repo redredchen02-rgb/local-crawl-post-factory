@@ -2,9 +2,9 @@ import io
 
 import pytest
 
-from core import cli
-from core.errors import ValidationError
-from src.normalize_items import _normalize, _run
+from cpost.core import cli
+from cpost.core.errors import ValidationError
+from cpost.cli.normalize_items import _normalize, _run
 
 
 def _base_item(**overrides):

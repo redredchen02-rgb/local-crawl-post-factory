@@ -4,11 +4,11 @@ import json
 
 import pytest
 
-from core import cli, library, state
-from core.errors import ValidationError
-from core.url_utils import slug, title_hash
-from core.validators import valid_url
-from src import build_manifest, generate_article
+from cpost.core import cli, library, state
+from cpost.core.errors import ValidationError
+from cpost.core.url_utils import slug, title_hash
+from cpost.core.validators import valid_url
+from cpost.cli import build_manifest, generate_article
 
 
 def _seed_cluster(conn, cluster_id="c1", sources=("src_a", "src_b")):
@@ -117,7 +117,7 @@ def test_cache_hit_skips_llm(tmp_path):
 
 
 def test_missing_key_maps_to_validation_error(tmp_path, monkeypatch):
-    # Real core.llm.chat path: base_url+model present, API key env absent ->
+    # Real cpost.core.llm.chat path: base_url+model present, API key env absent ->
     # ValidationError (exit 2), NOT DependencyError(3). Message must not leak a key.
     monkeypatch.delenv("CPOST_LLM_API_KEY", raising=False)
     cfg = {"base_url": "https://llm.example.com/v1", "model": "m",

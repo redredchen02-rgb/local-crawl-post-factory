@@ -4,8 +4,8 @@ import time
 
 from fastapi.testclient import TestClient
 
-from webui.app import create_app
-from core import webui_config, pipeline, jobs as jobs_mod
+from cpost.webui.app import create_app
+from cpost.core import webui_config, pipeline, jobs as jobs_mod
 
 
 def _client(tmp_path, monkeypatch):
@@ -67,7 +67,7 @@ def test_crawl_without_start_url_400(tmp_path, monkeypatch):
 
 
 def test_crawl_current_updates(tmp_path, monkeypatch):
-    from core import jobs as jobs_mod
+    from cpost.core import jobs as jobs_mod
 
     cfgp = tmp_path / "webui.yaml"
     webui_config.save(str(cfgp), {
@@ -130,7 +130,7 @@ def test_crawl_auto_pipeline_result_renders(tmp_path, monkeypatch):
         time.sleep(0.1)
         return {"ok": 1, "failed": [], "verify_fail_count": 0}
 
-    monkeypatch.setattr("webui.routers.crawl._run_auto_pipeline", fake_auto)
+    monkeypatch.setattr("cpost.webui.routers.crawl._run_auto_pipeline", fake_auto)
     client = TestClient(create_app(str(cfgp)))
     r = client.post("/crawl")
     jid = _job_id(r.text)

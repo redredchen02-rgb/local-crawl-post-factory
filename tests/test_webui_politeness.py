@@ -4,9 +4,9 @@ import pytest
 import yaml
 from fastapi.testclient import TestClient
 
-from webui.app import create_app
-from core import webui_config, pipeline
-from core.errors import ValidationError
+from cpost.webui.app import create_app
+from cpost.core import webui_config, pipeline
+from cpost.core.errors import ValidationError
 
 
 def test_download_delay_passed_to_crawler(tmp_path, monkeypatch):

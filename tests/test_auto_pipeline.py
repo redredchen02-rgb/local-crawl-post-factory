@@ -1,10 +1,10 @@
-"""Unit tests for core.pipeline._retry, run_auto_pipeline, and WebUI wiring."""
+"""Unit tests for cpost.core.pipeline._retry, run_auto_pipeline, and WebUI wiring."""
 
 import json
 from unittest.mock import MagicMock, patch
 
-from core.pipeline import _retry, run_auto_pipeline
-from webui._auto_pipeline import _run_auto_pipeline
+from cpost.core.pipeline import _retry, run_auto_pipeline
+from cpost.webui._auto_pipeline import _run_auto_pipeline
 
 
 # ---------------------------------------------------------------------------
@@ -46,7 +46,7 @@ def test_retry_single_attempt():
 
 
 # ---------------------------------------------------------------------------
-# run_auto_pipeline() — unit tests via core.pipeline directly
+# run_auto_pipeline() — unit tests via cpost.core.pipeline directly
 # ---------------------------------------------------------------------------
 
 def _make_cfg(tmp_path):
@@ -80,11 +80,11 @@ def _make_built(post_id: str, tmp_path, title: str = "Test Title") -> dict:
     }
 
 
-@patch("core.pipeline.runs.record_run")
-@patch("core.pipeline.reviewed.mark")
-@patch("core.pipeline.publish_post.run")
-@patch("core.pipeline.verify_draft.run")
-@patch("core.pipeline.draft_post.run")
+@patch("cpost.core.pipeline.runs.record_run")
+@patch("cpost.core.pipeline.reviewed.mark")
+@patch("cpost.core.pipeline.publish_post.run")
+@patch("cpost.core.pipeline.verify_draft.run")
+@patch("cpost.core.pipeline.draft_post.run")
 def test_happy_path_all_succeed(mock_draft, mock_verify, mock_publish,
                                 mock_mark, mock_record, tmp_path):
     cfg = _make_cfg(tmp_path)
@@ -102,11 +102,11 @@ def test_happy_path_all_succeed(mock_draft, mock_verify, mock_publish,
     assert "失敗 0" in summary
 
 
-@patch("core.pipeline.runs.record_run")
-@patch("core.pipeline.reviewed.mark")
-@patch("core.pipeline.publish_post.run")
-@patch("core.pipeline.verify_draft.run")
-@patch("core.pipeline.draft_post.run")
+@patch("cpost.core.pipeline.runs.record_run")
+@patch("cpost.core.pipeline.reviewed.mark")
+@patch("cpost.core.pipeline.publish_post.run")
+@patch("cpost.core.pipeline.verify_draft.run")
+@patch("cpost.core.pipeline.draft_post.run")
 def test_empty_built_early_return(mock_draft, mock_verify, mock_publish,
                                   mock_mark, mock_record, tmp_path):
     cfg = _make_cfg(tmp_path)
@@ -120,12 +120,12 @@ def test_empty_built_early_return(mock_draft, mock_verify, mock_publish,
     assert any("無新稿件" in m for m in progress)
 
 
-@patch("core.pipeline.time.sleep")
-@patch("core.pipeline.runs.record_run")
-@patch("core.pipeline.reviewed.mark")
-@patch("core.pipeline.publish_post.run")
-@patch("core.pipeline.verify_draft.run")
-@patch("core.pipeline.draft_post.run")
+@patch("cpost.core.pipeline.time.sleep")
+@patch("cpost.core.pipeline.runs.record_run")
+@patch("cpost.core.pipeline.reviewed.mark")
+@patch("cpost.core.pipeline.publish_post.run")
+@patch("cpost.core.pipeline.verify_draft.run")
+@patch("cpost.core.pipeline.draft_post.run")
 def test_draft_fail_all_retries_skips_verify_and_publish(
         mock_draft, mock_verify, mock_publish, mock_mark, mock_record, mock_sleep, tmp_path):
     cfg = _make_cfg(tmp_path)
@@ -141,12 +141,12 @@ def test_draft_fail_all_retries_skips_verify_and_publish(
     assert "失敗 1" in progress[-1]
 
 
-@patch("core.pipeline.time.sleep")
-@patch("core.pipeline.runs.record_run")
-@patch("core.pipeline.reviewed.mark")
-@patch("core.pipeline.publish_post.run")
-@patch("core.pipeline.verify_draft.run")
-@patch("core.pipeline.draft_post.run")
+@patch("cpost.core.pipeline.time.sleep")
+@patch("cpost.core.pipeline.runs.record_run")
+@patch("cpost.core.pipeline.reviewed.mark")
+@patch("cpost.core.pipeline.publish_post.run")
+@patch("cpost.core.pipeline.verify_draft.run")
+@patch("cpost.core.pipeline.draft_post.run")
 def test_verify_fail_skips_publish_counted_as_verify_fail(
         mock_draft, mock_verify, mock_publish, mock_mark, mock_record, mock_sleep, tmp_path):
     cfg = _make_cfg(tmp_path)
@@ -162,12 +162,12 @@ def test_verify_fail_skips_publish_counted_as_verify_fail(
     assert "驗證失敗 1" in progress[-1]
 
 
-@patch("core.pipeline.time.sleep")
-@patch("core.pipeline.runs.record_run")
-@patch("core.pipeline.reviewed.mark")
-@patch("core.pipeline.publish_post.run")
-@patch("core.pipeline.verify_draft.run")
-@patch("core.pipeline.draft_post.run")
+@patch("cpost.core.pipeline.time.sleep")
+@patch("cpost.core.pipeline.runs.record_run")
+@patch("cpost.core.pipeline.reviewed.mark")
+@patch("cpost.core.pipeline.publish_post.run")
+@patch("cpost.core.pipeline.verify_draft.run")
+@patch("cpost.core.pipeline.draft_post.run")
 def test_one_draft_fails_others_continue(
         mock_draft, mock_verify, mock_publish, mock_mark, mock_record, mock_sleep, tmp_path):
     cfg = _make_cfg(tmp_path)
@@ -185,11 +185,11 @@ def test_one_draft_fails_others_continue(
     assert "失敗 1" in summary
 
 
-@patch("core.pipeline.runs.record_run")
-@patch("core.pipeline.reviewed.mark")
-@patch("core.pipeline.publish_post.run")
-@patch("core.pipeline.verify_draft.run")
-@patch("core.pipeline.draft_post.run")
+@patch("cpost.core.pipeline.runs.record_run")
+@patch("cpost.core.pipeline.reviewed.mark")
+@patch("cpost.core.pipeline.publish_post.run")
+@patch("cpost.core.pipeline.verify_draft.run")
+@patch("cpost.core.pipeline.draft_post.run")
 def test_reviewed_mark_called_before_publish(
         mock_draft, mock_verify, mock_publish, mock_mark, mock_record, tmp_path):
     cfg = _make_cfg(tmp_path)
@@ -204,11 +204,11 @@ def test_reviewed_mark_called_before_publish(
     mock_mark.assert_called_once()
 
 
-@patch("core.pipeline.runs.record_run")
-@patch("core.pipeline.reviewed.mark")
-@patch("core.pipeline.publish_post.run")
-@patch("core.pipeline.verify_draft.run")
-@patch("core.pipeline.draft_post.run")
+@patch("cpost.core.pipeline.runs.record_run")
+@patch("cpost.core.pipeline.reviewed.mark")
+@patch("cpost.core.pipeline.publish_post.run")
+@patch("cpost.core.pipeline.verify_draft.run")
+@patch("cpost.core.pipeline.draft_post.run")
 def test_reviewed_mark_failure_skips_publish(
         mock_draft, mock_verify, mock_publish, mock_mark, mock_record, tmp_path):
     """If reviewed.mark raises for a publish item, the publish runner is NOT
@@ -236,11 +236,11 @@ def test_reviewed_mark_failure_skips_publish(
 # single-stage-runner refactor cannot change it. (Behavior-preserving.)
 # ---------------------------------------------------------------------------
 
-@patch("core.pipeline.runs.record_run")
-@patch("core.pipeline.reviewed.mark")
-@patch("core.pipeline.publish_post.run")
-@patch("core.pipeline.verify_draft.run")
-@patch("core.pipeline.draft_post.run")
+@patch("cpost.core.pipeline.runs.record_run")
+@patch("cpost.core.pipeline.reviewed.mark")
+@patch("cpost.core.pipeline.publish_post.run")
+@patch("cpost.core.pipeline.verify_draft.run")
+@patch("cpost.core.pipeline.draft_post.run")
 def test_stage_sequencing_draft_then_verify_then_publish(
         mock_draft, mock_verify, mock_publish, mock_mark, mock_record, tmp_path):
     """Each item flows draft -> verify -> publish in that global per-stage order:
@@ -259,11 +259,11 @@ def test_stage_sequencing_draft_then_verify_then_publish(
     assert stages == ["draft", "draft", "verify", "verify", "publish", "publish"]
 
 
-@patch("core.pipeline.runs.record_run")
-@patch("core.pipeline.reviewed.mark")
-@patch("core.pipeline.publish_post.run")
-@patch("core.pipeline.verify_draft.run")
-@patch("core.pipeline.draft_post.run")
+@patch("cpost.core.pipeline.runs.record_run")
+@patch("cpost.core.pipeline.reviewed.mark")
+@patch("cpost.core.pipeline.publish_post.run")
+@patch("cpost.core.pipeline.verify_draft.run")
+@patch("cpost.core.pipeline.draft_post.run")
 def test_returns_autopipeline_result_shape_and_counters(
         mock_draft, mock_verify, mock_publish, mock_mark, mock_record, tmp_path):
     """The returned dict keeps the AutoPipelineResult contract: ok / failed /
@@ -277,12 +277,12 @@ def test_returns_autopipeline_result_shape_and_counters(
     assert result == {"ok": 2, "failed": [], "verify_fail_count": 0}
 
 
-@patch("core.pipeline.time.sleep")
-@patch("core.pipeline.runs.record_run")
-@patch("core.pipeline.reviewed.mark")
-@patch("core.pipeline.publish_post.run")
-@patch("core.pipeline.verify_draft.run")
-@patch("core.pipeline.draft_post.run")
+@patch("cpost.core.pipeline.time.sleep")
+@patch("cpost.core.pipeline.runs.record_run")
+@patch("cpost.core.pipeline.reviewed.mark")
+@patch("cpost.core.pipeline.publish_post.run")
+@patch("cpost.core.pipeline.verify_draft.run")
+@patch("cpost.core.pipeline.draft_post.run")
 def test_failed_list_records_failing_stage_per_item(
         mock_draft, mock_verify, mock_publish, mock_mark, mock_record, mock_sleep, tmp_path):
     """An item failing one stage is recorded in result['failed'] tagged with that
@@ -303,11 +303,11 @@ def test_failed_list_records_failing_stage_per_item(
     assert mock_publish.call_count == 1            # only p2 reached publish
 
 
-@patch("core.pipeline.runs.record_run")
-@patch("core.pipeline.reviewed.mark")
-@patch("core.pipeline.publish_post.run")
-@patch("core.pipeline.verify_draft.run")
-@patch("core.pipeline.draft_post.run")
+@patch("cpost.core.pipeline.runs.record_run")
+@patch("cpost.core.pipeline.reviewed.mark")
+@patch("cpost.core.pipeline.publish_post.run")
+@patch("cpost.core.pipeline.verify_draft.run")
+@patch("cpost.core.pipeline.draft_post.run")
 def test_record_run_invoked_per_stage_with_status_ok(
         mock_draft, mock_verify, mock_publish, mock_mark, mock_record, tmp_path):
     """runs.record_run is called once per stage per item with status=ok; the
@@ -337,12 +337,12 @@ def test_record_run_invoked_per_stage_with_status_ok(
     assert by_stage["draft"].get("detail") is None  # draft/verify carry no detail
 
 
-@patch("core.pipeline.time.sleep")
-@patch("core.pipeline.runs.record_run")
-@patch("core.pipeline.reviewed.mark")
-@patch("core.pipeline.publish_post.run")
-@patch("core.pipeline.verify_draft.run")
-@patch("core.pipeline.draft_post.run")
+@patch("cpost.core.pipeline.time.sleep")
+@patch("cpost.core.pipeline.runs.record_run")
+@patch("cpost.core.pipeline.reviewed.mark")
+@patch("cpost.core.pipeline.publish_post.run")
+@patch("cpost.core.pipeline.verify_draft.run")
+@patch("cpost.core.pipeline.draft_post.run")
 def test_retry_applied_per_stage(
         mock_draft, mock_verify, mock_publish, mock_mark, mock_record, mock_sleep, tmp_path):
     """Each stage runner is wrapped by _retry (3 attempts) — verify failing all
@@ -357,17 +357,17 @@ def test_retry_applied_per_stage(
     assert mock_verify.call_count == 3    # retried to exhaustion
 
 
-@patch("core.pipeline.time.sleep")
-@patch("core.pipeline.runs.record_run")
-@patch("core.pipeline.reviewed.mark")
-@patch("core.pipeline.publish_post.run")
-@patch("core.pipeline.verify_draft.run")
-@patch("core.pipeline.draft_post.run")
+@patch("cpost.core.pipeline.time.sleep")
+@patch("cpost.core.pipeline.runs.record_run")
+@patch("cpost.core.pipeline.reviewed.mark")
+@patch("cpost.core.pipeline.publish_post.run")
+@patch("cpost.core.pipeline.verify_draft.run")
+@patch("cpost.core.pipeline.draft_post.run")
 def test_note_expiry_called_on_session_expiry_each_stage(
         mock_draft, mock_verify, mock_publish, mock_mark, mock_record, mock_sleep, tmp_path):
     """on_session_expired fires when a stage raises SessionExpiredError — checked
     at the draft stage (same _note_expiry path used by verify/publish)."""
-    from core.errors import SessionExpiredError
+    from cpost.core.errors import SessionExpiredError
     cfg = _make_cfg(tmp_path)
     built = [_make_built("p1", tmp_path)]
     mock_draft.side_effect = SessionExpiredError("expired")
@@ -379,11 +379,11 @@ def test_note_expiry_called_on_session_expiry_each_stage(
     mock_verify.assert_not_called()       # draft failure stops the item
 
 
-@patch("core.pipeline.runs.record_run")
-@patch("core.pipeline.reviewed.mark")
-@patch("core.pipeline.publish_post.run")
-@patch("core.pipeline.verify_draft.run")
-@patch("core.pipeline.draft_post.run")
+@patch("cpost.core.pipeline.runs.record_run")
+@patch("cpost.core.pipeline.reviewed.mark")
+@patch("cpost.core.pipeline.publish_post.run")
+@patch("cpost.core.pipeline.verify_draft.run")
+@patch("cpost.core.pipeline.draft_post.run")
 def test_publish_passes_approve_and_expected_content_id(
         mock_draft, mock_verify, mock_publish, mock_mark, mock_record, tmp_path):
     """Publish-only contract: the invocation handed to publish_post.run carries
@@ -420,11 +420,11 @@ def test_publish_passes_approve_and_expected_content_id(
 # Defensive branches
 # ---------------------------------------------------------------------------
 
-@patch("core.pipeline.runs.record_run")
-@patch("core.pipeline.reviewed.mark")
-@patch("core.pipeline.publish_post.run")
-@patch("core.pipeline.verify_draft.run")
-@patch("core.pipeline.draft_post.run")
+@patch("cpost.core.pipeline.runs.record_run")
+@patch("cpost.core.pipeline.reviewed.mark")
+@patch("cpost.core.pipeline.publish_post.run")
+@patch("cpost.core.pipeline.verify_draft.run")
+@patch("cpost.core.pipeline.draft_post.run")
 def test_action_ns_none_skips_item(mock_draft, mock_verify, mock_publish,
                                    mock_mark, mock_record, tmp_path):
     """If manifest path does not exist, item is counted as failed."""
@@ -439,11 +439,11 @@ def test_action_ns_none_skips_item(mock_draft, mock_verify, mock_publish,
     assert "失敗 1" in progress[-1]
 
 
-@patch("core.pipeline.runs.record_run")
-@patch("core.pipeline.reviewed.mark")
-@patch("core.pipeline.publish_post.run")
-@patch("core.pipeline.verify_draft.run")
-@patch("core.pipeline.draft_post.run")
+@patch("cpost.core.pipeline.runs.record_run")
+@patch("cpost.core.pipeline.reviewed.mark")
+@patch("cpost.core.pipeline.publish_post.run")
+@patch("cpost.core.pipeline.verify_draft.run")
+@patch("cpost.core.pipeline.draft_post.run")
 def test_manifest_missing_at_publish_skips(mock_draft, mock_verify, mock_publish,
                                            mock_mark, mock_record, tmp_path):
     """If manifest.json disappears after verify, publish is skipped as failure."""
@@ -471,11 +471,11 @@ def test_manifest_missing_at_publish_skips(mock_draft, mock_verify, mock_publish
     assert "失敗 1" in progress[-1]
 
 
-@patch("core.pipeline.runs.record_run")
-@patch("core.pipeline.reviewed.mark")
-@patch("core.pipeline.publish_post.run")
-@patch("core.pipeline.verify_draft.run")
-@patch("core.pipeline.draft_post.run")
+@patch("cpost.core.pipeline.runs.record_run")
+@patch("cpost.core.pipeline.reviewed.mark")
+@patch("cpost.core.pipeline.publish_post.run")
+@patch("cpost.core.pipeline.verify_draft.run")
+@patch("cpost.core.pipeline.draft_post.run")
 def test_missing_manifest_error_strings_are_stage_distinct(
         mock_draft, mock_verify, mock_publish, mock_mark, mock_record, tmp_path):
     """The per-stage missing-manifest error string differs by stage: draft/verify
@@ -523,7 +523,7 @@ def test_webui_adapter_delegates_to_core(tmp_path):
 
     job = _FakeJob()
 
-    with patch("webui._auto_pipeline.pipeline.run_auto_pipeline") as mock_core:
+    with patch("cpost.webui._auto_pipeline.pipeline.run_auto_pipeline") as mock_core:
         mock_core.return_value = {"ok": 1, "failed": [], "verify_fail_count": 0}
         result = _run_auto_pipeline(job, cfg, built)
         assert result == {"ok": 1, "failed": [], "verify_fail_count": 0}
@@ -532,7 +532,7 @@ def test_webui_adapter_delegates_to_core(tmp_path):
         assert call_kwargs["on_progress"] is not None
         assert call_kwargs["on_status"] is not None
         # callbacks should bridge to jobs
-        with patch("webui._auto_pipeline.jobs.report") as mock_report:
+        with patch("cpost.webui._auto_pipeline.jobs.report") as mock_report:
             call_kwargs["on_progress"]("hello")
             mock_report.assert_called_once_with(job, "hello")
 
@@ -545,7 +545,7 @@ def test_auto_pipeline_wired_into_crawl(tmp_path):
     """When auto_pipeline=True, _run_auto_pipeline is called after run_pipeline."""
     from unittest.mock import patch as _patch
     from fastapi.testclient import TestClient
-    from webui.app import create_app
+    from cpost.webui.app import create_app
 
     config_path = str(tmp_path / "webui.yaml")
     import yaml
@@ -561,10 +561,10 @@ def test_auto_pipeline_wired_into_crawl(tmp_path):
     client = TestClient(app, raise_server_exceptions=False)
 
     built = [{"post_id": "p1", "title": "T", "manifest_path": "/tmp/p1/manifest.json"}]
-    with (_patch("webui.routers.crawl.pipeline.crawl_items", return_value=[]),
-          _patch("webui.routers.crawl.pipeline.run_pipeline",
+    with (_patch("cpost.webui.routers.crawl.pipeline.crawl_items", return_value=[]),
+          _patch("cpost.webui.routers.crawl.pipeline.run_pipeline",
                  return_value={"built": built, "failed": [], "skipped": 0}),
-          _patch("webui.routers.crawl._run_auto_pipeline") as mock_auto):
+          _patch("cpost.webui.routers.crawl._run_auto_pipeline") as mock_auto):
         mock_auto.return_value = {"ok": 1, "failed": [], "verify_fail_count": 0}
         response = client.post("/crawl")
         assert response.status_code == 200
@@ -573,7 +573,7 @@ def test_auto_pipeline_wired_into_crawl(tmp_path):
         mock_auto.assert_called_once()
         call_job, call_cfg, call_built = mock_auto.call_args[0]
         assert call_built == built
-        from core import jobs as jobs_mod
+        from cpost.core import jobs as jobs_mod
         job = jobs_mod.get(call_job.id)
         assert job["result"]["auto_pipeline"]["ok"] == 1
 
@@ -582,7 +582,7 @@ def test_auto_pipeline_not_called_when_disabled(tmp_path):
     """When auto_pipeline=False (default), _run_auto_pipeline is NOT called."""
     from unittest.mock import patch as _patch
     from fastapi.testclient import TestClient
-    from webui.app import create_app
+    from cpost.webui.app import create_app
     import yaml
 
     config_path = str(tmp_path / "webui.yaml")
@@ -597,10 +597,10 @@ def test_auto_pipeline_not_called_when_disabled(tmp_path):
     app = create_app(config_path)
     client = TestClient(app, raise_server_exceptions=False)
 
-    with (_patch("webui.routers.crawl.pipeline.crawl_items", return_value=[]),
-          _patch("webui.routers.crawl.pipeline.run_pipeline",
+    with (_patch("cpost.webui.routers.crawl.pipeline.crawl_items", return_value=[]),
+          _patch("cpost.webui.routers.crawl.pipeline.run_pipeline",
                  return_value={"built": [], "failed": [], "skipped": 0}),
-          _patch("webui.routers.crawl._run_auto_pipeline") as mock_auto):
+          _patch("cpost.webui.routers.crawl._run_auto_pipeline") as mock_auto):
         client.post("/crawl")
         import time
         time.sleep(0.3)
@@ -611,7 +611,7 @@ def test_auto_pipeline_wired_empty_built(tmp_path):
     """When run_pipeline returns built=[], _run_auto_pipeline is called with []."""
     from unittest.mock import patch as _patch
     from fastapi.testclient import TestClient
-    from webui.app import create_app
+    from cpost.webui.app import create_app
     import yaml
 
     config_path = str(tmp_path / "webui.yaml")
@@ -626,10 +626,10 @@ def test_auto_pipeline_wired_empty_built(tmp_path):
     app = create_app(config_path)
     client = TestClient(app, raise_server_exceptions=False)
 
-    with (_patch("webui.routers.crawl.pipeline.crawl_items", return_value=[]),
-          _patch("webui.routers.crawl.pipeline.run_pipeline",
+    with (_patch("cpost.webui.routers.crawl.pipeline.crawl_items", return_value=[]),
+          _patch("cpost.webui.routers.crawl.pipeline.run_pipeline",
                  return_value={"built": [], "failed": [], "skipped": 0}),
-          _patch("webui.routers.crawl._run_auto_pipeline") as mock_auto):
+          _patch("cpost.webui.routers.crawl._run_auto_pipeline") as mock_auto):
         client.post("/crawl")
         import time
         time.sleep(0.3)
@@ -648,8 +648,8 @@ def test_backend_invocation_timeout_default_unifies_on_constant():
     This locks the audit's drift fix: core/pipeline.py used to hardcode 30_000
     while the webui used the named constant. Now there is one canonical default.
     """
-    from browser import backend_driver
-    from core.backend_args import BackendInvocation
+    from cpost.browser import backend_driver
+    from cpost.core.backend_args import BackendInvocation
 
     inv = BackendInvocation(manifest="m", backend="b", storage_state="s", state="st")
     assert inv.timeout_ms == backend_driver.DEFAULT_TIMEOUT_MS
@@ -659,7 +659,7 @@ def test_backend_invocation_attribute_access_for_runners():
     """Runners read args by attribute (args.manifest, args.dry_run, args.approve,
     args.expected_content_id). The dataclass must expose all of them with the
     inert defaults the draft/verify path relies on."""
-    from core.backend_args import BackendInvocation
+    from cpost.core.backend_args import BackendInvocation
 
     inv = BackendInvocation(manifest="m", backend="b", storage_state="s", state="st")
     assert inv.manifest == "m"

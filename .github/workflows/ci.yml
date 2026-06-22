@@ -39,7 +39,7 @@ jobs:
         run: |
           set -eo pipefail
           python -m pytest \
-            --cov=core --cov=src --cov=browser --cov=webui \
+            --cov=cpost \
             --cov-report=term-missing -rs | tee /tmp/pytest.txt
           # R1: the 4 Playwright e2e modules MUST actually run. With chromium installed
           # their importorskip/skip guards should not fire; if any shows up as SKIPPED,

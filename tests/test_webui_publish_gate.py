@@ -6,10 +6,10 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from webui._helpers import check_publish_gates
-from webui.app import create_app
-from core import webui_config
-from src import publish_post
+from cpost.webui._helpers import check_publish_gates
+from cpost.webui.app import create_app
+from cpost.core import webui_config
+from cpost.cli import publish_post
 
 
 def _client(tmp_path, status="draft_verified", title="待發貼文"):

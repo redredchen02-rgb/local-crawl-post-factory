@@ -1,4 +1,4 @@
-"""Transport-level coverage for ``core.llm.chat`` (R12 / U5).
+"""Transport-level coverage for ``cpost.core.llm.chat`` (R12 / U5).
 
 These exercise the outbound HTTP branch (``urllib.request.urlopen`` + the
 ``HTTPError``/``URLError`` -> ``ExternalError`` mapping and the response-parsing
@@ -13,8 +13,8 @@ import urllib.error
 
 import pytest
 
-from core import llm
-from core.errors import ExternalError, ValidationError
+from cpost.core import llm
+from cpost.core.errors import ExternalError, ValidationError
 
 _CFG = {
     "base_url": "https://llm.example.com/v1",

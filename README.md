@@ -97,7 +97,7 @@ generate-article --state ./state/library.sqlite --cluster-id <id> \
 
 ### WebUI：今日備稿（`/today`）
 
-導覽列的「今日備稿」是把上面三步收進單頁的工作台：**開始備稿**（跑聚瓜＋打分的 prep job）→ 瓜清單（可依分數／來源數排序與篩選、多選）→ **生成選取**（對勾選的瓜批次生稿）。與 CLI 共用同一個 `core/scoop_pipeline`，邏輯不重複；全庫仍是單一來源時會在 UI 標明「可信度尚無意義」。
+導覽列的「今日備稿」是把上面三步收進單頁的工作台：**開始備稿**（跑聚瓜＋打分的 prep job）→ 瓜清單（可依分數／來源數排序與篩選、多選）→ **生成選取**（對勾選的瓜批次生稿）。與 CLI 共用同一個 `cpost.core.scoop_pipeline`，邏輯不重複；全庫仍是單一來源時會在 UI 標明「可信度尚無意義」。
 
 ## 狀態與去重
 
@@ -132,7 +132,7 @@ make vendor-htmx        # 下載 htmx（首次，UI 互動需要）
 make webui              # 啟動 → http://127.0.0.1:8000
 ```
 
-設定存 `configs/webui.yaml`（與 CLI 共用爬蟲/模板/浮水印的既有 yaml）。WebUI 與 CLI 跑的是**同一條** `core/pipeline` orchestrator，邏輯不重複。
+設定存 `configs/webui.yaml`（與 CLI 共用爬蟲/模板/浮水印的既有 yaml）。WebUI 與 CLI 跑的是**同一條** `cpost.core.pipeline` orchestrator，邏輯不重複。
 
 ## 日常營運（硬化）
 

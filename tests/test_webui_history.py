@@ -3,8 +3,8 @@
 
 from fastapi.testclient import TestClient
 
-from webui.app import create_app
-from core import webui_config, runs
+from cpost.webui.app import create_app
+from cpost.core import webui_config, runs
 
 
 def _client(tmp_path):
@@ -121,7 +121,7 @@ def test_history_filter_no_match_shows_empty(tmp_path):
 
 def test_history_filter_by_run_id(tmp_path):
     client, tp = _client(tmp_path)
-    from core import runs as runs_mod
+    from cpost.core import runs as runs_mod
     rid = runs_mod.new_run_id()
     runs.record_run(str(tp / "state.sqlite"), stage="draft", post_id="p1",
                     status="ok", run_id=rid)

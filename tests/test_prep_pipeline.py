@@ -1,10 +1,10 @@
-"""core.scoop_pipeline.run_prep_pipeline: today-prep orchestration in-process.
+"""cpost.core.scoop_pipeline.run_prep_pipeline: today-prep orchestration in-process.
 
 Crawl is stubbed (no subprocess/network); asserts the crawl→ingest→cluster→score
 chain lands ranked scoops in the library and survives bad items / reruns.
 """
 
-from core import library, scoop_pipeline
+from cpost.core import library, scoop_pipeline
 
 
 def _raw(slug, title, source_id="src_a", text=None,

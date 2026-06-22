@@ -2,8 +2,8 @@ import io
 import json
 from types import SimpleNamespace
 
-from core import cli, library
-from src.cluster_scoops import _run, cluster_library
+from cpost.core import cli, library
+from cpost.cli.cluster_scoops import _run, cluster_library
 
 
 def _db(tmp_path):

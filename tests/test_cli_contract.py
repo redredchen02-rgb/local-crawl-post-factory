@@ -1,8 +1,8 @@
 import io
 
-from core import cli
-from core.errors import ValidationError, UsageError, DependencyError, ExternalError
-from core.io_ndjson import read_lines, write_line
+from cpost.core import cli
+from cpost.core.errors import ValidationError, UsageError, DependencyError, ExternalError
+from cpost.core.io_ndjson import read_lines, write_line
 
 
 def test_success_returns_zero():

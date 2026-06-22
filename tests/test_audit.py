@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from core import audit
+from cpost.core import audit
 
 
 def test_record_appends_well_formed_line(tmp_path):

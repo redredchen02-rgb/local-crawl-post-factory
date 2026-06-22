@@ -1,4 +1,4 @@
-"""core.scoop_pipeline.run_generation_pipeline: scoop selection -> packages.
+"""cpost.core.scoop_pipeline.run_generation_pipeline: scoop selection -> packages.
 
 generate-article is stubbed (it is fully covered in test_generate_article); these
 tests exercise the orchestration: per-cluster build, failure isolation, no key
@@ -10,10 +10,10 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from core import scoop_pipeline, webui_config
-from core.errors import ExternalError
-from src import generate_article
-from webui.app import create_app
+from cpost.core import scoop_pipeline, webui_config
+from cpost.core.errors import ExternalError
+from cpost.cli import generate_article
+from cpost.webui.app import create_app
 
 
 def _cfg(tmp_path):

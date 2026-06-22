@@ -2,10 +2,10 @@ import io
 import json
 from types import SimpleNamespace
 
-from core import cli, library, scoop_pipeline, webui_config
-from src import generate_article
-from src.cluster_scoops import cluster_library
-from src.score_scoops import _run, score_all
+from cpost.core import cli, library, scoop_pipeline, webui_config
+from cpost.cli import generate_article
+from cpost.cli.cluster_scoops import cluster_library
+from cpost.cli.score_scoops import _run, score_all
 
 NOW = "2026-06-18T00:00:00+00:00"
 

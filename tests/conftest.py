@@ -2,7 +2,8 @@ import sys
 from pathlib import Path
 
 
-# Make the project root importable so `core`, `src`, `browser` resolve in tests.
+# Make the project root importable so the `cpost` package resolves in tests
+# even without an editable install.
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))

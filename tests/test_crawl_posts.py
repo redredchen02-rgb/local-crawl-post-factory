@@ -42,7 +42,7 @@ def server():
 
 def _run_crawl(*extra_args):
     """Invoke crawl-posts as a subprocess; return (returncode, stdout, stderr)."""
-    cmd = [sys.executable, "-m", "src.crawl_posts", *extra_args]
+    cmd = [sys.executable, "-m", "cpost.cli.crawl_posts", *extra_args]
     proc = subprocess.run(
         cmd, cwd=str(ROOT), capture_output=True, text=True, timeout=120
     )
@@ -136,7 +136,7 @@ def test_stdout_is_pure_ndjson(server):
 
 def test_spider_base_settings_have_retry_and_autothrottle():
     """T1: Spider base settings enable retry, AutoThrottle, and safe limits."""
-    from src.crawl_posts import BASE_SPIDER_SETTINGS
+    from cpost.cli.crawl_posts import BASE_SPIDER_SETTINGS
 
     s = BASE_SPIDER_SETTINGS
     assert s["RETRY_ENABLED"] is True
@@ -180,7 +180,7 @@ def test_unreachable_host_exits_4():
 
 def test_progress_cb_receives_increasing_snapshots(server):
     """crawl_items with progress_cb fires at least once with growing counts."""
-    from src.crawl_posts import CONFIG_DEFAULTS, crawl_items
+    from cpost.cli.crawl_posts import CONFIG_DEFAULTS, crawl_items
 
     opts = dict(CONFIG_DEFAULTS)
     opts["start_urls"] = [f"{server}/index.html"]
@@ -213,7 +213,7 @@ def test_progress_cb_receives_increasing_snapshots(server):
 
 def test_progress_cb_none_behaves_identically(server):
     """progress_cb=None produces the same result as calling without kwarg."""
-    from src.crawl_posts import CONFIG_DEFAULTS, crawl_items
+    from cpost.cli.crawl_posts import CONFIG_DEFAULTS, crawl_items
 
     opts = dict(CONFIG_DEFAULTS)
     opts["start_urls"] = [f"{server}/index.html"]
@@ -230,7 +230,7 @@ def test_progress_cb_none_behaves_identically(server):
 
 def test_progress_cb_does_not_pollute_stdout(server):
     """stdout (from subprocess) remains pure NDJSON when progress is enabled."""
-    from src.crawl_posts import CONFIG_DEFAULTS, crawl_items
+    from cpost.cli.crawl_posts import CONFIG_DEFAULTS, crawl_items
 
     opts = dict(CONFIG_DEFAULTS)
     opts["start_urls"] = [f"{server}/index.html"]
@@ -249,8 +249,8 @@ def test_progress_cb_does_not_pollute_stdout(server):
 
 def test_progress_cb_unreachable_host_still_external_error(server):
     """With progress_cb, an unreachable host still raises ExternalError."""
-    from src.crawl_posts import CONFIG_DEFAULTS, crawl_items
-    from core.errors import ExternalError
+    from cpost.cli.crawl_posts import CONFIG_DEFAULTS, crawl_items
+    from cpost.core.errors import ExternalError
 
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.bind(("127.0.0.1", 0))
@@ -269,7 +269,7 @@ def test_progress_cb_unreachable_host_still_external_error(server):
 
 def _crawl_one(server, item_regex, **opt_overrides):
     """Crawl the fixture site and return the single matching item."""
-    from src.crawl_posts import CONFIG_DEFAULTS, crawl_items
+    from cpost.cli.crawl_posts import CONFIG_DEFAULTS, crawl_items
 
     opts = dict(CONFIG_DEFAULTS)
     opts["start_urls"] = [f"{server}/index-c.html"]
@@ -331,7 +331,7 @@ def test_empty_image_date_selectors_fall_back(server):
 
 
 def _crawl_one_a(server):
-    from src.crawl_posts import CONFIG_DEFAULTS, crawl_items
+    from cpost.cli.crawl_posts import CONFIG_DEFAULTS, crawl_items
 
     opts = dict(CONFIG_DEFAULTS)
     opts["start_urls"] = [f"{server}/index.html"]
@@ -386,7 +386,7 @@ def test_invalid_image_and_date_selectors_fall_back(index_c):
 
 def test_invalid_body_selector_returns_items_not_zero(index_c):
     """End-to-end: an invalid body_selector still returns items (count > 0)."""
-    from src.crawl_posts import CONFIG_DEFAULTS, crawl_items
+    from cpost.cli.crawl_posts import CONFIG_DEFAULTS, crawl_items
 
     opts = dict(CONFIG_DEFAULTS)
     opts["start_urls"] = [f"{index_c}/index-c.html"]
@@ -400,7 +400,7 @@ def test_invalid_body_selector_returns_items_not_zero(index_c):
 
 def test_body_selector_empty_with_min_text_chars_filters_item(index_c):
     """min_text_chars filters an empty-body item — under-extraction is enforceable."""
-    from src.crawl_posts import CONFIG_DEFAULTS, crawl_items
+    from cpost.cli.crawl_posts import CONFIG_DEFAULTS, crawl_items
 
     opts = dict(CONFIG_DEFAULTS)
     opts["start_urls"] = [f"{index_c}/index-c.html"]

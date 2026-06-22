@@ -7,8 +7,8 @@ import pytest
 
 pytestmark = pytest.mark.browser  # Playwright; excluded from fast-run
 
-from core.errors import SessionExpiredError, ExternalError, ValidationError  # noqa: E402
-from browser import backend_driver  # noqa: E402
+from cpost.core.errors import SessionExpiredError, ExternalError, ValidationError  # noqa: E402
+from cpost.browser import backend_driver  # noqa: E402
 
 playwright = pytest.importorskip("playwright.sync_api")
 PlaywrightTimeout = playwright.TimeoutError

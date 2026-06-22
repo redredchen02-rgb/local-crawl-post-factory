@@ -5,10 +5,10 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 
-from core import llm, webui_config
-from core.errors import ExternalError, ValidationError
-from webui.app import create_app
-from webui.routers import packages as packages_router
+from cpost.core import llm, webui_config
+from cpost.core.errors import ExternalError, ValidationError
+from cpost.webui.app import create_app
+from cpost.webui.routers import packages as packages_router
 
 
 def _setup(tmp_path, *, source_text="原始素材内文，事件经过……", with_source=True):
