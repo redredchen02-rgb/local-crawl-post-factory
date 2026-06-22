@@ -327,6 +327,23 @@ def test_edit_updates_caption(tmp_path):
     r = client.post("/packages/20260615_a/edit", data={"caption": "新文案內容"})
     assert r.status_code == 200
     assert (out / "20260615_a" / "caption.txt").read_text(encoding="utf-8") == "新文案內容"
+    # U2 (R1): the publishable body — not just the displayed caption.txt — must
+    # carry the edit, else publish (which reads content.body) ships stale content.
+    m = json.loads((out / "20260615_a" / "manifest.json").read_text(encoding="utf-8"))
+    assert m["content"]["body"] == "新文案內容"
+
+
+def test_edit_caption_binds_review_gate_to_new_content(tmp_path):
+    # The operator authored this version; the reviewed gate must point at the
+    # edited content_id so publish is not blocked as stale (Q9).
+    from cpost.core import reviewed
+    out = tmp_path / "out"
+    _pkg(out, "20260615_a", "甲文")
+    client = _client(tmp_path, out)
+    client.post("/packages/20260615_a/edit", data={"caption": "新文案內容"})
+    m = json.loads((out / "20260615_a" / "manifest.json").read_text(encoding="utf-8"))
+    state_path = webui_config.load(str(tmp_path / "webui.yaml"))["state_path"]
+    assert reviewed.get(state_path, "20260615_a") == reviewed.content_id(m)
 
 
 def test_edit_empty_both_400(tmp_path):

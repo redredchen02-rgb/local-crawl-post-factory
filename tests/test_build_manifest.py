@@ -192,3 +192,80 @@ def test_command_writes_audit_line(tmp_path, monkeypatch):
     assert any(
         ln["stage"] == "package_built" and ln["status"] == "ok" for ln in lines
     )
+
+
+# --- U1 (R1/R5): post_id collision-resistance + no silent stale reuse ---
+
+# Two distinct same-date URLs whose slugs agree in the first 60 chars (the bug
+# hunt's verified trigger): without disambiguation both collapse onto one folder
+# and the second post's content is silently lost.
+_LONG_A = (
+    "https://example.com/news/2024/06/a-very-long-breaking-news-headline-"
+    "about-something-important-happening-today/part-1"
+)
+_LONG_B = (
+    "https://example.com/news/2024/06/a-very-long-breaking-news-headline-"
+    "about-something-important-happening-today/part-2"
+)
+
+
+def _body_of(manifest_path):
+    return json.loads(open(manifest_path, encoding="utf-8").read())["content"]["body"]
+
+
+def test_long_url_slug_collision_yields_distinct_folders(tmp_path):
+    out = tmp_path / "out"
+    log = tmp_path / "logs" / "audit.jsonl"
+    rec_a = _record(tmp_path, canonical_url=_LONG_A, caption="A body", title="Part 1")
+    rec_b = _record(tmp_path, canonical_url=_LONG_B, caption="B body", title="Part 2")
+
+    p_a = _build(rec_a, str(out), str(log))
+    p_b = _build(rec_b, str(out), str(log))
+
+    assert p_a != p_b
+    assert len(list(out.iterdir())) == 2
+    # Both posts' content is preserved (neither silently dropped).
+    assert _body_of(p_a) == "A body"
+    assert _body_of(p_b) == "B body"
+
+
+def test_same_url_changed_content_raises_instead_of_silent_stale(tmp_path):
+    out = tmp_path / "out"
+    log = tmp_path / "logs" / "audit.jsonl"
+    _build(_record(tmp_path, caption="version one"), str(out), str(log))
+
+    # Same canonical_url + same date, but edited body -> must NOT silently keep
+    # the stale files and report success.
+    with pytest.raises(ValidationError):
+        _build(_record(tmp_path, caption="version two"), str(out), str(log))
+
+    folder = out / "20260615_https_example_com_post_1"
+    assert _body_of(folder / "manifest.json") == "version one"  # original preserved
+
+
+def test_distinct_urls_with_identical_slug_raise_collision(tmp_path):
+    # Two short distinct URLs that slug identically (separator collapses) share a
+    # post_id; the guard turns the silent loss into a loud error.
+    out = tmp_path / "out"
+    log = tmp_path / "logs" / "audit.jsonl"
+    _build(_record(tmp_path, canonical_url="https://example.com/a-b", caption="A"),
+           str(out), str(log))
+    with pytest.raises(ValidationError):
+        _build(_record(tmp_path, canonical_url="https://example.com/a/b", caption="B"),
+               str(out), str(log))
+
+
+def test_run_emits_distinct_manifest_paths_for_colliding_pair(tmp_path, monkeypatch):
+    out = tmp_path / "out"
+    log = tmp_path / "logs" / "audit.jsonl"
+    rec_a = _record(tmp_path, canonical_url=_LONG_A, caption="A body", title="Part 1")
+    rec_b = _record(tmp_path, canonical_url=_LONG_B, caption="B body", title="Part 2")
+    stdin = json.dumps(rec_a) + "\n" + json.dumps(rec_b) + "\n"
+
+    code, out_txt, err = _run_command(stdin, out, log, monkeypatch)
+
+    assert code == 0
+    paths = [json.loads(ln)["manifest_path"] for ln in out_txt.splitlines() if ln.strip()]
+    assert len(paths) == 2
+    assert paths[0] != paths[1]
+    assert len(list(out.iterdir())) == 2

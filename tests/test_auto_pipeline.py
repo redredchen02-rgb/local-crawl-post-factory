@@ -310,20 +310,11 @@ def test_failed_list_records_failing_stage_per_item(
 @patch("cpost.core.pipeline.draft_post.run")
 def test_record_run_invoked_per_stage_with_status_ok(
         mock_draft, mock_verify, mock_publish, mock_mark, mock_record, tmp_path):
-    """runs.record_run is called once per stage per item with status=ok; the
-    publish success record carries detail=published_url (read back from manifest)."""
+    """_run_stage records a status=ok run for draft and verify only. The publish
+    success run is owned by publish_post.run (mocked here), so _run_stage must NOT
+    record it — recording in both places double-counts the publish (U9)."""
     cfg = _make_cfg(tmp_path)
-    # manifest records published_url so the publish detail is observable.
-    pkg = tmp_path / "out" / "p1"
-    pkg.mkdir(parents=True, exist_ok=True)
-    (pkg / "manifest.json").write_text(json.dumps({
-        "content": {"title": "T", "body": "b"},
-        "source": {"canonical_url": "https://x.com/p1"},
-        "backend": {"status": "draft_verified", "published_url": "https://pub/p1"},
-        "audit": {},
-    }), encoding="utf-8")
-    built = [{"post_id": "p1", "title": "T",
-              "manifest_path": str(pkg / "manifest.json")}]
+    built = [_make_built("p1", tmp_path)]
 
     run_auto_pipeline(built, cfg)
 
@@ -332,9 +323,49 @@ def test_record_run_invoked_per_stage_with_status_ok(
         kw = call.kwargs
         if kw.get("status") == "ok":
             by_stage[kw["stage"]] = kw
-    assert set(by_stage) == {"draft", "verify", "publish"}
-    assert by_stage["publish"]["detail"] == "https://pub/p1"
+    assert set(by_stage) == {"draft", "verify"}  # U9: publish not recorded here
     assert by_stage["draft"].get("detail") is None  # draft/verify carry no detail
+    assert by_stage["verify"].get("detail") is None
+
+
+def test_publish_success_recorded_exactly_once_end_to_end(tmp_path):
+    """U9 integration: with the REAL publish_post.run (browser mocked), one
+    successful auto-pipeline publish leaves exactly ONE publish 'ok' run row —
+    _run_stage no longer duplicates the record publish_post.run already writes."""
+    import contextlib
+    from unittest.mock import patch
+
+    from cpost.cli import publish_post
+    from cpost.core import runs
+
+    cfg = _make_cfg(tmp_path)
+    pkg = tmp_path / "out" / "p1"
+    pkg.mkdir(parents=True, exist_ok=True)
+    (pkg / "manifest.json").write_text(json.dumps({
+        "post_id": "p1",  # publish_post.run asserts a real post_id (build always sets it)
+        "content": {"title": "T", "body": "b"},
+        "source": {"canonical_url": "https://example.com/p1"},
+        "backend": {"status": "draft_verified"},
+        "audit": {},
+    }), encoding="utf-8")
+    built = [{"post_id": "p1", "title": "T", "manifest_path": str(pkg / "manifest.json")}]
+
+    @contextlib.contextmanager
+    def _fake_session(*_a, **_kw):
+        yield object()
+
+    with patch("cpost.core.pipeline.draft_post.run"), \
+         patch("cpost.core.pipeline.verify_draft.run"), \
+         patch.object(publish_post.backend_driver, "session", _fake_session), \
+         patch.object(publish_post.backend_driver, "publish_draft",
+                      return_value={"published_url": "https://pub/p1"}), \
+         patch.object(publish_post.audit, "record"):
+        result = run_auto_pipeline(built, cfg)
+
+    assert result["ok"] == 1
+    ok_pub = [r for r in runs.list_runs(cfg["state_path"], post_id="p1")
+              if r["stage"] == "publish" and r["status"] == "ok"]
+    assert len(ok_pub) == 1
 
 
 @patch("cpost.core.pipeline.time.sleep")
