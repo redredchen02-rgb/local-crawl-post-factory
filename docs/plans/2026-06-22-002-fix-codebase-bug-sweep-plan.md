@@ -247,7 +247,7 @@ Hard edges: U3→U4 (U4 builds on U3's idempotent re-entry); U13→U14 (U14 cons
 
 ### Phase 2 — Medium severity
 
-- [x] **U4: Reorder/idempotent-guard the publish tail to prevent cross-run duplicate publish**
+- [x] **U4: Reorder/idempotent-guard the publish tail to prevent cross-run duplicate publish** ✅ landed in commit 47fc969 (checkbox sync 2026-06-22)
 
 **Goal:** A crash in the publish tail cannot cause a duplicate live post on the next run; shrink the unmarked-dedup window; leave no invisible orphan.
 **Requirements:** R2
@@ -269,7 +269,7 @@ Hard edges: U3→U4 (U4 builds on U3's idempotent re-entry); U13→U14 (U14 cons
 - Integration: re-running the auto-pipeline over the same URL after a tail crash yields no second live post within the protected window.
 **Verification:** The unmarked-dedup window is reduced to the documented residual; tests prove no duplicate within it and no invisible orphan.
 
-- [x] **U5: Sort cluster timestamps chronologically, not lexically**
+- [x] **U5: Sort cluster timestamps chronologically, not lexically** ✅ landed in commit 47fc969 (checkbox sync 2026-06-22)
 
 **Goal:** Correct `earliest_published`/`latest_published` (and thus recency scoring/ranking) when members carry mixed timezone offsets.
 **Requirements:** R4
@@ -284,7 +284,7 @@ Hard edges: U3→U4 (U4 builds on U3's idempotent re-entry); U13→U14 (U14 cons
 - Edge case: missing/empty `published_at` entries are skipped as today.
 **Verification:** `latest_published == max(parse_iso(m.published_at))`; recency score uses the true newest member.
 
-- [x] **U6: Include all generation inputs in the generate-article cache key**
+- [x] **U6: Include all generation inputs in the generate-article cache key** ✅ landed in commit 47fc969 (checkbox sync 2026-06-22)
 
 **Goal:** Stop serving a stale synthesized article when a member's `description` (the source text when `source_text` is empty) changes.
 **Requirements:** R4
@@ -299,7 +299,7 @@ Hard edges: U3→U4 (U4 builds on U3's idempotent re-entry); U13→U14 (U14 cons
 - Edge case: `source_text` present → unchanged behavior.
 **Verification:** No change to any `build_material` input returns a cached article built from different input.
 
-- [x] **U7: Make normalize-items resilient to a single bad record**
+- [x] **U7: Make normalize-items resilient to a single bad record** ✅ landed in commit 47fc969 (checkbox sync 2026-06-22)
 
 **Goal:** One title-less crawled page no longer aborts the whole normalize stage and discards all subsequent good items.
 **Requirements:** R3
@@ -314,7 +314,7 @@ Hard edges: U3→U4 (U4 builds on U3's idempotent re-entry); U13→U14 (U14 cons
 - Edge case: all-invalid stream → clear non-zero outcome with no silent empty success.
 **Verification:** A single malformed record cannot drop otherwise-valid records that follow it.
 
-- [x] **U8: Keep library-ingest stdout output consistent with committed DB state**
+- [x] **U8: Keep library-ingest stdout output consistent with committed DB state** ✅ landed in commit 47fc969 (checkbox sync 2026-06-22)
 
 **Goal:** Downstream stages never receive records the library DB rolled back.
 **Requirements:** R3
@@ -344,7 +344,7 @@ Hard edges: U3→U4 (U4 builds on U3's idempotent re-entry); U13→U14 (U14 cons
 - Edge case: a failed publish still records exactly one failed row (after U3).
 **Verification:** Run-history success counts are not double-counted for publishes.
 
-- [x] **U10: Wrap LLM socket/read-timeout failures in `ExternalError`**
+- [x] **U10: Wrap LLM socket/read-timeout failures in `ExternalError`** ✅ landed in commit 47fc969 (checkbox sync 2026-06-22)
 
 **Goal:** A stalled/hung LLM gateway surfaces as the intended `ExternalError` (exit 4 / localized message), not an opaque `TimeoutError`.
 **Requirements:** R5
@@ -360,7 +360,7 @@ Hard edges: U3→U4 (U4 builds on U3's idempotent re-entry); U13→U14 (U14 cons
 - Happy path: normal response unchanged.
 **Verification:** No realistic network failure in `chat` escapes the `ExternalError` translation.
 
-- [x] **U11: Bound the crawl child process with a wall-clock timeout**
+- [x] **U11: Bound the crawl child process with a wall-clock timeout** ✅ landed in commit 47fc969 (checkbox sync 2026-06-22)
 
 **Goal:** A wedged Scrapy/Twisted child can no longer hang the caller (and the WebUI worker thread) forever.
 **Requirements:** R5
@@ -375,7 +375,7 @@ Hard edges: U3→U4 (U4 builds on U3's idempotent re-entry); U13→U14 (U14 cons
 - Edge case: child exits exactly at the deadline boundary → no spurious kill of a finished process.
 **Verification:** No input can make `crawl_items` block past the budget; the WebUI job fails cleanly instead of hanging "running".
 
-- [x] **U12: Let `set_backend` clear `published_url` so rollback is consistent**
+- [x] **U12: Let `set_backend` clear `published_url` so rollback is consistent** ✅ landed in commit 47fc969 (checkbox sync 2026-06-22)
 
 **Goal:** After rollback, the manifest does not report `status='draft_verified'` while still carrying a stale `published_url`.
 **Requirements:** R7
@@ -390,7 +390,7 @@ Hard edges: U3→U4 (U4 builds on U3's idempotent re-entry); U13→U14 (U14 cons
 - Regression: existing `set_backend` callers (publish/draft/verify) unaffected.
 **Verification:** No rolled-back manifest reports a non-null `published_url`.
 
-- [x] **U13: Extract an atomic-write helper and use it for `manifest.save`**
+- [x] **U13: Extract an atomic-write helper and use it for `manifest.save`** ✅ landed in commit 47fc969 (checkbox sync 2026-06-22)
 
 **Goal:** A crash/ENOSPC mid-write can no longer corrupt `manifest.json` (the lifecycle source of truth).
 **Requirements:** R6
@@ -409,7 +409,7 @@ Hard edges: U3→U4 (U4 builds on U3's idempotent re-entry); U13→U14 (U14 cons
 
 ### Phase 3 — Low severity / hardening
 
-- [x] **U14: Apply atomic writes to auth storage_state and the WebUI dual-write**
+- [x] **U14: Apply atomic writes to auth storage_state and the WebUI dual-write** ✅ landed in commit 47fc969 (checkbox sync 2026-06-22)
 
 **Goal:** A valid saved login or a generate/edit write can't be replaced by a truncated file on interruption.
 **Requirements:** R6
@@ -423,7 +423,7 @@ Hard edges: U3→U4 (U4 builds on U3's idempotent re-entry); U13→U14 (U14 cons
 - Happy path: normal login capture and generate writes unchanged.
 **Verification:** No interrupted write leaves a truncated auth file or a desynced caption/body pair.
 
-- [x] **U15: Harden the browser backend driver (4 fixes)**
+- [x] **U15: Harden the browser backend driver (4 fixes)** ✅ landed in commit 47fc969 (checkbox sync 2026-06-22)
 
 **Goal:** Diagnosable, crash-free behavior on expired sessions, malformed manifests, odd titles, and init failures.
 **Requirements:** R5, R8
@@ -443,7 +443,7 @@ Hard edges: U3→U4 (U4 builds on U3's idempotent re-entry); U13→U14 (U14 cons
 - Resource: `new_context` raising on corrupt storage_state → browser closed (no leaked process across repeated attempts).
 **Verification:** Each of the four triggers produces the intended diagnostic/clean outcome.
 
-- [x] **U16: Re-bracket IPv6 hosts in `normalize_url`**
+- [x] **U16: Re-bracket IPv6 hosts in `normalize_url`** ✅ landed in commit 47fc969 (checkbox sync 2026-06-22)
 
 **Goal:** IPv6-literal origins produce well-formed, round-trippable canonical URLs (determinism-critical).
 **Requirements:** R4
@@ -458,7 +458,7 @@ Hard edges: U3→U4 (U4 builds on U3's idempotent re-entry); U13→U14 (U14 cons
 - Happy path: ordinary DNS hostnames unchanged.
 **Verification:** IPv6 canonical URLs round-trip and are unambiguous.
 
-- [x] **U17: Stop render-caption from duplicating/fragmenting the canonical_url**
+- [x] **U17: Stop render-caption from duplicating/fragmenting the canonical_url** ✅ landed in commit 47fc969 (checkbox sync 2026-06-22)
 
 **Goal:** Over-budget captions don't emit the source link twice or as a fragment.
 **Requirements:** R8
@@ -473,7 +473,7 @@ Hard edges: U3→U4 (U4 builds on U3's idempotent re-entry); U13→U14 (U14 cons
 - Edge case: budget cut landing mid-url → no url fragment left in the body.
 **Verification:** Rendered caption contains the canonical_url exactly once, never fragmented.
 
-- [x] **U18: Give the prep pipeline a dict-shaped crawl progress callback**
+- [x] **U18: Give the prep pipeline a dict-shaped crawl progress callback** ✅ landed in commit 47fc969 (checkbox sync 2026-06-22)
 
 **Goal:** `/today/prep` live crawl telemetry works (no stringified dicts in the log; the live status advances).
 **Requirements:** R8
@@ -487,7 +487,7 @@ Hard edges: U3→U4 (U4 builds on U3's idempotent re-entry); U13→U14 (U14 cons
 - Happy path: stage reports still appended as strings.
 **Verification:** No dict is appended to `job.progress`; the live crawl status updates on the generation track.
 
-- [x] **U19: Resolve failure-image paths against the package dir**
+- [x] **U19: Resolve failure-image paths against the package dir** ✅ landed in commit 47fc969 (checkbox sync 2026-06-22)
 
 **Goal:** Failure screenshots load even when `failure.json` stores a relative path.
 **Requirements:** R8
@@ -502,7 +502,7 @@ Hard edges: U3→U4 (U4 builds on U3's idempotent re-entry); U13→U14 (U14 cons
 - Happy path: absolute screenshot path unchanged.
 **Verification:** Relative in-package screenshots load; traversal protection preserved.
 
-- [x] **U20: Apply multi-statement migrations per-statement (savepoint correctness)**
+- [x] **U20: Apply multi-statement migrations per-statement (savepoint correctness)** ✅ landed in commit 47fc969 (checkbox sync 2026-06-22)
 
 **Goal:** A multi-statement migration where one statement hits "duplicate column" no longer silently skips the rest while marking the version applied.
 **Requirements:** R7
