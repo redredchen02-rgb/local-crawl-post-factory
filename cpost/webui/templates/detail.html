@@ -5,22 +5,63 @@
 
 {% set steps = [('建包', 'package_built'), ('建草稿', 'drafted'), ('驗證', 'draft_verified'), ('發布', 'published')] %}
 {% set status_order = {'package_built': 0, 'drafted': 1, 'draft_verified': 2, 'published': 3} %}
-{% set cur = status_order.get(status, 0) %}
+{% set cur = status_order.get(status, -1) %}
+{% set is_broken = (status == 'broken') %}
 <div class="step-bar">
   {% for label, s in steps %}
     {% set idx = loop.index0 %}
-    <div class="step {% if idx < cur %}done{% elif idx == cur %}current{% endif %}">{{ label }}</div>
+    {% if is_broken %}
+      {% if idx == 0 %}
+        <div class="step error">✕ {{ label }}</div>
+      {% else %}
+        <div class="step">{{ label }}</div>
+      {% endif %}
+    {% elif cur == -1 %}
+      <div class="step {% if idx == 0 %}current{% endif %}">{{ label }}</div>
+    {% elif idx < cur %}
+      <div class="step done">✓ {{ label }}</div>
+    {% elif idx == cur %}
+      <div class="step done">✓ {{ label }}</div>
+    {% elif idx == cur + 1 %}
+      <div class="step current">{{ label }}</div>
+    {% else %}
+      <div class="step">{{ label }}</div>
+    {% endif %}
   {% endfor %}
 </div>
 
-<table>
-  <tr><th>post_id</th>
-    <td>{{ post_id }} <a href="/history?post_id={{ post_id }}" class="hint" style="font-size:.85rem">→ 運行歷史</a></td></tr>
-  <tr><th>狀態</th><td><span class="pill {{ status }}">{{ status }}</span></td></tr>
-  <tr><th>來源 ID</th><td>{{ source_id }}</td></tr>
-  <tr><th>來源</th><td><a href="{{ canonical_url }}" target="_blank" rel="noopener">{{ canonical_url }}</a></td></tr>
-</table>
-<p class="hint"><a href="/history?post_id={{ post_id }}">查看此貼文運行紀錄 →</a></p>
+<div class="info-card">
+  <div class="info-row">
+    <span class="info-label">post_id</span>
+    <span class="info-value">{{ post_id }} <a href="/history?post_id={{ post_id }}" class="hint" style="font-size:.85rem">→ 運行歷史</a></span>
+  </div>
+  <div class="info-row">
+    <span class="info-label">狀態</span>
+    <span class="info-value">
+      {% if is_broken %}
+        <span class="pill error">✕ {{ status }}</span>
+      {% elif status == 'published' %}
+        <span class="pill published">✓ {{ status }}</span>
+      {% elif status == 'draft_verified' %}
+        <span class="pill draft_verified">✓ {{ status }}</span>
+      {% elif status == 'drafted' %}
+        <span class="pill draft">◑ {{ status }}</span>
+      {% elif status == 'package_built' %}
+        <span class="pill package_built">◷ {{ status }}</span>
+      {% else %}
+        <span class="pill {{ status }}">{{ status }}</span>
+      {% endif %}
+    </span>
+  </div>
+  <div class="info-row">
+    <span class="info-label">來源 ID</span>
+    <span class="info-value">{{ source_id }}</span>
+  </div>
+  <div class="info-row">
+    <span class="info-label">來源 URL</span>
+    <span class="info-value"><a href="{{ canonical_url }}" target="_blank" rel="noopener" class="info-url">{{ canonical_url }}</a></span>
+  </div>
+</div>
 
 <h2>標題
   <button type="button" class="sm secondary" style="margin-left:.5rem"

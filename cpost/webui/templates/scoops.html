@@ -1,14 +1,14 @@
 {% extends "base.html" %}
 {% block heading %}瓜清單{% endblock %}
 {% block content %}
-<section class="scoops-filter">
+<div class="toolbar">
   {% if min_sources and min_sources > 0 %}
-  <a href="/scoops?min_sources=0" class="btn-toggle">顯示全部</a>
+  <a href="/scoops?min_sources=0"><button type="button" class="secondary">顯示全部</button></a>
   <span class="hint">目前篩選：來源數 ≥ {{ min_sources }}</span>
   {% else %}
-  <a href="/scoops?min_sources=2" class="btn-toggle">只看多站</a>
+  <a href="/scoops?min_sources=2"><button type="button" class="secondary">只看多站</button></a>
   {% endif %}
-</section>
+</div>
 
 <section class="scoops-list">
   {% if not rows %}
@@ -28,14 +28,18 @@
       {% for c in rows %}
       <tr>
         <td>
-          {% if c.multi_source %}
-          <span class="badge" style="background:#ff5722;color:#fff;padding:1px 5px;border-radius:3px;font-size:0.85em;">🔥 多站</span>
-          {% endif %}
+          {% if c.multi_source %}<span class="pill error">🔥 多站</span> {% endif %}
           {{ c.representative_title or c.cluster_id }}
         </td>
         <td>{{ c.source_count }}</td>
         <td>{{ '%.2f'|format(c.quality or 0) }}</td>
-        <td>{{ '%.2f'|format(c.score or 0) }}</td>
+        <td>
+          {% set s = c.score or 0 %}
+          {% if s >= 0.7 %}<span class="score-high">{{ '%.2f'|format(s) }}</span>
+          {% elif s >= 0.4 %}<span class="score-mid">{{ '%.2f'|format(s) }}</span>
+          {% else %}<span class="score-low">{{ '%.2f'|format(s) }}</span>
+          {% endif %}
+        </td>
         <td>{{ c.sources | join(', ') }}</td>
       </tr>
       {% endfor %}

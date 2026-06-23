@@ -31,7 +31,21 @@
         <td>{% if not p.broken %}<a href="/packages/{{ p.post_id }}">{{ p.post_id }}</a>{% else %}{{ p.post_id }}{% endif %}</td>
         <td>{{ p.source_id }}</td>
         <td>{{ p.title }}</td>
-        <td><span class="pill {{ p.status }}">{{ p.status }}</span></td>
+        <td>
+          {% if p.broken %}
+            <span class="pill error">✕ {{ p.status }}</span>
+          {% elif p.status == 'published' %}
+            <span class="pill published">✓ {{ p.status }}</span>
+          {% elif p.status == 'draft_verified' %}
+            <span class="pill draft_verified">✓ {{ p.status }}</span>
+          {% elif p.status == 'drafted' %}
+            <span class="pill draft">◑ {{ p.status }}</span>
+          {% elif p.status == 'package_built' %}
+            <span class="pill package_built">◷ {{ p.status }}</span>
+          {% else %}
+            <span class="pill {{ p.status }}">{{ p.status }}</span>
+          {% endif %}
+        </td>
         <td class="row-actions">
           {% if not p.broken %}
           <span id="row-action-{{ p.post_id }}">

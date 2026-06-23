@@ -5,30 +5,33 @@
 <div class="stat-cards" hx-get="/_dashboard_stats" hx-trigger="every 10s" hx-swap="outerHTML">
   <a class="stat-card" href="/packages">
     <span class="stat-num">{{ actionable }}</span>
-    <span class="stat-label">待處理</span>
+    <span class="stat-label">📥 待處理</span>
+    <span class="hint">尚未審核的稿件</span>
   </a>
   <a class="stat-card ok" href="/packages?status=draft_verified">
     <span class="stat-num">{{ verified }}</span>
-    <span class="stat-label">已驗證</span>
+    <span class="stat-label">✅ 已驗證</span>
+    <span class="hint">通過審核、可發布</span>
   </a>
   <a class="stat-card accent" href="/packages?status=published">
     <span class="stat-num">{{ published }}</span>
-    <span class="stat-label">已發布</span>
+    <span class="stat-label">🚀 已發布</span>
+    <span class="hint">累計上線文章數</span>
   </a>
 </div>
 
 <div style="margin-top:1.5rem">
   <form hx-post="/crawl" hx-target="#crawl-result" hx-swap="innerHTML" style="display:inline">
-    <button type="submit">
+    <button type="submit" style="font-size:1rem;padding:.7rem 1.6rem">
       <span class="htmx-indicator btn-spinner">⟳</span>
-      立即爬取
+      ⚡ 立即爬取
     </button>
   </form>
-  <span id="crawl-result"></span>
+  <span id="crawl-result" style="margin-left:.75rem"></span>
 </div>
 
 {% if recent_runs %}
-<h2>最近運行</h2>
+<h2 style="margin-top:2rem">最近運行</h2>
 <div class="table-wrap">
 <table>
   <thead><tr><th>時間</th><th>階段</th><th>post_id</th><th>狀態</th></tr></thead>
@@ -45,7 +48,9 @@
 </table>
 </div>
 {% else %}
-<p class="hint" style="margin-top:1.5rem">尚無運行紀錄。設定 URL 後爬取即可開始。</p>
+<p class="hint" style="margin-top:2rem;text-align:center;padding:2rem 0">
+  📭 尚無運行紀錄 — 點擊上方「立即爬取」即可開始。
+</p>
 {% endif %}
 
 {% endblock %}

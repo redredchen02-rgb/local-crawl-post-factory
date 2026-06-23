@@ -434,6 +434,42 @@ footer {
 .diag-table td:first-child { color: var(--muted); padding-right: 1rem; white-space: nowrap; }
 
 /* ═══════════════════════════════════════════
+   ⑲ INFO CARD (detail page)
+   ═══════════════════════════════════════════ */
+.info-card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+  margin: .75rem 0 1.5rem;
+}
+.info-row {
+  display: flex;
+  align-items: baseline;
+  gap: 1rem;
+  padding: .55rem 1rem;
+  border-bottom: 1px solid var(--line);
+}
+.info-row:last-child { border-bottom: none; }
+.info-label {
+  flex: 0 0 6rem;
+  font-size: .8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .03em;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.info-value {
+  flex: 1;
+  font-size: .9rem;
+  color: var(--ink);
+  min-width: 0;
+}
+.info-url { word-break: break-all; font-size: .85rem; }
+
+/* ═══════════════════════════════════════════
    ⑰ MEDIA QUERIES — MOBILE (≤ 768px)
    ═══════════════════════════════════════════ */
 @media (max-width: 768px) {

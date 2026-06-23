@@ -2,10 +2,10 @@
 {% if not items %}
   <p class="hint">垃圾桶是空的。</p>
 {% else %}
-  <div style="margin-bottom:.5rem">
+  <div class="toolbar">
     <button class="danger" hx-post="/trash/empty"
             hx-target="#trash-list" hx-swap="innerHTML"
-            hx-confirm="確定永久刪除所有垃圾桶項目？此動作不可逆。">清空垃圾桶</button>
+            hx-confirm="確定永久刪除所有垃圾桶項目？此動作不可逆。">🗑 清空垃圾桶</button>
   </div>
   <div class="table-wrap">
   <table>
@@ -17,7 +17,7 @@
         <td>{{ item.title }}</td>
         <td>
           <button hx-post="/trash/{{ item.post_id }}/restore"
-                  hx-target="#trash-list" hx-swap="innerHTML">復原</button>
+                  hx-target="#trash-list" hx-swap="innerHTML">↩ 復原</button>
         </td>
       </tr>
     {% endfor %}

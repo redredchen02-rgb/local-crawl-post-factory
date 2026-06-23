@@ -4,6 +4,9 @@
   {% if sources_malformed %}
     <p class="error">部分來源設定格式有誤，已略過（請檢查 YAML）。</p>
   {% endif %}
+  {% if batch_hint %}
+    <p class="hint batch-hint">{{ batch_hint }}</p>
+  {% endif %}
   {% set ns = namespace(enabled_count=0) %}
   {% for src in sources if src is mapping %}{% if src.get('enabled', true) %}{% set ns.enabled_count = ns.enabled_count + 1 %}{% endif %}{% endfor %}
   {% if not sources %}
@@ -26,7 +29,7 @@
             {% if is_enabled %}
               <span class="pill ok">啟用</span>
             {% else %}
-              <span class="pill">停用</span>
+              <span class="pill error">停用</span>
             {% endif %}
           </td>
           <td class="row-actions">
@@ -53,6 +56,16 @@
       <label>Start URL <input type="url" name="start_url" placeholder="https://example.com/" required></label>
       <label><input type="checkbox" name="enabled" checked> 啟用</label>
       <button type="submit">新增</button>
+    </form>
+  </details>
+
+  <details class="sources-batch-form">
+    <summary>批次新增多個來源</summary>
+    <form hx-post="/sources/batch-add" hx-target="#sources-panel" hx-swap="outerHTML">
+      <label>貼上多個 URL（每行一個）
+        <textarea name="urls" rows="5" placeholder="每行一個完整 URL，例：&#10;https://example.com/&#10;https://another.com/"></textarea>
+      </label>
+      <button type="submit">批次新增</button>
     </form>
   </details>
 </section>

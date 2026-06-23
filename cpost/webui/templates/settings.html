@@ -7,79 +7,89 @@
 {% include "_sources_list.html" %}
 
 <hr>
-<h2>單一來源設定</h2>
-<form hx-post="/settings" hx-target="this" hx-swap="outerHTML">
-  <label>來源 URL（start_url）</label>
-  <input type="text" name="start_url" value="{{ cfg.start_url }}" placeholder="https://example.com/news">
-  {{ field_err('start_url') }}
 
-  <label>內容頁 regex（item_regex）</label>
-  <input type="text" name="item_regex" value="{{ cfg.item_regex }}">
-  {{ field_err('item_regex') }}
+{# ── Section: 基本爬取設定 ───────────────────────────── #}
+<div class="card" style="margin-bottom:1.25rem">
+  <h2 style="margin-top:0">基本爬取設定</h2>
+  <form hx-post="/settings" hx-target="this" hx-swap="outerHTML">
 
-  <label>排除 regex（deny_regex）</label>
-  <input type="text" name="deny_regex" value="{{ cfg.deny_regex }}">
-  {{ field_err('deny_regex') }}
+    <label>來源 URL（start_url）</label>
+    <input type="text" name="start_url" value="{{ cfg.start_url }}" placeholder="https://example.com/news">
+    {{ field_err('start_url') }}
 
-  <label>數量上限（limit）</label>
-  <input type="text" name="limit" value="{{ cfg.limit }}">
-  {{ field_err('limit') }}
+    <label>內容頁 regex（item_regex）</label>
+    <input type="text" name="item_regex" value="{{ cfg.item_regex }}">
+    {{ field_err('item_regex') }}
 
-  <label>最大頁數（max_pages，爬取頁數上限）</label>
-  <input type="number" name="max_pages" value="{{ cfg.max_pages }}" min="1" step="1">
-  {{ field_err('max_pages') }}
+    <label>排除 regex（deny_regex）</label>
+    <input type="text" name="deny_regex" value="{{ cfg.deny_regex }}">
+    {{ field_err('deny_regex') }}
 
-  <label>下載延遲秒數（download_delay，禮貌爬取）</label>
-  <input type="text" name="download_delay" value="{{ cfg.download_delay }}">
-  {{ field_err('download_delay') }}
+    <label>數量上限（limit）</label>
+    <input type="text" name="limit" value="{{ cfg.limit }}">
+    {{ field_err('limit') }}
 
-  <label>並發上限（concurrency）</label>
-  <input type="text" name="concurrency" value="{{ cfg.concurrency }}">
-  {{ field_err('concurrency') }}
+    <label>最大頁數（max_pages，爬取頁數上限）</label>
+    <input type="number" name="max_pages" value="{{ cfg.max_pages }}" min="1" step="1">
+    {{ field_err('max_pages') }}
 
-  <label>來源代號（source_id，可空）</label>
-  <input type="text" name="source_id" value="{{ cfg.source_id }}">
-  {{ field_err('source_id') }}
+    <label>下載延遲秒數（download_delay，禮貌爬取）</label>
+    <input type="text" name="download_delay" value="{{ cfg.download_delay }}">
+    {{ field_err('download_delay') }}
 
-  <h3 style="margin-top:1.5em">自動化</h3>
+    <label>並發上限（concurrency）</label>
+    <input type="text" name="concurrency" value="{{ cfg.concurrency }}">
+    {{ field_err('concurrency') }}
 
-  <label style="display:flex;align-items:center;gap:.5em;cursor:pointer">
-    <input type="checkbox" name="auto_pipeline"{% if cfg.auto_pipeline %} checked{% endif %}>
-    自動發布模式（爬取完自動建草稿 → 驗證 → 發布，不需手動確認）
-  </label>
-  <p class="hint" style="margin:.4em 0 0 1.6em">
-    啟用後每篇各獨立執行三個階段（建草稿 → 驗證 → 發布），任一失敗最多重試 3 次。
-    停用時爬取只上膛（建包），後續步驟須手動執行。
-  </p>
+    <label>來源代號（source_id，可空）</label>
+    <input type="text" name="source_id" value="{{ cfg.source_id }}">
+    {{ field_err('source_id') }}
 
+    {# ── Section: 自動化 ─────────────────────────────── #}
+    <h3 style="margin-top:1.5em;margin-bottom:.6em">自動化</h3>
+
+    <label style="display:flex;align-items:center;gap:.5em;cursor:pointer">
+      <input type="checkbox" name="auto_pipeline"{% if cfg.auto_pipeline %} checked{% endif %}>
+      自動發布模式（爬取完自動建草稿 → 驗證 → 發布，不需手動確認）
+    </label>
+    <p class="hint" style="margin:.4em 0 0 1.6em">
+      啟用後每篇各獨立執行三個階段（建草稿 → 驗證 → 發布），任一失敗最多重試 3 次。
+      停用時爬取只上膛（建包），後續步驟須手動執行。
+    </p>
+
+    {% if cfg.auto_pipeline %}
+    <div class="failure-box" style="margin-top:.75rem">
+      ⚠️ <strong>自動發布已啟用</strong>：爬取完成後將自動繞過審稿門，直接發布所有新稿件。<br>
+      執行自動發布期間請勿手動審閱稿件，以免發生衝突。
+    </div>
+    {% endif %}
+
+    <button type="submit" style="margin-top:1.25rem">儲存設定</button>
+  </form>
+</div>
+
+{# ── Section: 診斷 ───────────────────────────────────── #}
+<div class="card" style="margin-bottom:1.25rem">
+  <h2 style="margin-top:0">診斷</h2>
+  <table class="diag-table">
+    <tr><td>Config 路徑</td><td><code>{{ diag.config_path }}</code></td></tr>
+    <tr><td>State DB</td><td><code>{{ diag.state_path }}</code>{% if diag.state_exists %} ✓{% else %} <span class="hint">（尚未建立）</span>{% endif %}</td></tr>
+    <tr><td>Storage-state</td><td><code>{{ diag.storage_state }}</code>{% if diag.ss_exists %} ✓{% else %} <span class="hint">（尚未建立）</span>{% endif %}</td></tr>
+    <tr><td>Output 目錄</td><td><code>{{ diag.out_dir }}</code>{% if diag.out_exists %} ✓{% else %} <span class="hint">（尚未建立）</span>{% endif %}</td></tr>
+    <tr><td>版本</td><td><code>v{{ app_version }}</code></td></tr>
+  </table>
+</div>
+
+{# ── Section: 爬取並上膛 ─────────────────────────────── #}
+<div class="card">
+  <h2 style="margin-top:0">爬取並上膛</h2>
   {% if cfg.auto_pipeline %}
-  <div style="background:#fff3cd;border:1px solid #ffc107;border-radius:4px;padding:.75em 1em;margin-top:.5em;color:#856404">
-    ⚠️ <strong>自動發布已啟用</strong>：爬取完成後將自動繞過審稿門，直接發布所有新稿件。<br>
-    執行自動發布期間請勿手動審閱稿件，以免發生衝突。
-  </div>
+  <p class="hint">自動發布模式：按下後將自動執行「爬取 → 建草稿 → 驗證 → 發布」全流程。</p>
+  {% else %}
+  <p class="hint">輸入 URL 後按下方按鈕：背景跑「爬取 → 建包」，發布仍維持人工 CLI。</p>
   {% endif %}
-
-  <button type="submit">儲存設定</button>
-</form>
-
-<hr>
-<h2>診斷</h2>
-<table class="diag-table">
-  <tr><td>Config 路徑</td><td><code>{{ diag.config_path }}</code></td></tr>
-  <tr><td>State DB</td><td><code>{{ diag.state_path }}</code>{% if diag.state_exists %} ✓{% else %} <span class="hint">（尚未建立）</span>{% endif %}</td></tr>
-  <tr><td>Storage-state</td><td><code>{{ diag.storage_state }}</code>{% if diag.ss_exists %} ✓{% else %} <span class="hint">（尚未建立）</span>{% endif %}</td></tr>
-  <tr><td>Output 目錄</td><td><code>{{ diag.out_dir }}</code>{% if diag.out_exists %} ✓{% else %} <span class="hint">（尚未建立）</span>{% endif %}</td></tr>
-  <tr><td>版本</td><td><code>v{{ app_version }}</code></td></tr>
-</table>
-
-<hr>
-<h2>爬取並上膛</h2>
-{% if cfg.auto_pipeline %}
-<p class="hint">自動發布模式：按下後將自動執行「爬取 → 建草稿 → 驗證 → 發布」全流程。</p>
-{% else %}
-<p class="hint">輸入 URL 後按下方按鈕：背景跑「爬取 → 建包」，發布仍維持人工 CLI。</p>
-{% endif %}
-<button hx-post="/crawl" hx-target="#job" hx-swap="innerHTML"
-        hx-on::after-request="document.getElementById('job').scrollIntoView({behavior:'smooth'})">爬取最新並建包</button>
-<div id="job"></div>
+  <button hx-post="/crawl" hx-target="#job" hx-swap="innerHTML"
+          hx-on::after-request="document.getElementById('job').scrollIntoView({behavior:'smooth'})">爬取最新並建包</button>
+  <div id="job"></div>
+</div>
 {% endblock %}

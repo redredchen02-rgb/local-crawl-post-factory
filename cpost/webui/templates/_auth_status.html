@@ -1,8 +1,5 @@
-<span class="auth-light auth-{{ light.state }}"
-      style="display:inline-block;padding:.15rem .5rem;border-radius:4px;
-      {% if light.state == 'ok' %}background:#d6f5dd;color:#0a7d32
-      {% elif light.state == 'expired' %}background:#fbdcdc;color:#b00020
-      {% else %}background:#eee;color:#666{% endif %}">
+<span class="pill auth-light auth-{{ light.state }}
+  {%- if light.state == 'ok' %} ok{%- elif light.state == 'expired' %} error{%- endif %}">
   ● {{ light.label }}
 </span>
 {% if light.guidance %}
