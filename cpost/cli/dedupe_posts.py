@@ -17,13 +17,16 @@ expected "only published counts" behaviour, not a bug.
 """
 
 import argparse
+import sqlite3
+from collections.abc import Callable, Iterable, Iterator
 
 from cpost.core import cli, state
 from cpost.core.errors import ValidationError
 from cpost.core.io_ndjson import read_lines, write_line
 
 
-def dedupe(records, conn, on_skip=None):
+def dedupe(records: Iterable[dict], conn: sqlite3.Connection,
+           on_skip: Callable[[dict, str], None] | None = None) -> Iterator[dict]:
     """Yield records that are not already published in ``conn``.
 
     Read-only: never writes to state. When a record is dropped, ``on_skip`` (if
@@ -50,7 +53,7 @@ def dedupe(records, conn, on_skip=None):
 _dedupe = dedupe  # deprecated: remove in vNEXT (use dedupe)
 
 
-def _run(args) -> int:
+def _run(args: argparse.Namespace) -> int:
     with state.connect(args.state) as conn:
         for record in dedupe(read_lines(), conn):
             write_line(record)
