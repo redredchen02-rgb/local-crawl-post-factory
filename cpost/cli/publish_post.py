@@ -153,7 +153,7 @@ def _run(args: argparse.Namespace | BackendInvocation) -> int:
     return 0
 
 
-def _reserve_publishing(state_path, manifest) -> None:
+def _reserve_publishing(state_path: str | None, manifest: dict) -> None:
     """Write status='publishing' to the state row before the browser click (B1).
 
     On crash strictly between here and manifest.save('published'), the next re-entry
@@ -172,7 +172,7 @@ def _reserve_publishing(state_path, manifest) -> None:
                          now=mf.now_iso())
 
 
-def _state_is_publishing(state_path, manifest) -> bool:
+def _state_is_publishing(state_path: str | None, manifest: dict) -> bool:
     """True if the state row for this canonical_url is 'publishing' (B1 crash detection)."""
     if not state_path:
         return False
