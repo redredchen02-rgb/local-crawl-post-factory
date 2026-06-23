@@ -25,6 +25,7 @@ import re
 import sys
 import tempfile
 import time
+from collections.abc import AsyncIterator, Callable, Iterator
 from datetime import datetime, timezone
 from typing import Any
 
@@ -104,12 +105,13 @@ def _read_progress(progress_path: str) -> dict | None:
     """
     try:
         with open(progress_path, encoding="utf-8") as f:
-            return json.load(f)
+            data = json.load(f)
     except (OSError, json.JSONDecodeError):
         return None
+    return data if isinstance(data, dict) else None
 
 
-def _kill_child(proc, grace_sec: float = 2.0) -> None:
+def _kill_child(proc: "mp.process.BaseProcess", grace_sec: float = 2.0) -> None:
     """Stop a crawl child that overran its budget, leaving no orphan.
 
     Sends SIGTERM first, waits a short grace period, then SIGKILLs if the child
@@ -138,9 +140,9 @@ def _crawl_worker(opts: dict, out_path: str, status_path: str,
     snapshot (``{responses, items, last_url, last_title}``) atomically after
     each response so the parent can poll for real-time status.
     """
-    status: dict[str, int | str | None] = {"responses": 0, "items": 0, "error": None}
+    status: dict[str, Any] = {"responses": 0, "items": 0, "error": None}
 
-    def _write_progress():
+    def _write_progress() -> None:
         if not progress_path:
             return
         tmp = progress_path + ".tmp"
@@ -187,16 +189,16 @@ def _crawl_worker(opts: dict, out_path: str, status_path: str,
                 "LOG_ENABLED": True,
             }
 
-            async def start(self):
+            async def start(self) -> AsyncIterator[Any]:
                 from scrapy import Request
 
                 for u in start_urls:
                     yield Request(u, callback=self.parse, errback=self.on_error)
 
-            def on_error(self, failure):
+            def on_error(self, failure: Any) -> None:
                 status["error"] = repr(failure.value)
 
-            def parse(self, response):
+            def parse(self, response: Any) -> Iterator[Any]:
                 status["responses"] += 1
                 status["last_url"] = response.url
                 title = (response.css("title::text").get() or "").strip()
@@ -252,7 +254,7 @@ def _crawl_worker(opts: dict, out_path: str, status_path: str,
 
                     yield Request(nxt, callback=self.parse, errback=self.on_error)
 
-            def _extract(self, response):
+            def _extract(self, response: Any) -> dict:
                 title = (response.css("title::text").get() or "").strip()
                 if not title:
                     title = (response.css("h1::text").get() or "").strip()
@@ -276,15 +278,15 @@ def _crawl_worker(opts: dict, out_path: str, status_path: str,
                 # Sentinel for "the custom selector was syntactically invalid, so
                 # use the default" -- distinct from "valid selector matched nothing"
                 # (which keeps the empty custom result, preserving R6 semantics).
-                _INVALID = object()
+                _INVALID: Any = object()
 
-                def _css_get(selector: str):
+                def _css_get(selector: str) -> Any:
                     try:
                         return response.css(selector).get()
                     except Exception:  # noqa: BLE001 - invalid CSS -> fall back
                         return _INVALID
 
-                def _css_getall(selector: str):
+                def _css_getall(selector: str) -> Any:
                     try:
                         return response.css(selector).getall()
                     except Exception:  # noqa: BLE001 - invalid CSS -> fall back
@@ -359,11 +361,13 @@ def _crawl_worker(opts: dict, out_path: str, status_path: str,
         if "out_file" in dir() and out_file and not out_file.closed:
             out_file.flush()
             out_file.close()
-        with open(status_path, "w", encoding="utf-8") as fh:
+        status_tmp = status_path + ".tmp"
+        with open(status_tmp, "w", encoding="utf-8") as fh:
             json.dump(status, fh)
+        os.replace(status_tmp, status_path)
 
 
-def _run(args) -> int:
+def _run(args: argparse.Namespace) -> int:
     # Resolve start URLs.
     start_urls = list(args.urls or [])
     if args.stdin:
@@ -415,7 +419,8 @@ def _run(args) -> int:
     return 0
 
 
-def crawl_items(opts: dict, progress_cb=None, poll_sec: float = 0.5,
+def crawl_items(opts: dict, progress_cb: Callable[..., Any] | None = None,
+                poll_sec: float = 0.5,
                 max_runtime_sec: float | None = None) -> list:
     """Run the crawl in a fresh child process and return the items as a list.
 

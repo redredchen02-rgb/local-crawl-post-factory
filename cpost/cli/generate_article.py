@@ -33,6 +33,8 @@ empty/unknown cluster -> ValidationError (exit 2).
 import argparse
 import hashlib
 import re
+import sqlite3
+from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -105,8 +107,9 @@ def split_title_body(article: str, fallback_title: str) -> tuple[str, str]:
     return title, body
 
 
-def generate(conn, cluster_id: str, llm_cfg: dict, system_prompt: str, now: str,
-             *, _chat=llm.chat) -> PackageInput:
+def generate(conn: sqlite3.Connection, cluster_id: str, llm_cfg: dict,
+             system_prompt: str, now: str,
+             *, _chat: Callable[..., str] = llm.chat) -> PackageInput:
     """Synthesize one article for ``cluster_id``; return a ``PackageInput``."""
     if not _CLUSTER_ID_RE.fullmatch(cluster_id or ""):
         raise ValidationError(f"invalid cluster_id: {cluster_id!r}")
@@ -146,7 +149,7 @@ def generate(conn, cluster_id: str, llm_cfg: dict, system_prompt: str, now: str,
     return item
 
 
-def _run(args) -> int:
+def _run(args: argparse.Namespace) -> int:
     now = datetime.now(timezone.utc).isoformat()
     llm_cfg = llm.load_config(args.llm_config)
     system_prompt = Path(args.prompt).read_text(encoding="utf-8")

@@ -13,7 +13,7 @@ from cpost.core import cli
 from cpost.browser import auth
 
 
-def _parse(argv):
+def _parse(argv: list[str]) -> argparse.Namespace:
     p = argparse.ArgumentParser(prog="auth-login")
     p.add_argument("--login-url", required=True)
     p.add_argument("--storage-state", required=True)
@@ -25,7 +25,7 @@ def _parse(argv):
     return p.parse_args(argv)
 
 
-def _run(args) -> int:
+def _run(args: argparse.Namespace) -> int:
     path = auth.capture_login(
         login_url=args.login_url,
         storage_state=args.storage_state,
@@ -38,7 +38,7 @@ def _run(args) -> int:
     return 0
 
 
-def main(argv=None):
+def main(argv: list[str] | None = None) -> None:
     args = _parse(sys.argv[1:] if argv is None else argv)
     cli.main_wrapper(lambda: _run(args))
 

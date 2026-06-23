@@ -43,7 +43,7 @@ def summary(clusters: list[dict]) -> dict:
     }
 
 
-def _run(args) -> int:
+def _run(args: argparse.Namespace) -> int:
     cfg = scoring_config.load(args.config)
     now = datetime.now(timezone.utc).isoformat()
     with library.connect(args.state) as conn:
