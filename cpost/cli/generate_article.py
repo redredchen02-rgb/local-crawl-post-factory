@@ -43,7 +43,7 @@ from cpost.core.errors import ValidationError
 from cpost.core.io_ndjson import write_line
 from cpost.core.schema import PackageInput
 
-_PROMPT_VERSION = "scoop-v1"
+_PROMPT_VERSION = "scoop-v2"
 SCOOP_SOURCE_ID = "scoop"
 # Self-describing synthetic host for aggregated scoops. Must stay http(s)+hostname
 # (valid_url rejects custom schemes / hostless URLs). Content-derived cluster_id
@@ -87,7 +87,7 @@ def build_material(members: list[dict]) -> str:
     return header + "\n\n".join(blocks)
 
 
-def split_title_body(article: str, fallback_title: str) -> tuple[str, str]:
+def _split_title_body(article: str, fallback_title: str) -> tuple[str, str]:
     """First non-empty line = title; the rest = body. Fall back when unclear."""
     lines = article.strip().splitlines()
     title = ""
@@ -107,6 +107,33 @@ def split_title_body(article: str, fallback_title: str) -> tuple[str, str]:
     return title, body
 
 
+
+def parse_article(article: str, fallback_title: str) -> tuple[str, str, list[str]]:
+    """Split LLM output into (title, body, tags).
+
+    Scans from the end for a ``---`` separator whose next non-empty line matches
+    the tags label pattern. If found, strips it as the tags footer; otherwise treats
+    the whole article as body with empty tags.
+    """
+    parts = re.split(r"\n-{3,}\n", article)
+    tags: list[str] = []
+    article_part = article
+    tag_label_re = re.compile(r"^\u6807\u7b7e[::\uff1a]\s*.+")  # ^标签[:：]\s*.+
+    for i in range(len(parts) - 1, 0, -1):
+        candidate = parts[i]
+        first_nonempty = next(
+            (ln.strip() for ln in candidate.splitlines() if ln.strip()), ""
+        )
+        if tag_label_re.match(first_nonempty):
+            article_part = "\n---\n".join(parts[:i])
+            strip_re = re.compile(r"^\u6807\u7b7e[::\uff1a]\s*")  # ^标签[:：]\s*
+            raw = strip_re.sub("", first_nonempty)
+            tags = [t.strip() for t in re.split(r"[\uff0c,]", raw) if t.strip()][:5]
+            break
+    title, body = _split_title_body(article_part, fallback_title)
+    return title, body, tags
+
+
 def generate(conn: sqlite3.Connection, cluster_id: str, llm_cfg: dict,
              system_prompt: str, now: str,
              *, _chat: Callable[..., str] = llm.chat) -> PackageInput:
@@ -123,15 +150,19 @@ def generate(conn: sqlite3.Connection, cluster_id: str, llm_cfg: dict,
     cached = library.get_generation(conn, key)
     if cached:
         title, body = cached["title"], cached["body"]
+        tags: list[str] = cached.get("tags") or []
     else:
         article = _chat(llm_cfg, system_prompt, build_material(members))
-        title, body = split_title_body(article, cluster.get("representative_title") or "")
+        title, body, tags = parse_article(
+            article, cluster.get("representative_title") or ""
+        )
         if not body.strip():
             # LLM returned only a title or whitespace -> fail this scoop rather
             # than cache an empty article that build-manifest would reject.
             raise ValidationError("LLM 生成內容無正文")
         library.put_generation(conn, cache_key=key, cluster_id=cluster_id,
-                               title=title, body=body, model=model, now=now)
+                               title=title, body=body, model=model, now=now,
+                               tags=tags)
 
     published = cluster.get("latest_published") or cluster.get("earliest_published")
     item: PackageInput = {
@@ -145,6 +176,7 @@ def generate(conn: sqlite3.Connection, cluster_id: str, llm_cfg: dict,
         "url": cluster.get("representative_url"),
         "published_at": published,
         "discovered_at": now,
+        "tags": tags,
     }
     return item
 

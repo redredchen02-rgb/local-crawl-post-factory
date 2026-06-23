@@ -264,3 +264,103 @@ def test_cli_run_unknown_cluster_exit_2(tmp_path):
                           "llm_config": "./configs/llm.yaml",
                           "prompt": "./configs/scoop_prompt.zh.md"})()
     assert cli.run(lambda: generate_article._run(args)) == 2
+
+
+# --- Unit 4: tags parsing, cache round-trip, and end-to-end flow ---------------
+
+def test_tags_parsed_from_footer(tmp_path):
+    with library.connect(str(tmp_path / "s.sqlite")) as conn:
+        _seed_cluster(conn)
+        item = generate_article.generate(
+            conn, "c1", {"model": "m"}, "sp", "t",
+            _chat=lambda c, sp, uc: "人物A事件标题\n\n正文内容。\n---\n标签：人物A, 平台X, 内容类型Y")
+    assert item["tags"] == ["人物A", "平台X", "内容类型Y"]
+
+
+def test_tags_missing_footer_defaults_empty(tmp_path):
+    with library.connect(str(tmp_path / "s.sqlite")) as conn:
+        _seed_cluster(conn)
+        item = generate_article.generate(
+            conn, "c1", {"model": "m"}, "sp", "t",
+            _chat=lambda c, sp, uc: "标题行\n\n正文内容，没有标签行。")
+    assert item["tags"] == []
+
+
+def test_tags_cache_round_trip(tmp_path):
+    calls = {"n": 0}
+
+    def chat(c, sp, uc):
+        calls["n"] += 1
+        return "标题\n\n正文。\n---\n标签：A, B"
+
+    with library.connect(str(tmp_path / "s.sqlite")) as conn:
+        _seed_cluster(conn)
+        item1 = generate_article.generate(conn, "c1", {"model": "m"}, "sp", "t",
+                                          _chat=chat)
+        item2 = generate_article.generate(conn, "c1", {"model": "m"}, "sp", "t",
+                                          _chat=chat)
+    assert calls["n"] == 1
+    assert item1["tags"] == ["A", "B"]
+    assert item2["tags"] == ["A", "B"]
+
+
+def test_tags_empty_label_defaults_empty(tmp_path):
+    with library.connect(str(tmp_path / "s.sqlite")) as conn:
+        _seed_cluster(conn)
+        item = generate_article.generate(
+            conn, "c1", {"model": "m"}, "sp", "t",
+            _chat=lambda c, sp, uc: "标题\n\n正文。\n---\n标签：")
+    assert item["tags"] == []
+
+
+def test_body_intact_when_dash_rule_no_footer(tmp_path):
+    body_with_rule = "标题\n\n## 前言\n\n内容。\n---\n\n## 后记\n\n更多内容。"
+    with library.connect(str(tmp_path / "s.sqlite")) as conn:
+        _seed_cluster(conn)
+        item = generate_article.generate(
+            conn, "c1", {"model": "m"}, "sp", "t",
+            _chat=lambda c, sp, uc: body_with_rule)
+    assert item["tags"] == []
+    assert "后记" in item["caption"]
+
+
+def test_tags_trailing_comma_filtered(tmp_path):
+    with library.connect(str(tmp_path / "s.sqlite")) as conn:
+        _seed_cluster(conn)
+        item = generate_article.generate(
+            conn, "c1", {"model": "m"}, "sp", "t",
+            _chat=lambda c, sp, uc: "标题\n\n正文。\n---\n标签：A, , B,")
+    assert item["tags"] == ["A", "B"]
+
+
+def test_migration_legacy_row_tags_empty(tmp_path):
+    db_path = str(tmp_path / "s.sqlite")
+    import sqlite3 as _sqlite3
+    with _sqlite3.connect(db_path) as raw:
+        raw.execute(
+            "CREATE TABLE IF NOT EXISTS generations "
+            "(cache_key TEXT PRIMARY KEY, cluster_id TEXT, title TEXT NOT NULL, "
+            "body TEXT NOT NULL, model TEXT, created_at TEXT NOT NULL)"
+        )
+        raw.execute(
+            "INSERT INTO generations VALUES (?, ?, ?, ?, ?, ?)",
+            ("old_key", "c1", "旧标题", "旧正文", "m", "2026-01-01T00:00:00Z"),
+        )
+        raw.commit()
+    with library.connect(db_path) as conn:
+        result = library.get_generation(conn, "old_key")
+    assert result is not None
+    assert result["tags"] == []
+
+
+def test_tags_flow_to_manifest(tmp_path):
+    out_dir = str(tmp_path / "out")
+    log = str(tmp_path / "audit.jsonl")
+    with library.connect(str(tmp_path / "s.sqlite")) as conn:
+        _seed_cluster(conn)
+        item = generate_article.generate(
+            conn, "c1", {"model": "m"}, "sp", "t",
+            _chat=lambda c, sp, uc: "建包标题\n\n建包正文。\n---\n标签：人物A, 平台X")
+    manifest_path = build_manifest.build(item, out_dir, log)
+    manifest = json.loads(open(manifest_path, encoding="utf-8").read())
+    assert manifest["content"]["tags"] == ["人物A", "平台X"]

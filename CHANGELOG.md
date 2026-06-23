@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-06-23
+
+### Added
+- **Tags 輸出**：generate-article 新增 parse_article() 函數，從 LLM 輸出末尾的 ---/標籤：區塊解析標籤（上限 5 個）；標籤存入 generations.tags TEXT 欄（含 SQLite 遷移）並流入 PackageInput["tags"]。
+- **Prompt 升級至 scoop-v2**：configs/scoop_prompt.zh.md 完整八節規範；含 [IMAGE_N]/[VIDEO_N] 占位符與防重複規則。
+
 ## [0.3.0] - 2026-06-23
 
 ### Added

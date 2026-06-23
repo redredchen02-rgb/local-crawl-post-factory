@@ -9,6 +9,7 @@ first ``ingested_at``. ``cluster_id`` is written later by the clustering stage
 (plan U3); this module only declares the column.
 """
 
+import json
 import sqlite3
 from collections.abc import Generator
 from contextlib import contextmanager
@@ -52,14 +53,19 @@ CREATE TABLE IF NOT EXISTS generations (
   title       TEXT NOT NULL,
   body        TEXT NOT NULL,
   model       TEXT,
-  created_at  TEXT NOT NULL
+  created_at  TEXT NOT NULL,
+  tags        TEXT
 );
 """
+
+_MIGRATIONS = [
+    (1, "ALTER TABLE generations ADD COLUMN tags TEXT;"),  # ids must be monotonically increasing
+]
 
 
 @contextmanager
 def connect(path: str) -> Generator[sqlite3.Connection, None, None]:
-    with _db_connect(path, _SCHEMA) as conn:
+    with _db_connect(path, _SCHEMA, migrations=_MIGRATIONS) as conn:
         yield conn
 
 
@@ -206,24 +212,30 @@ def set_cluster_scores(conn: sqlite3.Connection, cluster_id: str, *,
 # changes the key, so stale fabricated content is never served for a changed scoop.
 
 def get_generation(conn: sqlite3.Connection, cache_key: str) -> dict | None:
-    """Return a cached generation (title/body) for ``cache_key``, or None."""
+    """Return a cached generation (title/body/tags) for ``cache_key``, or None."""
     conn.row_factory = sqlite3.Row
     row = conn.execute(
         "SELECT * FROM generations WHERE cache_key = ? LIMIT 1", (cache_key,)
     ).fetchone()
-    return dict(row) if row else None
+    if row is None:
+        return None
+    result = dict(row)
+    result["tags"] = json.loads(result.get("tags") or "[]")
+    return result
 
 
 def put_generation(conn: sqlite3.Connection, *, cache_key: str, cluster_id: str,
-                   title: str, body: str, model: str | None, now: str) -> None:
+                   title: str, body: str, model: str | None, now: str,
+                   tags: list[str] | None = None) -> None:
     """Insert or replace a cached generation."""
     conn.execute(
         """
-        INSERT INTO generations (cache_key, cluster_id, title, body, model, created_at)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO generations (cache_key, cluster_id, title, body, model, created_at, tags)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(cache_key) DO UPDATE SET
             title=excluded.title, body=excluded.body,
-            model=excluded.model, created_at=excluded.created_at
+            model=excluded.model, created_at=excluded.created_at,
+            tags=excluded.tags
         """,
-        (cache_key, cluster_id, title, body, model, now),
+        (cache_key, cluster_id, title, body, model, now, json.dumps(tags or [])),
     )
