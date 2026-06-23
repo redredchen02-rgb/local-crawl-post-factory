@@ -70,6 +70,7 @@ def _scan_packages(out_dir: str):
             "post_id": m.get("post_id", manifest_path.parent.name),
             "title": m.get("content", {}).get("title", ""),
             "status": m.get("backend", {}).get("status", "?"),
+            "source_id": m.get("source", {}).get("source_id") or "—",
             "broken": False,
         })
     _logger.debug(

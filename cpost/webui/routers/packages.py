@@ -62,6 +62,7 @@ def package_detail(request: Request, post_id: str):
         "post_id": post_id,
         "title": m.get("content", {}).get("title", ""),
         "status": m.get("backend", {}).get("status", "?"),
+        "source_id": m.get("source", {}).get("source_id") or "—",
         "canonical_url": m.get("source", {}).get("canonical_url", ""),
         "caption": caption,
         "failure": _read_failure(pkg),

@@ -17,6 +17,7 @@
   <tr><th>post_id</th>
     <td>{{ post_id }} <a href="/history?post_id={{ post_id }}" class="hint" style="font-size:.85rem">→ 運行歷史</a></td></tr>
   <tr><th>狀態</th><td><span class="pill {{ status }}">{{ status }}</span></td></tr>
+  <tr><th>來源 ID</th><td>{{ source_id }}</td></tr>
   <tr><th>來源</th><td><a href="{{ canonical_url }}" target="_blank" rel="noopener">{{ canonical_url }}</a></td></tr>
 </table>
 <p class="hint"><a href="/history?post_id={{ post_id }}">查看此貼文運行紀錄 →</a></p>
