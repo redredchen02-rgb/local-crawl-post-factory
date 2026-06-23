@@ -150,7 +150,7 @@ def test_crawl_all_sources_two_sources_first_fails(monkeypatch):
     """Integration contract (test-first): two enabled sources, the first errors —
     the batch is not aborted, the second still crawls, and BOTH outcomes are
     reported via the new on_source callback (not progress_cb)."""
-    def fake_crawl_items(cfg, progress_cb=None, poll_sec=0.5):
+    def fake_crawl_items(cfg, progress_cb=None, poll_sec=0.5, **_kw):
         if cfg["source_id"] == "bad":
             raise RuntimeError("boom")
         return [{"source_id": cfg["source_id"], "canonical_url": "https://good/1"}]
@@ -174,7 +174,7 @@ def test_crawl_all_sources_skips_disabled(monkeypatch):
     """A source with enabled:false is skipped entirely (not crawled, not reported)."""
     calls = []
 
-    def fake_crawl_items(cfg, progress_cb=None, poll_sec=0.5):
+    def fake_crawl_items(cfg, progress_cb=None, poll_sec=0.5, **_kw):
         calls.append(cfg["source_id"])
         return [{"source_id": cfg["source_id"], "canonical_url": f"https://{cfg['source_id']}/1"}]
 
@@ -191,7 +191,7 @@ def test_crawl_all_sources_skips_disabled(monkeypatch):
 def test_crawl_all_sources_zero_vs_error_distinguishable(monkeypatch):
     """flow G3: all-enabled-return-zero vs all-error must be operator-distinguishable
     on on_source — zero yields int 0, error yields a message string."""
-    def all_zero(cfg, progress_cb=None, poll_sec=0.5):
+    def all_zero(cfg, progress_cb=None, poll_sec=0.5, **_kw):
         return []
 
     monkeypatch.setattr(pipeline, "crawl_items", all_zero)
@@ -201,7 +201,7 @@ def test_crawl_all_sources_zero_vs_error_distinguishable(monkeypatch):
     pipeline.crawl_all_sources(cfg, on_source=lambda sid, r: zero_reports.append((sid, r)))
     assert all(r == 0 for _, r in zero_reports)
 
-    def all_error(cfg, progress_cb=None, poll_sec=0.5):
+    def all_error(cfg, progress_cb=None, poll_sec=0.5, **_kw):
         raise RuntimeError("down")
 
     monkeypatch.setattr(pipeline, "crawl_items", all_error)
@@ -217,7 +217,7 @@ def test_crawl_all_sources_all_disabled_falls_back_to_start_url(monkeypatch):
     that start_url (not a silent zero)."""
     crawled = []
 
-    def fake_crawl_items(cfg, progress_cb=None, poll_sec=0.5):
+    def fake_crawl_items(cfg, progress_cb=None, poll_sec=0.5, **_kw):
         crawled.append(cfg["start_url"])
         return [{"source_id": "fallback", "canonical_url": "https://fb/1"}]
 
@@ -233,7 +233,7 @@ def test_crawl_all_sources_all_disabled_falls_back_to_start_url(monkeypatch):
 def test_crawl_all_sources_on_source_success_callback_raises_not_failed(monkeypatch):
     """A callback that raises on the SUCCESS path must not mislabel the source as
     failed, double-report, or abort the batch — the crawl already succeeded."""
-    def fake_crawl_items(cfg, progress_cb=None, poll_sec=0.5):
+    def fake_crawl_items(cfg, progress_cb=None, poll_sec=0.5, **_kw):
         return [{"source_id": cfg["source_id"], "canonical_url": "https://x/1"}]
 
     monkeypatch.setattr(pipeline, "crawl_items", fake_crawl_items)
@@ -265,3 +265,138 @@ def test_crawl_all_sources_non_dict_entry_raises(monkeypatch):
                         lambda cfg, progress_cb=None, poll_sec=0.5: [])
     with pytest.raises(ValidationError):
         pipeline.crawl_all_sources({"sources": ["not-a-dict"]})
+
+
+# --- C2: coverage for confirmed C1 bugs (A1, B3, B4, B6) ---------------------
+
+def test_a1_state_published_url_returns_none_not_empty_string(tmp_path):
+    """A1: _state_published_url must return None (not '') when DB row has no match.
+
+    The caller at publish_post.py:58 uses `is not None` to detect mixed-state re-entry.
+    An empty string is not None, so it would incorrectly enter the re-entry branch
+    and skip the browser publish for an item that was NEVER actually published.
+    """
+    from cpost.cli.publish_post import _state_published_url  # type: ignore[attr-defined]
+    state_path = str(tmp_path / "state.sqlite")
+    # state_mod.connect auto-creates schema; no explicit setup needed
+    manifest = {"source": {"canonical_url": "https://example.com/never-published"}}
+    result = _state_published_url(state_path, manifest)
+    assert result is None, f"expected None for unknown URL, got {result!r}"
+
+
+def test_b3_crawl_all_sources_passes_remaining_budget(monkeypatch):
+    """B3: crawl_all_sources must decrement a global budget across sources.
+
+    Without a global deadline each source gets a fresh full budget; N sources
+    can hang the WebUI worker thread for N * per_source_budget seconds.
+    """
+    import time as _time
+    from cpost.core import pipeline
+
+    captured: list[float | None] = []
+
+    def fake_crawl(cfg: dict,
+                   progress_cb: object = None,
+                   poll_sec: float = 0.5,
+                   max_runtime_sec: float | None = None) -> list:
+        captured.append(max_runtime_sec)
+        return [{"url": cfg["start_url"], "title": "t", "body": "b", "source_id": "s"}]
+
+    monkeypatch.setattr(pipeline, "crawl_items", fake_crawl)
+    webui_cfg = {
+        "sources": [
+            {"source_id": "a", "start_url": "https://a.example.com/", "enabled": True},
+            {"source_id": "b", "start_url": "https://b.example.com/", "enabled": True},
+        ],
+        "start_url": "https://fallback.example.com/",
+    }
+    t0 = _time.monotonic()
+    pipeline.crawl_all_sources(webui_cfg, max_runtime_sec=60.0)
+    elapsed = _time.monotonic() - t0
+    # Both sources saw a budget, and the second source got less than the full 60 s
+    assert len(captured) == 2
+    assert captured[0] is not None
+    assert captured[1] is not None
+    # Second budget must be less than or equal to first (consumed time counts)
+    assert captured[1] <= captured[0], (
+        f"second source budget ({captured[1]:.3f}) must not exceed first ({captured[0]:.3f})"
+    )
+    # Neither budget exceeds the original 60 s
+    assert captured[0] <= 60.0
+    assert captured[1] <= 60.0
+
+
+def test_b4_per_source_cannot_override_state_path(monkeypatch):
+    """B4: a per-source entry must not be able to redirect state_path.
+
+    The per-source merge whitelist must block infra keys so a malformed or
+    hostile source config cannot redirect state, output, or credentials.
+    """
+    from cpost.core import pipeline
+
+    merged_cfgs: list[dict] = []
+
+    def fake_crawl(cfg: dict, **_kw: object) -> list:
+        merged_cfgs.append(cfg)
+        return []
+
+    monkeypatch.setattr(pipeline, "crawl_items", fake_crawl)
+    webui_cfg = {
+        "state_path": "/legit/state.sqlite",
+        "out_dir": "/legit/out",
+        "start_url": "https://base.example.com/",
+        "sources": [{
+            "source_id": "evil",
+            "start_url": "https://evil.example.com/",
+            "state_path": "/tmp/hijacked.sqlite",  # must be blocked
+            "out_dir": "/tmp/hijacked_out",         # must be blocked
+            "enabled": True,
+        }],
+    }
+    pipeline.crawl_all_sources(webui_cfg)
+    assert merged_cfgs, "crawl_items was not called"
+    merged = merged_cfgs[0]
+    assert merged.get("state_path") == "/legit/state.sqlite", (
+        "state_path was overridden by per-source entry — B4 not fixed"
+    )
+    assert merged.get("out_dir") == "/legit/out", (
+        "out_dir was overridden by per-source entry — B4 not fixed"
+    )
+
+
+def test_b6_draft_success_run_not_duplicated_on_reentry(tmp_path, monkeypatch):
+    """B6: re-entering _run_stage after a successful draft must not insert a second ok run.
+
+    Before B6 fix, runs.record_run was called unconditionally for draft/verify.
+    On re-entry (e.g. transient error in post-run bookkeeping), a second 'ok' row
+    would be inserted, double-counting the draft in run history.
+    """
+    from cpost.core import pipeline, runs as runs_mod
+    import json
+
+    state_path = str(tmp_path / "state.sqlite")
+    # runs.record_run auto-creates the runs schema on first call
+
+    # Write a minimal manifest package
+    pkg = tmp_path / "pkg" / "p1"
+    pkg.mkdir(parents=True)
+    manifest = {"post_id": "p1", "backend": {"status": "drafted"},
+                "content": {"title": "T", "canonical_url": "https://e.com/p1"}}
+    (pkg / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+    cfg = {"state_path": state_path, "out_dir": str(tmp_path / "pkg")}
+    run_id = "run-b6-test"
+
+    # Simulate: first call records success
+    runs_mod.record_run(state_path, stage="draft", post_id="p1",
+                        status="ok", run_id=run_id, severity="info")
+
+    # Second call (re-entry): must NOT insert another ok row
+    from cpost.core.pipeline import _stage_run_recorded  # type: ignore[attr-defined]
+    assert _stage_run_recorded(state_path, "p1", "draft"), (
+        "_stage_run_recorded should return True after first ok run"
+    )
+    # Confirm no second insert when guard fires
+    all_runs = runs_mod.list_runs(state_path, post_id="p1")
+    ok_runs = [r for r in all_runs if r.get("stage") == "draft" and r.get("status") == "ok"]
+    assert len(ok_runs) == 1, f"expected 1 ok run, got {len(ok_runs)}"

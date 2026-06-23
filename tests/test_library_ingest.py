@@ -242,7 +242,7 @@ def test_integration_downstream_never_sees_unpersisted_records(tmp_path, monkeyp
 def test_crawl_all_sources_combines(monkeypatch):
     calls = []
 
-    def fake_crawl_items(cfg, progress_cb=None, poll_sec=0.5):
+    def fake_crawl_items(cfg, progress_cb=None, poll_sec=0.5, **_kw):
         calls.append(cfg["source_id"])
         return [{"source_id": cfg["source_id"], "canonical_url": f"https://{cfg['source_id']}/1"}]
 
@@ -259,7 +259,7 @@ def test_crawl_all_sources_combines(monkeypatch):
 def test_crawl_all_sources_one_failure_does_not_abort(monkeypatch):
     reports = []
 
-    def fake_crawl_items(cfg, progress_cb=None, poll_sec=0.5):
+    def fake_crawl_items(cfg, progress_cb=None, poll_sec=0.5, **_kw):
         if cfg["source_id"] == "bad":
             raise RuntimeError("boom")
         return [{"source_id": cfg["source_id"], "canonical_url": "https://good/1"}]
@@ -278,7 +278,7 @@ def test_crawl_all_sources_one_failure_does_not_abort(monkeypatch):
 
 
 def test_crawl_all_sources_falls_back_to_single(monkeypatch):
-    def fake_crawl_items(cfg, progress_cb=None, poll_sec=0.5):
+    def fake_crawl_items(cfg, progress_cb=None, poll_sec=0.5, **_kw):
         assert cfg["start_url"] == "https://single"
         return [{"canonical_url": "https://single/1"}]
 
