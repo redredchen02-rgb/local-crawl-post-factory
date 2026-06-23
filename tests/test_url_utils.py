@@ -1,5 +1,30 @@
 from cpost.core import url_utils
+from cpost.core.url_utils import make_source_id
 
+
+# ---------------------------------------------------------------------------
+# make_source_id
+# ---------------------------------------------------------------------------
+
+def test_make_source_id_basic():
+    assert make_source_id("example.com") == "example-com"
+
+
+def test_make_source_id_max_64_chars():
+    assert len(make_source_id("a" * 100 + ".com")) <= 64
+
+
+def test_make_source_id_special_chars_replaced():
+    assert make_source_id("hello_world.org") == "hello-world-org"
+
+
+def test_make_source_id_uppercase_lowercased():
+    assert make_source_id("EXAMPLE.COM") == "example-com"
+
+
+# ---------------------------------------------------------------------------
+# normalize_url
+# ---------------------------------------------------------------------------
 
 def test_normalize_url_ipv6_with_port_keeps_brackets():
     assert (

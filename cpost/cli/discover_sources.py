@@ -11,7 +11,6 @@
 """
 
 import argparse
-import re
 import sys
 import time
 from html.parser import HTMLParser
@@ -22,20 +21,13 @@ from urllib.request import Request, urlopen
 import yaml
 
 from cpost.core import site_roster
-from cpost.core.url_utils import host_of
+from cpost.core.url_utils import host_of, make_source_id
 from cpost.core.validators import is_safe_external_host
 
 # 友鏈頁常見路徑
 _FRIEND_PATHS = ["/links/", "/friends/", "/tuijian/", "/link.html"]
 
 _UA = "Mozilla/5.0 (compatible; cpost-discover/0.1)"
-
-# source_id 推導：只保留 a-z 0-9 -
-_SOURCE_ID_RE = re.compile(r"[^a-z0-9-]")
-
-
-def _make_source_id(domain: str) -> str:
-    return _SOURCE_ID_RE.sub("-", domain.lower())[:64]
 
 
 # ---------------------------------------------------------------------------
@@ -116,6 +108,13 @@ def _load_yaml_sources(path: str) -> dict[str, object]:
 def _yaml_domains(data: dict[str, object]) -> set[str]:
     """從 YAML 中收集所有已知的 hostname（種子站自己的域名）。"""
     domains: set[str] = set()
+    # 頂層 start_url（webui.yaml 兩段式架構的主來源）
+    top_url = data.get("start_url", "")
+    if isinstance(top_url, str) and top_url:
+        h = host_of(top_url)
+        if h:
+            domains.add(h)
+    # sources: 清單
     sources = data.get("sources", [])
     if not isinstance(sources, list):
         return domains
@@ -166,10 +165,34 @@ def discover(
     if not isinstance(sources, list):
         sources = []
 
+    # Build seeds: prepend top-level start_url as first seed, dedup by host
+    top_url = str(data.get("start_url", "") or "")
+    top_sid = str(data.get("source_id", "") or "")
+    seeds: list[dict] = []
+    seen_hosts: set[str] = set()
+    if top_url:
+        top_host = host_of(top_url)
+        if top_host:
+            seeds.append({"start_url": top_url, "source_id": top_sid})
+            seen_hosts.add(top_host)
+    for src in sources:
+        if not isinstance(src, dict):
+            continue
+        src_url = src.get("start_url", "")
+        if not isinstance(src_url, str) or not src_url:
+            continue
+        src_host = host_of(src_url)
+        if src_host and src_host not in seen_hosts:
+            seeds.append(src)
+            seen_hosts.add(src_host)
+
+    if not seeds:
+        _log("[WARN] no seeds found in YAML (neither top-level start_url nor sources list)", stderr)
+
     total_added: list[str] = []
     total_count = 0
 
-    for src in sources:
+    for src in seeds:
         if not isinstance(src, dict):
             continue
         seed_url = src.get("start_url", "")
@@ -231,7 +254,7 @@ def discover(
                         roster_path,
                         cand_host,
                         start_url=f"https://{cand_host}/",
-                        source_id=_make_source_id(cand_host),
+                        source_id=make_source_id(cand_host),
                         tier=site_roster.CANDIDATE,
                     )
 
