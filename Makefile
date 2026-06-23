@@ -1,4 +1,4 @@
-.PHONY: install install-browser install-webui test test-fast test-slow test-full lint typecheck cov demo webui vendor-htmx clean
+.PHONY: install install-browser install-webui test test-fast test-slow test-full lint typecheck cov demo webui vendor-htmx clean build lock
 
 install:
 	python3 -m pip install -e '.[dev]'
@@ -40,6 +40,12 @@ cov:
 demo:
 	bash scripts/demo.sh
 
+build:
+	python3 -m build
+
+lock:
+	uv pip compile pyproject.toml --generate-hashes --output-file requirements.lock
+
 clean:
 	find . -name __pycache__ -type d -exec rm -rf {} + 2>/dev/null || true
-	rm -rf .pytest_cache out/demo state/demo.sqlite
+	rm -rf .pytest_cache out/demo state/demo.sqlite dist/ build/ *.egg-info

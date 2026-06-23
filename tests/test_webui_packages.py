@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
+import cpost
 from cpost.webui.app import create_app
 from cpost.webui.routers import packages as packages_router
 from cpost.core import webui_config
@@ -379,7 +380,7 @@ def test_footer_shows_version(tmp_path):
     webui_config.save(str(cfgp), {"start_url": "https://example.com"})
     client = TestClient(create_app(str(cfgp)))
     r = client.get("/settings")
-    assert "local-crawl-post-factory v" in r.text
+    assert f"{cpost.__dist_name__} v" in r.text
 
 
 def test_detail_shows_history_link(tmp_path):

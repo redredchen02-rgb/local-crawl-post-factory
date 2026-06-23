@@ -146,6 +146,36 @@ make webui              # 啟動 → http://127.0.0.1:8000
 完整的可跑範例（cron 多來源匯整 + 建草稿、退出碼處理、登入態到期、人工發布、opt-in 自動發布）見 [`examples/scheduling.md`](examples/scheduling.md)。所有命令都是上面 `[project.scripts]` 裝出的 console script（`pip install -e .` 後即可用）。
 預設排程仍建議停在建草稿或驗證；若要排程觸發自動發布，必須先明確開啟 `auto_pipeline`，並接受它會預先滿足審核門的風險。
 
+## 私有安裝（D2）
+
+本套件為**專有授權**，不發布至 PyPI。三種私有交付方式：
+
+### 方式 A：wheel（推薦，可重現）
+
+```bash
+# 1. 在開發機 build
+make build          # 產出 dist/local_crawl_post_factory-0.3.0-py3-none-any.whl
+
+# 2. 以鎖定依賴安裝（需先 make lock 生成 requirements.lock）
+pip install --require-hashes -r requirements.lock
+pip install dist/local_crawl_post_factory-0.3.0-py3-none-any.whl --no-deps
+```
+
+### 方式 B：git+ssh 釘 SHA（不經 build 步驟）
+
+```bash
+# 必須釘 40-char commit SHA，禁止釘 branch/tag（不可重現）
+pip install "git+ssh://git@github.com/<你>/cpost@<40-char-SHA>#egg=local-crawl-post-factory"
+```
+
+### 方式 C：本地 editable install
+
+```bash
+pip install -e '.[dev]'   # 開發用
+```
+
+---
+
 ## 設計與計畫
 
 - 需求：`docs/brainstorms/2026-06-15-local-crawl-post-factory-requirements.md`
