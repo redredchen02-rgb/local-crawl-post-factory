@@ -12,7 +12,6 @@
 
 import argparse
 import re
-import socket
 import sys
 import time
 from html.parser import HTMLParser

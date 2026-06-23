@@ -219,7 +219,7 @@ def _apply_tier_transition(
             action = f"失敗（fail_count={fail_count}）"
             if fail_count >= _FAIL_THRESHOLD:
                 new_tier = site_roster.FAILED
-                action += f" → FAILED"
+                action += " → FAILED"
                 if not dry_run:
                     site_roster.set_tier(roster_path, domain, new_tier)
 
@@ -227,7 +227,7 @@ def _apply_tier_transition(
         if passed:
             monitored_ok_count += 1
             new_tier = site_roster.ACTIVE
-            action = f"monitored → ACTIVE（1 次通過）"
+            action = "monitored → ACTIVE（1 次通過）"
             fail_count = 0
             if not dry_run:
                 site_roster.set_tier(roster_path, domain, new_tier)
@@ -236,7 +236,7 @@ def _apply_tier_transition(
             action = f"失敗（fail_count={fail_count}）"
             if fail_count >= _FAIL_THRESHOLD:
                 new_tier = site_roster.FAILED
-                action += f" → FAILED"
+                action += " → FAILED"
                 if not dry_run:
                     site_roster.set_tier(roster_path, domain, new_tier)
 
@@ -246,7 +246,7 @@ def _apply_tier_transition(
             action = f"失敗（fail_count={fail_count}）"
             if fail_count >= _FAIL_THRESHOLD:
                 new_tier = site_roster.INACTIVE
-                action += f" → INACTIVE"
+                action += " → INACTIVE"
                 if not dry_run:
                     site_roster.set_tier(roster_path, domain, new_tier)
         else:
