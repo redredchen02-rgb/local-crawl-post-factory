@@ -247,7 +247,7 @@ flowchart TB
 
 ### Phase 2 — C 穩定性回歸審計（在新增行為前，先驗清現有改動面）
 
-- [ ] **C1：多代理對抗式審計 #34–#37 改動面 + 修確認項**
+- [x] **C1：多代理對抗式審計 #34–#37 改動面 + 修確認項**
 
 **Goal:** 用對抗式審查驗證多源/重構/U4-U20 面，修掉確認的真 bug，明確區分真 bug 與已記錄殘留。
 **Requirements:** R3
@@ -268,7 +268,7 @@ flowchart TB
 - Integration：`BackendInvocation` 作 draft/verify/publish 三 runner drop-in，每屬性（dry_run/approve/expected_content_id/retries/headless/timeout_ms）皆讀得到且 expected_content_id 只 gate publish。
 **Verification:** 每確認 bug 有修 + 回歸測試；已記錄殘留明文標注未動；全測綠 + mypy/ruff 綠。
 
-- [ ] **C2：薄覆蓋面補測**
+- [x] **C2：薄覆蓋面補測**
 
 **Goal:** 把偵察列出的 7 處薄覆蓋補上回歸/整合測試，讓「穩重」可量測。
 **Requirements:** R3
@@ -285,7 +285,7 @@ flowchart TB
 
 ### Phase 3 — B 延後硬化
 
-- [ ] **B2：原子寫補完 + 寫入順序/第三存儲一致性**
+- [x] **B2：原子寫補完 + 寫入順序/第三存儲一致性**
 
 **Goal:** crash/ENOSPC 不能截斷 `configs/webui.yaml`、`edit_package` 的 manifest/caption、或 crawl 終態 status；且 `edit_package` 的**三存儲**（caption.txt / manifest.json / state.reviewed）保持一致，發布閘綁定的是真正落地的內容。
 **Requirements:** R6
@@ -309,7 +309,7 @@ flowchart TB
 - Happy path：正常 save/edit/crawl round-trip 經 `load`/`load_raw` 不變。
 **Verification:** 失敗寫後無可觀察截斷 config/manifest/status；edit 三存儲一致、reviewed 綁定落地內容；portability guard 不退。
 
-- [ ] **B3：WebUI 來源 CRUD（R3b）**
+- [x] **B3：WebUI 來源 CRUD（R3b）**
 
 **Goal:** 操作者可從 WebUI 新增/編輯/刪除/啟用停用來源，不必手改 YAML。
 **Requirements:** R5
@@ -336,7 +336,7 @@ flowchart TB
 - Security/portability：CRUD 後 `webui.yaml` 無絕對路徑（portability guard 綠）。
 **Verification:** 加來源 = 零改碼 WebUI 操作；`_validate_sources` 不變量全經 `save` 把關；唯讀斷言已反轉、回歸守門全保綠；portability 不退。
 
-- [ ] **B1：發布冪等 pre-publish 狀態預留（+ 狀態機收口、清除路徑、可選 backend 探測）**
+- [x] **B1：發布冪等 pre-publish 狀態預留（+ 狀態機收口、清除路徑、可選 backend 探測）**
 
 **Goal:** 收窄 U4 殘留重複發布視窗到「預留列**原子**寫入前」的純 local 寫；crash 後最壞為「停下要操作者確認」而非靜默重複 live；且**不引入新死鎖**——預留可清除、去重看得見、可回滾。
 **Requirements:** R4
@@ -384,7 +384,7 @@ flowchart TB
 - Regression：乾淨 publish 恰一 `ok` run 列（U9 不退）；`_retry` 對 draft/verify/publish 行為不變。
 **Verification:** 殘留視窗收窄到預留原子寫前；無路徑使 live 文被靜默重複或卡死（預留可清/可回滾/去重看得見）；`ok` run 列恆單一；rollback 後 state 與 manifest 一致。
 
-- [ ] **B4：多來源 cron 範本端到端驗證 + 心智模型明文化**
+- [x] **B4：多來源 cron 範本端到端驗證 + 心智模型明文化**
 
 **Goal:** `examples/scheduling.md` 的多源 cron 範本實證跑通；CLI 與 WebUI 來源讀取的分裂明文化，避免操作者誤解。
 **Requirements:** R7
@@ -400,7 +400,7 @@ flowchart TB
 
 ### Phase 4 — D 對外發佈就緒（私有、可重現、防誤傳；非公開 PyPI）
 
-- [ ] **D1：打包元資料 + 防誤傳守門 + 版本/dist 字串集中**
+- [x] **D1：打包元資料 + 防誤傳守門 + 版本/dist 字串集中**
 
 **Goal:** 不可能誤傳專有碼到公開 PyPI；版本與 dist-name 字串單一來源。
 **Requirements:** R8
@@ -419,7 +419,7 @@ flowchart TB
 - Regression：`test_webui_packages.py` footer 斷言改讀集中常數後綠。
 **Verification:** metadata 帶防誤傳 classifier；dist/版本字串各只一處。
 
-- [ ] **D2：私有可重現交付（build + hashed lockfile + Makefile 目標）**
+- [x] **D2：私有可重現交付（build + hashed lockfile + Makefile 目標）**
 
 **Goal:** 能以可重現、可審計方式私有安裝/部署，不碰公開索引。
 **Requirements:** R8
