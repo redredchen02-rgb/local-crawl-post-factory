@@ -28,9 +28,24 @@ from cpost.cli import (
 )
 
 
+_PER_SOURCE_OVERRIDE_KEYS: frozenset[str] = frozenset({
+    # Crawl-tuning keys a per-source entry may legitimately override.
+    # Infra keys (state_path, out_dir, storage_state, audit_log, etc.)
+    # are intentionally absent: a malformed or hostile per-source entry
+    # must not redirect state, output, or credentials (B4).
+    "source_id", "start_url",
+    "item_regex", "deny_regex",
+    "limit", "max_pages",
+    "download_delay", "concurrency",
+    "body_selector", "image_selector", "date_selector",
+    "min_text_chars", "max_text_chars",
+})
+
+
 def crawl_items(webui_cfg: dict,
                 progress_cb: Callable[[str], object] | None = None,
-                poll_sec: float = 0.5) -> list[dict]:
+                poll_sec: float = 0.5,
+                max_runtime_sec: float | None = None) -> list[dict]:
     """Crawl the configured start_url and return raw crawled items.
 
     When *progress_cb* is given, the subprocess crawl calls it during
@@ -61,7 +76,8 @@ def crawl_items(webui_cfg: dict,
         "date_selector": webui_cfg.get("date_selector", ""),
         "start_urls": [webui_cfg["start_url"]],
     })
-    return crawl_posts.crawl_items(opts, progress_cb=progress_cb, poll_sec=poll_sec)
+    return crawl_posts.crawl_items(opts, progress_cb=progress_cb, poll_sec=poll_sec,
+                                   max_runtime_sec=max_runtime_sec)
 
 
 def enabled_sources(webui_cfg: dict) -> list[dict]:
@@ -95,10 +111,21 @@ def _safe_cb(cb: Callable[..., object] | None, *args: object) -> None:
         pass
 
 
+def _stage_run_recorded(state_path: str | None, post_id: str, stage: str) -> bool:
+    """True if an ok run for (post_id, stage) already exists (B6 re-entry guard)."""
+    if not state_path:
+        return False
+    return any(
+        r.get("stage") == stage and r.get("status") == "ok"
+        for r in runs.list_runs(state_path, post_id=post_id)
+    )
+
+
 def crawl_all_sources(webui_cfg: dict,
                       progress_cb: Callable[[str], object] | None = None,
                       poll_sec: float = 0.5,
-                      on_source: Callable[[str, object], object] | None = None) -> list[dict]:
+                      on_source: Callable[[str, object], object] | None = None,
+                      max_runtime_sec: float | None = None) -> list[dict]:
     """Crawl every enabled source and return the combined raw items.
 
     Reads ``webui_cfg["sources"]`` -- a list of per-source dicts that override
@@ -119,12 +146,17 @@ def crawl_all_sources(webui_cfg: dict,
     if not enabled:
         return crawl_items(webui_cfg, progress_cb=progress_cb, poll_sec=poll_sec)
 
+    import time as _time
+    deadline = (_time.monotonic() + max_runtime_sec) if max_runtime_sec is not None else None
     combined: list[dict] = []
     for src in enabled:
-        merged = {**webui_cfg, **src}
+        override = {k: v for k, v in src.items() if k in _PER_SOURCE_OVERRIDE_KEYS}
+        merged = {**webui_cfg, **override}
         label = src.get("source_id") or src.get("start_url") or "?"
+        remaining = max(1.0, deadline - _time.monotonic()) if deadline is not None else None
         try:
-            items = crawl_items(merged, progress_cb=progress_cb, poll_sec=poll_sec)
+            items = crawl_items(merged, progress_cb=progress_cb, poll_sec=poll_sec,
+                                max_runtime_sec=remaining)
             combined.extend(items)
         except Exception as exc:  # noqa: BLE001 - one bad source must not abort the batch
             # on_source is called OUTSIDE the crawl's try below; only the crawl
@@ -351,8 +383,9 @@ def run_auto_pipeline(
                 # here too would double-count the publish (U9). Mirror webui
                 # submit_job's publish exemption; draft/verify are recorded here.
                 if stage != "publish":
-                    runs.record_run(cfg["state_path"], stage=stage, post_id=pid,
-                                    status="ok", run_id=run_id, severity="info")
+                    if not _stage_run_recorded(cfg.get("state_path"), pid, stage):
+                        runs.record_run(cfg["state_path"], stage=stage, post_id=pid,
+                                        status="ok", run_id=run_id, severity="info")
             else:
                 _note_expiry(err)
                 failed.append({"post_id": pid, "stage": stage, "error": str(err)})
