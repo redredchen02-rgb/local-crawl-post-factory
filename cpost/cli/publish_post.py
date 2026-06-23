@@ -157,7 +157,7 @@ def _state_published_url(state_path, manifest) -> str | None:
             (canonical_url,),
         )
         row = cur.fetchone()
-    return row[0] if row and row[0] else ""
+    return row[0] if (row and row[0]) else None
 
 
 def _publish_run_recorded(state_path, post_id) -> bool:

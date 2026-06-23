@@ -78,7 +78,7 @@ def test_crawl_current_updates(tmp_path, monkeypatch):
         "audit_log": str(tmp_path / "audit.jsonl"),
     })
 
-    def fake_crawl(cfg, progress_cb=None, poll_sec=0.5):
+    def fake_crawl(cfg, progress_cb=None, poll_sec=0.5, **_kw):
         if progress_cb:
             progress_cb({"responses": 3, "items": 2, "last_url": "https://ex.com/a",
                          "last_title": "標題甲"})
@@ -171,7 +171,7 @@ def test_crawl_two_sources_both_ingest(tmp_path, monkeypatch):
         "audit_log": str(tmp_path / "audit.jsonl"),
     })
 
-    def fake_crawl(cfg, progress_cb=None, poll_sec=0.5):
+    def fake_crawl(cfg, progress_cb=None, poll_sec=0.5, **_kw):
         sid = cfg["source_id"]
         return [{"source_id": sid, "url": f"https://{sid}/1",
                  "canonical_url": f"https://{sid}/1", "title": f"標題 {sid}",
@@ -212,7 +212,7 @@ def test_crawl_disabled_source_skipped(tmp_path, monkeypatch):
 
     crawled = []
 
-    def fake_crawl(cfg, progress_cb=None, poll_sec=0.5):
+    def fake_crawl(cfg, progress_cb=None, poll_sec=0.5, **_kw):
         sid = cfg["source_id"]
         crawled.append(sid)
         return [{"source_id": sid, "url": f"https://{sid}/1",
@@ -250,7 +250,7 @@ def test_crawl_source_failure_does_not_crash_crawl_cb(tmp_path, monkeypatch):
         "audit_log": str(tmp_path / "audit.jsonl"),
     })
 
-    def fake_crawl(cfg, progress_cb=None, poll_sec=0.5):
+    def fake_crawl(cfg, progress_cb=None, poll_sec=0.5, **_kw):
         sid = cfg["source_id"]
         if sid == "boom":
             raise RuntimeError("kaboom")
