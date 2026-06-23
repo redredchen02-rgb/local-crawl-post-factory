@@ -326,7 +326,11 @@ def run(
         logger.info("評估站點：%s（tier=%s）", domain, current_tier)
 
         assessment = _assess_site(site, library_urls, threshold)
-        transition_msg = _apply_tier_transition(site, assessment, roster_path, dry_run)
+        try:
+            transition_msg = _apply_tier_transition(site, assessment, roster_path, dry_run)
+        except Exception as exc:  # noqa: BLE001 - 單站 DB 寫入失敗不中斷其他站
+            logger.error("站點 %r tier 轉換失敗：%s", domain, exc)
+            transition_msg = f"[{domain}] tier 轉換失敗：{exc}"
 
         print(transition_msg)
 

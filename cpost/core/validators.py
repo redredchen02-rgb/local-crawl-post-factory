@@ -39,8 +39,8 @@ def is_safe_external_host(hostname: str) -> bool:
     try:
         ip_str = socket.gethostbyname(hostname)
         addr = ipaddress.ip_address(ip_str)
-    except (socket.gaierror, ValueError):
-        # 無法解析 → 視為不安全
+    except (socket.gaierror, socket.timeout, ValueError):
+        # 無法解析或逾時 → 視為不安全
         return False
     # is_private covers RFC-1918, loopback, link-local, and reserved ranges
     return not addr.is_private
