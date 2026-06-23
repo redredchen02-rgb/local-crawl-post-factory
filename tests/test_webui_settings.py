@@ -240,7 +240,6 @@ def test_sources_toggle_stores_explicit_false_not_omitted(tmp_path):
 
 def test_sources_edit_preserves_unknown_keys(tmp_path):
     """Editing a source must not drop unknown per-source keys (in-place update)."""
-    import yaml
     from cpost.core import webui_config as wc
     cfgp = tmp_path / "webui.yaml"
     # Write a source with an extra key directly (bypass save() which strips unknowns at cfg level)

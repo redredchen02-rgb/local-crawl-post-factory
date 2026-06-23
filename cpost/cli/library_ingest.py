@@ -65,7 +65,7 @@ def ingest(records: Iterable[dict], conn: sqlite3.Connection,
         yield record
 
 
-def _run(args) -> int:
+def _run(args: argparse.Namespace) -> int:
     now = datetime.now(timezone.utc).isoformat()
     # Buffer every passed-through record and flush to stdout ONLY after the
     # library transaction commits. db.connect commits at the end of the `with`

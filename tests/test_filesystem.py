@@ -187,3 +187,48 @@ def test_manifest_save_load_across_lifecycle(tmp_path):
     assert final["backend"]["published_url"] == "https://x.com/p/1"
     # confirm it is real JSON on disk
     assert json.loads(p.read_text(encoding="utf-8"))["post_id"] == "p1"
+
+
+# --- webui_config.save atomic write invariants (B2) --------------------------
+
+def test_webui_config_save_atomic_temp_same_parent(tmp_path, monkeypatch):
+    """temp file is created in dest.parent (same filesystem, no cross-device)."""
+    from cpost.core import webui_config, filesystem as fs_mod
+
+    seen_temps: list[str] = []
+    real_replace = os.replace
+
+    def spy_replace(src, dst):
+        seen_temps.append(src)
+        real_replace(src, dst)
+
+    # patch inside the filesystem module (where atomic_write_text lives)
+    monkeypatch.setattr(fs_mod.os, "replace", spy_replace)
+    p = str(tmp_path / "webui.yaml")
+    webui_config.save(p, {"start_url": "https://example.com/news"})
+
+    assert seen_temps, "os.replace was not called"
+    for tmp in seen_temps:
+        assert os.path.dirname(os.path.abspath(tmp)) == str(tmp_path), (
+            f"temp {tmp!r} not in dest.parent {tmp_path}"
+        )
+
+
+def test_webui_config_save_atomic_old_intact_on_replace_failure(tmp_path, monkeypatch):
+    """If os.replace raises on the config write, the original file is intact."""
+    from cpost.core import webui_config, filesystem as fs_mod
+
+    p = tmp_path / "webui.yaml"
+    webui_config.save(str(p), {"start_url": "https://example.com/news", "limit": 5})
+    old_text = p.read_text(encoding="utf-8")
+
+    def always_fail(src, dst):
+        raise OSError("simulated ENOSPC")
+
+    # patch inside the filesystem module
+    monkeypatch.setattr(fs_mod.os, "replace", always_fail)
+    with pytest.raises(OSError, match="simulated"):
+        webui_config.save(str(p), {"start_url": "https://example.com/news", "limit": 99})
+
+    # original content must be intact (old-or-new, never truncated)
+    assert p.read_text(encoding="utf-8") == old_text

@@ -13,6 +13,7 @@ import sys
 from pathlib import Path
 
 from cpost.core import cli, manifest as mf, audit, state as state_mod, runs, reviewed
+from cpost.core.backend_args import BackendInvocation
 from cpost.core.errors import ExternalError, ValidationError
 from cpost.core.url_utils import title_hash
 from cpost.browser.selector_recipe import load_backend
@@ -21,7 +22,7 @@ from cpost.browser import backend_driver
 LOG_PATH = "./logs/audit.jsonl"
 
 
-def _parse(argv):
+def _parse(argv: list[str]) -> argparse.Namespace:
     p = argparse.ArgumentParser(prog="publish-post")
     p.add_argument("--manifest", required=True)
     p.add_argument("--backend", required=True)
@@ -34,7 +35,7 @@ def _parse(argv):
     return p.parse_args(argv)
 
 
-def _run(args) -> int:
+def _run(args: argparse.Namespace | BackendInvocation) -> int:
     manifest = mf.load(args.manifest)
     cfg = load_backend(args.backend)
 
@@ -182,7 +183,7 @@ def _state_is_publishing(state_path, manifest) -> bool:
         return state_mod.is_publishing(conn, canonical_url)
 
 
-def _state_published_url(state_path, manifest) -> str | None:
+def _state_published_url(state_path: str | None, manifest: dict) -> str | None:
     """Return the published_url from the durable state row iff this manifest's
     canonical_url is already marked 'published' in SQLite, else None.
 
@@ -208,7 +209,7 @@ def _state_published_url(state_path, manifest) -> str | None:
     return row[0] if (row and row[0]) else None
 
 
-def _publish_run_recorded(state_path, post_id) -> bool:
+def _publish_run_recorded(state_path: str | None, post_id: str) -> bool:
     """True if a successful publish run is already recorded for ``post_id``.
 
     ``runs.record_run`` is a bare INSERT with no dedup, so on a publish re-entry we
@@ -223,7 +224,7 @@ def _publish_run_recorded(state_path, post_id) -> bool:
     )
 
 
-def _write_receipt(manifest_path, post_id, published_url):
+def _write_receipt(manifest_path: str, post_id: str, published_url: str) -> None:
     path = Path(manifest_path).parent / "publish_receipt.json"
     if path.exists():
         return  # write-once: keep the original published_at (the true publish time)
@@ -231,7 +232,7 @@ def _write_receipt(manifest_path, post_id, published_url):
     path.write_text(json.dumps(receipt, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
-def _mark_published(state_path, manifest, post_id, published_url):
+def _mark_published(state_path: str | None, manifest: dict, post_id: str, published_url: str) -> None:
     if not state_path:
         return
     source = manifest.get("source", {})
@@ -249,7 +250,7 @@ def _mark_published(state_path, manifest, post_id, published_url):
 run = _run
 
 
-def main(argv=None):
+def main(argv: list[str] | None = None) -> None:
     args = _parse(sys.argv[1:] if argv is None else argv)
     cli.main_wrapper(lambda: _run(args))
 

@@ -290,7 +290,6 @@ def test_b3_crawl_all_sources_passes_remaining_budget(monkeypatch):
     Without a global deadline each source gets a fresh full budget; N sources
     can hang the WebUI worker thread for N * per_source_budget seconds.
     """
-    import time as _time
     from cpost.core import pipeline
 
     captured: list[float | None] = []
@@ -310,9 +309,7 @@ def test_b3_crawl_all_sources_passes_remaining_budget(monkeypatch):
         ],
         "start_url": "https://fallback.example.com/",
     }
-    t0 = _time.monotonic()
     pipeline.crawl_all_sources(webui_cfg, max_runtime_sec=60.0)
-    elapsed = _time.monotonic() - t0
     # Both sources saw a budget, and the second source got less than the full 60 s
     assert len(captured) == 2
     assert captured[0] is not None
@@ -371,7 +368,7 @@ def test_b6_draft_success_run_not_duplicated_on_reentry(tmp_path, monkeypatch):
     On re-entry (e.g. transient error in post-run bookkeeping), a second 'ok' row
     would be inserted, double-counting the draft in run history.
     """
-    from cpost.core import pipeline, runs as runs_mod
+    from cpost.core import runs as runs_mod
     import json
 
     state_path = str(tmp_path / "state.sqlite")
@@ -384,7 +381,6 @@ def test_b6_draft_success_run_not_duplicated_on_reentry(tmp_path, monkeypatch):
                 "content": {"title": "T", "canonical_url": "https://e.com/p1"}}
     (pkg / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
 
-    cfg = {"state_path": state_path, "out_dir": str(tmp_path / "pkg")}
     run_id = "run-b6-test"
 
     # Simulate: first call records success

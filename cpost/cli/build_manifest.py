@@ -163,13 +163,13 @@ def build(record: dict | PackageInput, out_dir: str, log_path: str) -> str:
 _build = build  # deprecated: remove in vNEXT (use build)
 
 
-def _run(out_dir: str, log_path: str):
+def _run(out_dir: str, log_path: str) -> None:
     for record in io_ndjson.read_lines():
         record["manifest_path"] = build(record, out_dir, log_path)
         io_ndjson.write_line(record)
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(
         prog="build-manifest",
         description="Build per-post package folders + manifests (stdin->stdout).",

@@ -86,15 +86,24 @@ def edit_package(request: Request, post_id: str,
     if title:
         m.setdefault("content", {})["title"] = title
     if caption:
-        (pkg / "caption.txt").write_text(caption, encoding="utf-8")
-        # caption.txt is only displayed; the publishable body (and the reviewed
-        # content_id) come from content.body. Keep them in sync — mirroring
-        # generate_article — so a caption edit actually reaches publish (R1).
+        # content.body is the publish source; caption.txt is display only.
+        # Mirror generate_article: manifest-first so publish truth is never stale.
         m.setdefault("content", {})["body"] = caption
-    (pkg / "manifest.json").write_text(
-        json.dumps(m, ensure_ascii=False, indent=2), encoding="utf-8")
-    # The operator authored (and saw) this version: bind the review gate to it so
-    # the edited content is publishable rather than blocked as stale (Q9).
+    # 1. Anchor write: manifest.json is the publish source of truth.
+    atomic_write_text(pkg / "manifest.json",
+                      json.dumps(m, ensure_ascii=False, indent=2))
+    # 2. Display write: caption.txt. On failure, roll back manifest body so the
+    #    two stores stay consistent (old body or both-new, never diverged).
+    if caption:
+        try:
+            atomic_write_text(pkg / "caption.txt", caption)
+        except Exception:
+            old_body = json.loads((pkg / "manifest.json").read_text(encoding="utf-8"))
+            old_body.setdefault("content", {}).pop("body", None)
+            atomic_write_text(pkg / "manifest.json",
+                              json.dumps(old_body, ensure_ascii=False, indent=2))
+            raise
+    # 3. Reviewed marker: content_id is derived from the now-landed manifest body.
     reviewed.mark(cfg["state_path"], post_id, reviewed.content_id(m))
     return HTMLResponse('<p class="ok">已儲存 ✓</p>')
 
