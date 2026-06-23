@@ -40,6 +40,7 @@ generate-article = "cpost.cli.generate_article:main"
 draft-post = "cpost.cli.draft_post:main"
 verify-draft = "cpost.cli.verify_draft:main"
 publish-post = "cpost.cli.publish_post:main"
+discover-sources = "cpost.cli.discover_sources:main"
 
 [tool.setuptools.packages.find]
 include = ["cpost*"]
