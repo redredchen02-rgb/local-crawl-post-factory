@@ -401,6 +401,7 @@ def _run(args) -> int:
         "user_agent": args.user_agent,
         "timeout_sec": args.timeout_sec,
         "concurrency": args.concurrency,
+        "download_delay": args.download_delay,
     }
     for k, v in cli_map.items():
         if v is not None:
@@ -548,6 +549,7 @@ def main() -> None:
     parser.add_argument("--user-agent", dest="user_agent")
     parser.add_argument("--timeout-sec", dest="timeout_sec", type=int)
     parser.add_argument("--concurrency", type=int)
+    parser.add_argument("--download-delay", dest="download_delay", type=float)
     parser.add_argument("--no-robots", dest="no_robots", action="store_true")
     args = parser.parse_args()
     cli.main_wrapper(lambda: _run(args))
