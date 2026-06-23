@@ -59,7 +59,7 @@ CREATE TABLE IF NOT EXISTS generations (
 """
 
 _MIGRATIONS = [
-    (1, "ALTER TABLE generations ADD COLUMN tags TEXT;"),
+    (1, "ALTER TABLE generations ADD COLUMN tags TEXT;"),  # ids must be monotonically increasing
 ]
 
 

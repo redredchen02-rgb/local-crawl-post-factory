@@ -128,10 +128,11 @@ def parse_article(article: str, fallback_title: str) -> tuple[str, str, list[str
             article_part = "\n---\n".join(parts[:i])
             strip_re = re.compile(r"^\u6807\u7b7e[::\uff1a]\s*")  # ^标签[:：]\s*
             raw = strip_re.sub("", first_nonempty)
-            tags = [t.strip() for t in re.split(r"[\uff0c,]", raw) if t.strip()]
+            tags = [t.strip() for t in re.split(r"[\uff0c,]", raw) if t.strip()][:5]
             break
     title, body = _split_title_body(article_part, fallback_title)
     return title, body, tags
+
 
 def generate(conn: sqlite3.Connection, cluster_id: str, llm_cfg: dict,
              system_prompt: str, now: str,
