@@ -49,6 +49,14 @@ def _list_ctx(cfg: dict, min_confidence: int, min_score: float) -> dict:
             "min_confidence": min_confidence, "min_score": min_score}
 
 
+def _scoops_ctx(cfg: dict, min_sources: int) -> dict:
+    """Context for /scoops: filter by min_sources, attach multi_source flag per row."""
+    rows, single_source = _scoops(cfg, min_sources, 0.0)
+    for row in rows:
+        row["multi_source"] = (min_sources > 0 and (row.get("source_count") or 0) >= min_sources)
+    return {"rows": rows, "single_source": single_source, "min_sources": min_sources}
+
+
 @router.get("/today", response_class=HTMLResponse)
 def today(request: Request):
     cfg = cfg_from_request(request)
@@ -113,3 +121,21 @@ def start_generate(request: Request, cluster_ids: list[str] = Form(default=[])):
     job_id = jobs.submit(_work)
     return templates.TemplateResponse(
         request, "_today_job.html", {"job": jobs.get(job_id), "job_id": job_id})
+
+
+# ---------------------------------------------------------------------------
+# /scoops — cross-site intersection view (U6)
+# ---------------------------------------------------------------------------
+
+@router.get("/scoops", response_class=HTMLResponse)
+def scoops_view(request: Request, min_sources: int = 0):
+    """Read-only scoop list with multi-source badge and filter toggle.
+
+    ``min_sources`` mirrors ``min_confidence`` semantics (source_count >= N).
+    Default 0 shows all scoops (no change to existing /today behaviour).
+    The ``multi_source`` flag on each row is True only when min_sources > 0
+    *and* the scoop's source_count reaches the threshold.
+    """
+    cfg = cfg_from_request(request)
+    ctx = _scoops_ctx(cfg, min_sources)
+    return templates.TemplateResponse(request, "scoops.html", ctx)

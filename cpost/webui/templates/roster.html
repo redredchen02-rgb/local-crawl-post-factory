@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block heading %}站點名冊{% endblock %}
+{% block content %}
+<section class="roster">
+  {% if not sites %}
+  <p class="empty">尚無自動發現站點</p>
+  {% else %}
+  <table class="roster-table">
+    <thead>
+      <tr>
+        <th>域名</th>
+        <th>Tier</th>
+        <th>鏡像</th>
+        <th>失敗次數</th>
+        <th>上次檢查</th>
+        <th>上次爬取</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for s in sites %}
+      <tr>
+        <td>{{ s.domain }}</td>
+        <td>
+          {% set tier = s.tier %}
+          {% if tier == "active" %}
+            <span class="tier-badge" style="background:#4caf50;color:#fff;padding:2px 6px;border-radius:3px;">active</span>
+          {% elif tier == "monitored" %}
+            <span class="tier-badge" style="background:#2196f3;color:#fff;padding:2px 6px;border-radius:3px;">monitored</span>
+          {% elif tier == "candidate" %}
+            <span class="tier-badge" style="background:#9e9e9e;color:#fff;padding:2px 6px;border-radius:3px;">candidate</span>
+          {% elif tier == "mirror" %}
+            <span class="tier-badge" style="background:#ff9800;color:#fff;padding:2px 6px;border-radius:3px;">mirror</span>
+          {% elif tier == "failed" %}
+            <span class="tier-badge" style="background:#f44336;color:#fff;padding:2px 6px;border-radius:3px;">failed</span>
+          {% elif tier == "inactive" %}
+            <span class="tier-badge" style="background:#616161;color:#fff;padding:2px 6px;border-radius:3px;">inactive</span>
+          {% else %}
+            <span class="tier-badge" style="background:#9e9e9e;color:#fff;padding:2px 6px;border-radius:3px;">{{ tier }}</span>
+          {% endif %}
+        </td>
+        <td>{{ "是" if s.is_mirror else "否" }}</td>
+        <td>{{ s.fail_count }}</td>
+        <td>{{ s.last_checked_at or "—" }}</td>
+        <td>{{ s.last_crawled_at or "—" }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</section>
+{% endblock %}
