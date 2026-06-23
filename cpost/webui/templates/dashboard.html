@@ -2,23 +2,7 @@
 {% block heading %}總覽{% endblock %}
 {% block content %}
 
-<div class="stat-cards" hx-get="/_dashboard_stats" hx-trigger="every 10s" hx-swap="outerHTML">
-  <a class="stat-card" href="/packages">
-    <span class="stat-num">{{ actionable }}</span>
-    <span class="stat-label">📥 待處理</span>
-    <span class="hint">尚未審核的稿件</span>
-  </a>
-  <a class="stat-card ok" href="/packages?status=draft_verified">
-    <span class="stat-num">{{ verified }}</span>
-    <span class="stat-label">✅ 已驗證</span>
-    <span class="hint">通過審核、可發布</span>
-  </a>
-  <a class="stat-card accent" href="/packages?status=published">
-    <span class="stat-num">{{ published }}</span>
-    <span class="stat-label">🚀 已發布</span>
-    <span class="hint">累計上線文章數</span>
-  </a>
-</div>
+{% include "_dashboard_stats.html" %}
 
 <div style="margin-top:1.5rem">
   <form hx-post="/crawl" hx-target="#crawl-result" hx-swap="innerHTML" style="display:inline">

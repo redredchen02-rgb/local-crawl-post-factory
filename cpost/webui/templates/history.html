@@ -5,9 +5,11 @@
   <input type="text" name="post_id" value="{{ post_id }}" placeholder="篩選 post_id…"
          hx-get="/history" hx-target="#history-table" hx-swap="innerHTML"
          hx-trigger="keyup changed delay:300ms"
-         hx-include="[name='severity'],[name='run_id']">
+         hx-include="[name='severity'],[name='run_id']"
+         hx-sync="#history-table:replace">
   <select name="severity" hx-get="/history" hx-target="#history-table" hx-swap="innerHTML"
-          hx-trigger="change" hx-include="[name='post_id'],[name='run_id']">
+          hx-trigger="change" hx-include="[name='post_id'],[name='run_id']"
+          hx-sync="#history-table:replace">
     <option value=""{% if severity == '' %} selected{% endif %}>全部 severity</option>
     <option value="info"{% if severity == 'info' %} selected{% endif %}>info</option>
     <option value="warning"{% if severity == 'warning' %} selected{% endif %}>warning</option>
@@ -16,7 +18,8 @@
   <input type="text" name="run_id" value="{{ run_id }}" placeholder="篩選 run_id…"
          hx-get="/history" hx-target="#history-table" hx-swap="innerHTML"
          hx-trigger="keyup changed delay:300ms"
-         hx-include="[name='post_id'],[name='severity']">
+         hx-include="[name='post_id'],[name='severity']"
+         hx-sync="#history-table:replace">
 </div>
 
 <div id="history-table"
