@@ -8,14 +8,18 @@ from cpost.core.errors import CliError, ValidationError
 from cpost.webui.routers._ctx import auth_light, cfg_from_request, templates
 
 
-_VALIDATION_FIELD_RE = re.compile(r"^(?:invalid )?(\w+) must|^invalid (\w+):")
+_VALIDATION_FIELD_RE = re.compile(
+    r"^(?:invalid )?(\w+) must"       # e.g. "limit must be >= 0"
+    r"|^invalid (\w+):"               # e.g. "invalid start_url: ..."
+    r"|^sources\[\d+\]\.(\w+)"        # e.g. "sources[0].enabled must be a boolean"
+)
 
 
 def _extract_field(message: str) -> str | None:
     """Extract field name from a validation error message, or None if not field-specific."""
     m = _VALIDATION_FIELD_RE.match(message)
     if m:
-        return m.group(1) or m.group(2)
+        return m.group(1) or m.group(2) or m.group(3)
     return None
 
 router = APIRouter()
@@ -96,6 +100,112 @@ def save_settings(request: Request,
         request, "settings.html", {"cfg": cfg, "saved": True,
                                    "sources": sources, "sources_malformed": malformed,
                                    "diag": _diag(cfg, config_path)})
+
+
+def _sources_partial(request: Request) -> HTMLResponse:
+    """Re-render _sources_list.html as an HTMX swap fragment."""
+    cfg = cfg_from_request(request)
+    sources, malformed = _sources_view(cfg)
+    return templates.TemplateResponse(
+        request, "_sources_list.html",
+        {"sources": sources, "sources_malformed": malformed})
+
+
+def _save_sources(config_path: str, sources: list[dict]) -> None:
+    """Persist an updated sources list, merging over the existing raw config."""
+    raw = webui_config.load_raw(config_path)
+    raw["sources"] = sources
+    webui_config.save(config_path, raw)
+
+
+@router.post("/sources/add", response_class=HTMLResponse)
+def sources_add(request: Request,
+                source_id: str = Form(""),
+                start_url: str = Form(""),
+                enabled: str = Form("")):
+    config_path = request.app.state.config_path
+    cfg = cfg_from_request(request)
+    sources, _ = _sources_view(cfg)
+    new_entry: dict = {
+        "source_id": source_id.strip(),
+        "start_url": start_url.strip(),
+        "enabled": enabled == "on",
+    }
+    try:
+        _save_sources(config_path, [*sources, new_entry])
+    except ValidationError as exc:
+        field = _extract_field(exc.message)
+        return HTMLResponse(
+            f'<p class="error" data-field="{field or ""}">{exc.message}</p>',
+            status_code=400)
+    return _sources_partial(request)
+
+
+@router.post("/sources/edit/{sid}", response_class=HTMLResponse)
+def sources_edit(request: Request, sid: str,
+                 start_url: str = Form(""),
+                 enabled: str = Form("")):
+    config_path = request.app.state.config_path
+    cfg = cfg_from_request(request)
+    sources, _ = _sources_view(cfg)
+    updated = []
+    found = False
+    for src in sources:
+        if src.get("source_id") == sid:
+            entry = dict(src)  # preserve unknown per-source keys
+            if start_url.strip():
+                entry["start_url"] = start_url.strip()
+            entry["enabled"] = enabled == "on"
+            updated.append(entry)
+            found = True
+        else:
+            updated.append(src)
+    if not found:
+        return HTMLResponse('<p class="error">找不到此來源</p>', status_code=404)
+    try:
+        _save_sources(config_path, updated)
+    except ValidationError as exc:
+        field = _extract_field(exc.message)
+        return HTMLResponse(
+            f'<p class="error" data-field="{field or ""}">{exc.message}</p>',
+            status_code=400)
+    return _sources_partial(request)
+
+
+@router.post("/sources/delete/{sid}", response_class=HTMLResponse)
+def sources_delete(request: Request, sid: str):
+    config_path = request.app.state.config_path
+    cfg = cfg_from_request(request)
+    sources, _ = _sources_view(cfg)
+    updated = [s for s in sources if s.get("source_id") != sid]
+    if len(updated) == len(sources):
+        return HTMLResponse('<p class="error">找不到此來源</p>', status_code=404)
+    try:
+        _save_sources(config_path, updated)
+    except ValidationError as exc:
+        return HTMLResponse(f'<p class="error">{exc.message}</p>', status_code=400)
+    return _sources_partial(request)
+
+
+@router.post("/sources/toggle/{sid}", response_class=HTMLResponse)
+def sources_toggle(request: Request, sid: str):
+    config_path = request.app.state.config_path
+    cfg = cfg_from_request(request)
+    sources, _ = _sources_view(cfg)
+    updated = []
+    found = False
+    for src in sources:
+        if src.get("source_id") == sid:
+            entry = dict(src)
+            entry["enabled"] = not bool(src.get("enabled", True))
+            updated.append(entry)
+            found = True
+        else:
+            updated.append(src)
+    if not found:
+        return HTMLResponse('<p class="error">找不到此來源</p>', status_code=404)
+    _save_sources(config_path, updated)
+    return _sources_partial(request)
 
 
 @router.get("/auth-status", response_class=HTMLResponse)
