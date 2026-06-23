@@ -24,3 +24,12 @@ weight_material: 0.3
 # confidence/source_count 為「資訊性，非佐證」（鏡像/同 canonical 會塌成 1）。
 weight_confidence: 0.0
 weight_quality: 1.0
+
+# actionable 過濾（plan U5）：score-scoops --min-sources 未明確指定時讀此值作為預設。
+# 0 = 不過濾（向後相容）；設 2 表示只輸出 2+ 站交集的 scoop。
+actionable_min_sources: 2
+
+# --- 站點管理 ---
+# 鏡像偵測（U3）：sample canonical URL 中超過此比例已存在 library active 站點者
+# 判定為鏡像站。0.6 = 60% 以上重疊即視為鏡像。
+mirror_overlap_threshold: 0.6

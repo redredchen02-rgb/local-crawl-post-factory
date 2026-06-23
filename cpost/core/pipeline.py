@@ -8,11 +8,13 @@ WebUI and the CLI share one implementation. crawl stays in its own subprocess
 from __future__ import annotations
 
 import json
+import logging
 import time
 from collections.abc import Callable
 from pathlib import Path
+from urllib.parse import urlparse
 
-from cpost.core import reviewed, runs, state
+from cpost.core import reviewed, runs, site_roster, state
 from cpost.core.backend_args import BackendInvocation
 from cpost.core.errors import SessionExpiredError, ValidationError
 from cpost.core.schema import AutoPipelineResult, PipelineFailed, PipelineItem, PipelineResult
@@ -26,6 +28,8 @@ from cpost.cli import (
     render_caption,
     verify_draft,
 )
+
+logger = logging.getLogger(__name__)
 
 
 _PER_SOURCE_OVERRIDE_KEYS: frozenset[str] = frozenset({
@@ -121,6 +125,14 @@ def _stage_run_recorded(state_path: str | None, post_id: str, stage: str) -> boo
     )
 
 
+def _host_of(url: str) -> str:
+    """Return the netloc (hostname) of *url*, lower-cased. Empty string on error."""
+    try:
+        return urlparse(url).netloc.lower()
+    except Exception:  # noqa: BLE001
+        return ""
+
+
 def crawl_all_sources(webui_cfg: dict,
                       progress_cb: Callable[[str], object] | None = None,
                       poll_sec: float = 0.5,
@@ -135,6 +147,12 @@ def crawl_all_sources(webui_cfg: dict,
     when there are no enabled sources -- covering BOTH "no sources list" and
     "every source disabled" (backward compatible; single-site = N=1).
 
+    When ``webui_cfg["roster_path"]`` is non-empty, active sites from the site
+    roster are merged in after the YAML sources. YAML sources take priority:
+    any roster site whose host matches an enabled YAML source is skipped. This
+    preserves per-source tuning in YAML while expanding coverage from the roster
+    without manual duplication.
+
     Per-source results are reported via ``on_source(source_id, count_or_error)``:
     an ``int`` item count on success, an error-message ``str`` on failure. One
     source failing never aborts the others -- mirroring the per-item isolation of
@@ -143,28 +161,89 @@ def crawl_all_sources(webui_cfg: dict,
     must NOT go there (the router's dict-shaped callback would crash on a str).
     """
     enabled = enabled_sources(webui_cfg)
-    if not enabled:
-        return crawl_items(webui_cfg, progress_cb=progress_cb, poll_sec=poll_sec)
 
     import time as _time
     deadline = (_time.monotonic() + max_runtime_sec) if max_runtime_sec is not None else None
     combined: list[dict] = []
-    for src in enabled:
-        override = {k: v for k, v in src.items() if k in _PER_SOURCE_OVERRIDE_KEYS}
-        merged = {**webui_cfg, **override}
-        label = src.get("source_id") or src.get("start_url") or "?"
-        remaining = max(1.0, deadline - _time.monotonic()) if deadline is not None else None
+
+    if not enabled:
+        # No YAML sources — fall back to single-site crawl of start_url.
+        combined = crawl_items(webui_cfg, progress_cb=progress_cb, poll_sec=poll_sec)
+    else:
+        for src in enabled:
+            override = {k: v for k, v in src.items() if k in _PER_SOURCE_OVERRIDE_KEYS}
+            merged = {**webui_cfg, **override}
+            label = src.get("source_id") or src.get("start_url") or "?"
+            remaining = max(1.0, deadline - _time.monotonic()) if deadline is not None else None
+            try:
+                items = crawl_items(merged, progress_cb=progress_cb, poll_sec=poll_sec,
+                                    max_runtime_sec=remaining)
+                combined.extend(items)
+            except Exception as exc:  # noqa: BLE001 - one bad source must not abort the batch
+                # on_source is called OUTSIDE the crawl's try below; only the crawl
+                # itself is guarded here so a failing callback can't be mislabeled
+                # as a crawl failure.
+                _safe_cb(on_source, label, f"failed: {exc}")
+                continue
+            _safe_cb(on_source, label, len(items))
+
+    # --- Roster integration (U4) ---
+    # When roster_path is set, merge active roster sites into the crawl.
+    # YAML sources take priority: a roster site whose host already appears in an
+    # enabled YAML source is skipped (host dedup, not source_id dedup — avoids
+    # double-crawling mirrors or renamed sources pointing at the same origin).
+    roster_path = webui_cfg.get("roster_path", "")
+    if roster_path and roster_path.strip():
         try:
-            items = crawl_items(merged, progress_cb=progress_cb, poll_sec=poll_sec,
-                                max_runtime_sec=remaining)
-            combined.extend(items)
-        except Exception as exc:  # noqa: BLE001 - one bad source must not abort the batch
-            # on_source is called OUTSIDE the crawl's try below; only the crawl
-            # itself is guarded here so a failing callback can't be mislabeled
-            # as a crawl failure.
-            _safe_cb(on_source, label, f"failed: {exc}")
-            continue
-        _safe_cb(on_source, label, len(items))
+            roster_sites = site_roster.list_active(roster_path)
+        except Exception as exc:  # noqa: BLE001 - missing/corrupt DB must not abort YAML crawl
+            logger.warning("roster unavailable, skipping: %s", exc)
+            roster_sites = []
+
+        # Build the set of hosts already covered by enabled YAML sources so we
+        # can skip roster duplicates. Also include the base start_url when there
+        # were no YAML sources (single-site fallback path above).
+        yaml_hosts: set[str] = {
+            _host_of(s.get("start_url", "")) for s in enabled
+        }
+        base_url = webui_cfg.get("start_url", "")
+        if base_url:
+            yaml_hosts.add(_host_of(base_url))
+
+        now_iso = _time.strftime("%Y-%m-%dT%H:%M:%SZ", _time.gmtime())
+        for site in roster_sites:
+            site_url = str(site.get("start_url") or "")
+            if _host_of(site_url) in yaml_hosts:
+                # YAML takes priority — skip this roster site.
+                continue
+
+            # Build the per-source override from allowlisted keys only (B4).
+            roster_override = {
+                k: site[k]
+                for k in _PER_SOURCE_OVERRIDE_KEYS
+                if site.get(k) is not None
+            }
+            merged = {**webui_cfg, **roster_override}
+            label = str(site.get("source_id") or site.get("domain") or site_url or "?")
+            remaining = max(1.0, deadline - _time.monotonic()) if deadline is not None else None
+            try:
+                items = crawl_items(merged, progress_cb=progress_cb, poll_sec=poll_sec,
+                                    max_runtime_sec=remaining)
+                combined.extend(items)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("roster site %s crawl failed: %s", label, exc)
+                _safe_cb(on_source, label, f"failed: {exc}")
+                continue
+            _safe_cb(on_source, label, len(items))
+            # Record the crawl timestamp so the roster can track staleness.
+            domain = str(site.get("domain") or "")
+            if domain:
+                try:
+                    site_roster.update_crawled_at(roster_path, domain,
+                                                  last_crawled_at=now_iso)
+                except Exception as exc:  # noqa: BLE001 - timestamp write must not abort crawl
+                    logger.warning("could not update last_crawled_at for %s: %s", domain, exc)
+
     return combined
 
 

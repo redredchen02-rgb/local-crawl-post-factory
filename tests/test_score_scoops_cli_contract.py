@@ -135,3 +135,106 @@ def test_corrupt_sqlite_state_exits_5(tmp_path, monkeypatch):
     assert out == ""
     assert err.strip()                   # exactly one diagnostic line
     assert "\n" not in err.strip()       # single line, no trailing internal lines
+
+
+# --- --min-sources filtering contract (plan U5) ------------------------------
+
+def _run_command_min_sources(db, monkeypatch, min_sources):
+    """Drive _run with an explicit min_sources value (simulates --min-sources N)."""
+    out, err = io.StringIO(), io.StringIO()
+    monkeypatch.setattr("sys.stdout", out)
+    monkeypatch.setattr("sys.stderr", err)
+    code = cli.run(
+        lambda: score_scoops._run(
+            SimpleNamespace(state=db, config=None, min_sources=min_sources)
+        )
+    )
+    return code, out.getvalue(), err.getvalue()
+
+
+def _setup_two_source_counts(db):
+    """Seed: one 3-source cluster (high) + one lone cluster (source_count=1)."""
+    _seed(db, [
+        # cluster A: 3 sources
+        {"canonical_url": "https://a.com/1", "title": "藝人A被爆隱婚生子", "source_id": "site-a",
+         "source_text": "長" * 1000, "published_at": NOW},
+        {"canonical_url": "https://b.com/9", "title": "藝人A被爆隱婚生子內幕", "source_id": "site-b",
+         "source_text": "長" * 1000, "published_at": NOW},
+        {"canonical_url": "https://c.com/7", "title": "獨家藝人A隱婚生子", "source_id": "site-c",
+         "source_text": "長" * 1000, "published_at": NOW},
+        # cluster B: 1 source only
+        {"canonical_url": "https://d.com/3", "title": "完全不相干的天氣新聞", "source_id": "site-d",
+         "source_text": "短" * 10, "published_at": NOW},
+    ])
+    with library.connect(db) as conn:
+        cluster_library(conn, _CFG, NOW)
+
+
+def test_min_sources_2_filters_single_source_scoop(tmp_path, monkeypatch):
+    """Happy path: --min-sources 2 keeps only the 3-source cluster."""
+    db = _db(tmp_path)
+    _setup_two_source_counts(db)
+    code, out, err = _run_command_min_sources(db, monkeypatch, min_sources=2)
+    assert code == 0
+    assert err == ""
+    payload = json.loads(out.strip())
+    # Only the 3-source cluster should survive
+    assert payload["scored"] == 1
+    assert payload["by_cluster"][0]["source_count"] >= 2
+
+
+def test_min_sources_0_returns_all(tmp_path, monkeypatch):
+    """Happy path: --min-sources 0 (default) → full output, existing behaviour unchanged."""
+    db = _db(tmp_path)
+    _setup_two_source_counts(db)
+    code, out, err = _run_command_min_sources(db, monkeypatch, min_sources=0)
+    assert code == 0
+    assert err == ""
+    payload = json.loads(out.strip())
+    assert payload["scored"] == 2
+
+
+def test_min_sources_larger_than_all_returns_empty(tmp_path, monkeypatch):
+    """Edge case: --min-sources exceeds every cluster's source_count → empty list, no crash."""
+    db = _db(tmp_path)
+    _setup_two_source_counts(db)
+    code, out, err = _run_command_min_sources(db, monkeypatch, min_sources=99)
+    assert code == 0
+    assert err == ""
+    payload = json.loads(out.strip())
+    assert payload["scored"] == 0
+    assert payload["by_cluster"] == []
+
+
+def test_min_sources_scoop_missing_source_count_treated_as_zero(tmp_path, monkeypatch):
+    """Edge case: scoop dict without source_count key → treated as 0, filtered by --min-sources 2."""
+    # Patch score_all to return a fake scoop without source_count
+    fake_scoop = {
+        "cluster_id": "fake-1",
+        "confidence": 0.5,
+        "quality": 0.5,
+        "score": 0.5,
+        # NOTE: no "source_count" key — legacy format
+    }
+
+    import unittest.mock as mock
+
+    db = _db(tmp_path)
+    with library.connect(db):
+        pass  # empty but valid
+
+    out, err = io.StringIO(), io.StringIO()
+
+    with mock.patch.object(score_scoops, "score_all", return_value=[fake_scoop]):
+        monkeypatch.setattr("sys.stdout", out)
+        monkeypatch.setattr("sys.stderr", err)
+        code = cli.run(
+            lambda: score_scoops._run(
+                SimpleNamespace(state=db, config=None, min_sources=2)
+            )
+        )
+
+    assert code == 0
+    assert err.getvalue() == ""
+    payload = json.loads(out.getvalue().strip())
+    assert payload["scored"] == 0  # filtered out because source_count treated as 0

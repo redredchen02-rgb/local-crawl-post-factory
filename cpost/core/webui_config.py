@@ -48,6 +48,11 @@ DEFAULTS = {
     # list = single-site behavior via crawl_all_sources' start_url fallback.
     # Each entry is a dict, validated by _validate_sources (NOT _coerce).
     "sources": [],
+    # roster_path: path to the site_roster SQLite DB (U4). Empty string = skip
+    # roster integration (backward-compatible default). When non-empty, active
+    # sites from the roster are merged into crawl_all_sources' source list,
+    # with YAML sources taking priority (no override of matching hosts).
+    "roster_path": "",
     # Retention windows (days) for the durable logs. 0 = disabled (keep all);
     # consumed by cli.maintenance.run_retention, never by the pipeline directly.
     "audit_retention_days": 0,
@@ -67,7 +72,8 @@ _BOOL_FIELDS = ("auto_pipeline",)
 # deliberately NOT resolved here: their defaults reference repo-shipped files
 # relative to the run directory; rewriting them against the config dir would
 # break the shipped defaults.
-_PATH_FIELDS = ("download_dir", "out_dir", "state_path", "audit_log", "storage_state")
+_PATH_FIELDS = ("download_dir", "out_dir", "state_path", "audit_log", "storage_state",
+                "roster_path")
 # Env overrides are scoped to the runtime-output paths an operator actually
 # relocates for CI/containers; precedence is env > yaml > default.
 _ENV_OVERRIDES = {

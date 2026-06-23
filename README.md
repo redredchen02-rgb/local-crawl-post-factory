@@ -87,6 +87,31 @@ crawl-posts "https://example.com/news" --max-pages 300 --limit 30 \
 產出 `out/<post_id>/`：`manifest.json`、`caption.txt`、`preview.html`。
 狀態流轉：`package_built → drafted → draft_verified → published`。
 
+## 來源探索
+
+`discover-sources` 從現有 YAML sources 的首頁與常見友鏈頁爬取外部域名，自動寫入站台名冊（roster）為 candidate，供後續監控與啟用：
+
+```bash
+discover-sources \
+  --sources-yaml configs/webui.yaml \
+  --roster-path  state/roster.db \
+  --max-candidates-per-seed 20 \
+  --max-total-candidates 50
+# 加 --dry-run 只印候選，不寫入
+```
+
+內建 SSRF 防護（過濾 RFC-1918/loopback/link-local）、HTTP HEAD 存活檢查，以及 politeness sleep（每頁 0.5 s）。
+
+`health-check-sources` 對 roster 中的 candidate/monitored 站點進行健康評估，包含取樣爬取、新鮮度判斷、鏡像偵測（canonical URL 重疊率），並依結果推進 tier 狀態機（candidate → monitored → active；鏡像 → mirror；連續失敗 → failed/inactive）：
+
+```bash
+health-check-sources \
+  --roster-path state/roster.db \
+  --library-db  state/published.sqlite \
+  --tier candidate,monitored
+# 加 --dry-run 只印評估結果，不寫入 roster
+```
+
 ## 多源聚合細節
 
 - **可信度只在真獨立媒體成立**：`confidence` 看的是該瓜的獨立來源數；鏡像站共用 canonical 會塌縮成單一來源，故不計入。

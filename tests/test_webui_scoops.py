@@ -227,3 +227,64 @@ def test_nav_has_today_link(tmp_path):
     client, _ = _client_and_state(tmp_path)
     r = client.get("/today")
     assert 'href="/today"' in r.text
+
+
+# ---------------------------------------------------------------------------
+# U6: /scoops — cross-site badge + min_sources filter
+# ---------------------------------------------------------------------------
+
+def test_scoops_no_param_shows_all(tmp_path):
+    """`GET /scoops` (no min_sources) returns all scoops unchanged."""
+    client, state = _client_and_state(tmp_path)
+    _seed(state, [
+        ("c1", "單源瓜", ["s1"], 0.5, 0.5),
+        ("c2", "多源瓜", ["s1", "s2"], 0.8, 0.7),
+    ])
+    r = client.get("/scoops")
+    assert r.status_code == 200
+    assert "單源瓜" in r.text
+    assert "多源瓜" in r.text
+
+
+def test_scoops_min_sources_filters(tmp_path):
+    """`GET /scoops?min_sources=2` shows only source_count >= 2 scoops."""
+    client, state = _client_and_state(tmp_path)
+    _seed(state, [
+        ("c1", "單源瓜內容", ["s1"], 0.5, 0.5),
+        ("c2", "多源瓜內容", ["s1", "s2"], 0.8, 0.7),
+    ])
+    r = client.get("/scoops", params={"min_sources": 2})
+    assert r.status_code == 200
+    assert "多源瓜內容" in r.text
+    assert "單源瓜內容" not in r.text
+
+
+def test_scoops_multi_source_badge_shown(tmp_path):
+    """A scoop with source_count=3 when min_sources=2 → 🔥 badge in HTML."""
+    client, state = _client_and_state(tmp_path)
+    _seed(state, [
+        ("c3", "三源瓜內容", ["s1", "s2", "s3"], 0.9, 0.9),
+    ])
+    r = client.get("/scoops", params={"min_sources": 2})
+    assert r.status_code == 200
+    assert "三源瓜內容" in r.text
+    assert "🔥" in r.text
+
+
+def test_scoops_min_sources_zero_no_badge(tmp_path):
+    """With min_sources=0 (default), no 🔥 badge is shown."""
+    client, state = _client_and_state(tmp_path)
+    _seed(state, [
+        ("c1", "多源瓜內容", ["s1", "s2"], 0.8, 0.7),
+    ])
+    r = client.get("/scoops", params={"min_sources": 0})
+    assert r.status_code == 200
+    assert "多源瓜內容" in r.text
+    assert "🔥" not in r.text
+
+
+def test_scoops_empty_library(tmp_path):
+    """`GET /scoops` on empty library → 200, no crash."""
+    client, _ = _client_and_state(tmp_path)
+    r = client.get("/scoops")
+    assert r.status_code == 200

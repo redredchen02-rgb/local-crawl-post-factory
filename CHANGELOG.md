@@ -7,6 +7,7 @@ All notable changes to this project will be documented in this file.
 ## [0.4.0] - 2026-06-23
 
 ### Added
+- **自動來源探索**（#60）：`site_roster` CRUD 模組管理站點健康分層（CANDIDATE/MONITORED/ACTIVE/MIRROR/FAILED/INACTIVE）；`discover-sources` CLI 透過 stdlib HTTP 發現外連站點（含 SSRF 防護）；`health-check-sources` CLI 執行 tier 狀態機轉換；`crawl_all_sources` 整合 roster 站點自動爬取；`score-scoops` 新增 `--min-sources` 過濾；WebUI roster 面板。
 - **Tags 輸出**：generate-article 新增 parse_article() 函數，從 LLM 輸出末尾的 ---/標籤：區塊解析標籤（上限 5 個）；標籤存入 generations.tags TEXT 欄（含 SQLite 遷移）並流入 PackageInput["tags"]。
 - **Prompt 升級至 scoop-v2**：configs/scoop_prompt.zh.md 完整八節規範；含 [IMAGE_N]/[VIDEO_N] 占位符與防重複規則。
 
