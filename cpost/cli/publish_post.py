@@ -70,6 +70,23 @@ def _run(args: argparse.Namespace | BackendInvocation) -> int:
         published_url = state_url or manifest.get("backend", {}).get("published_url")
         mf.set_backend(manifest, status="published", published_url=published_url)
         mf.save(args.manifest, manifest)
+    elif _state_is_publishing(args.state, manifest):
+        # B1 crash-window detection: a prior run wrote status='publishing' (the
+        # pre-reservation) but crashed before the browser publish completed or before
+        # the manifest was flipped to 'published'. We cannot know whether the post is
+        # now live without checking the backend. Stopping here prevents a silent
+        # duplicate — worst case is operator confirmation, not a second live post.
+        # Recovery:
+        #   - Post IS live: set manifest backend.status=published + published_url=<URL>
+        #     and re-run to forward-complete bookkeeping.
+        #   - Post NOT live: sqlite3 <state.db>
+        #     "UPDATE items SET status='draft_verified' WHERE canonical_url=<url>"
+        #     then re-run.
+        canonical_url = (manifest.get("source") or {}).get("canonical_url", "?")
+        raise ExternalError(
+            f"publish state is 'publishing' for {canonical_url}: a prior run crashed "
+            f"mid-publish. Check the backend manually before re-running."
+        )
     else:
         # Gate 2: draft must be verified (R8).
         if manifest.get("backend", {}).get("status") != "draft_verified":
@@ -83,6 +100,7 @@ def _run(args: argparse.Namespace | BackendInvocation) -> int:
             raise ValidationError("refusing: content changed since review")
 
         draft_url = manifest.get("backend", {}).get("draft_url")
+        _reserve_publishing(args.state, manifest)  # B1: write 'publishing' before browser click
         with backend_driver.session(args.storage_state, args.headless, args.timeout_ms) as page:
             result = backend_driver.publish_draft(
                 page, cfg, draft_url, pkg_dir=str(Path(args.manifest).parent),
@@ -135,6 +153,36 @@ def _run(args: argparse.Namespace | BackendInvocation) -> int:
     return 0
 
 
+def _reserve_publishing(state_path: str | None, manifest: dict) -> None:
+    """Write status='publishing' to the state row before the browser click (B1).
+
+    On crash strictly between here and manifest.save('published'), the next re-entry
+    sees 'publishing' and raises ExternalError — worst-case is 'operator confirm'
+    rather than 'silent duplicate live post'. No-op when state_path is absent.
+    """
+    if not state_path:
+        return
+    canonical_url = (manifest.get("source") or {}).get("canonical_url")
+    if not canonical_url:
+        return
+    title = manifest.get("content", {}).get("title") or ""
+    with state_mod.connect(state_path) as conn:
+        state_mod.upsert(conn, canonical_url=canonical_url, title=title,
+                         title_hash=title_hash(title), status=state_mod.PUBLISHING,
+                         now=mf.now_iso())
+
+
+def _state_is_publishing(state_path: str | None, manifest: dict) -> bool:
+    """True if the state row for this canonical_url is 'publishing' (B1 crash detection)."""
+    if not state_path:
+        return False
+    canonical_url = (manifest.get("source") or {}).get("canonical_url")
+    if not canonical_url:
+        return False
+    with state_mod.connect(state_path) as conn:
+        return state_mod.is_publishing(conn, canonical_url)
+
+
 def _state_published_url(state_path: str | None, manifest: dict) -> str | None:
     """Return the published_url from the durable state row iff this manifest's
     canonical_url is already marked 'published' in SQLite, else None.
@@ -158,7 +206,7 @@ def _state_published_url(state_path: str | None, manifest: dict) -> str | None:
             (canonical_url,),
         )
         row = cur.fetchone()
-    return row[0] if row and row[0] else ""
+    return row[0] if (row and row[0]) else None
 
 
 def _publish_run_recorded(state_path: str | None, post_id: str) -> bool:

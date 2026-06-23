@@ -4,7 +4,7 @@ from pathlib import Path
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse
 
-from cpost.core import llm, manifest as mf, reviewed
+from cpost.core import llm, manifest as mf, reviewed, state as state_mod
 from cpost.core.errors import CliError
 from cpost.core.filesystem import atomic_write_text
 from cpost.webui._helpers import (
@@ -193,4 +193,11 @@ def rollback_package(request: Request, post_id: str):
     receipt_path = pkg / "publish_receipt.json"
     if receipt_path.exists():
         receipt_path.unlink()
+    # B1 rollback fix: clear the state row so re-publishing does a real browser click
+    # rather than forward-completing on the stale 'published' state row.
+    state_path = cfg.get("state_path")
+    canonical_url = (manifest.get("source") or {}).get("canonical_url")
+    if state_path and canonical_url:
+        with state_mod.connect(state_path) as conn:
+            state_mod.reset_for_republish(conn, canonical_url)
     return HTMLResponse('<p class="ok">已回退至已驗證狀態，可重新發布</p>')

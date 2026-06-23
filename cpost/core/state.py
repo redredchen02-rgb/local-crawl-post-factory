@@ -32,6 +32,7 @@ CREATE INDEX IF NOT EXISTS idx_items_status ON items(status);
 """
 
 PUBLISHED = "published"
+PUBLISHING = "publishing"  # B1 pre-reservation: written before browser click
 
 
 @contextmanager
@@ -69,6 +70,30 @@ def skip_reason(conn: sqlite3.Connection, canonical_url: str,
         (PUBLISHED, canonical_url),
     )
     return "url" if cur.fetchone() is not None else None
+
+
+def is_publishing(conn: sqlite3.Connection, canonical_url: str) -> bool:
+    """True if a state row exists with status='publishing' (pre-reservation, not yet live).
+
+    B1: detects the crash window between the pre-reservation write and a successful
+    browser publish. On re-entry, the caller should stop and ask the operator to
+    confirm whether the post actually went live rather than re-clicking.
+    """
+    cur = conn.execute(
+        "SELECT 1 FROM items WHERE status = ? AND canonical_url = ? LIMIT 1",
+        (PUBLISHING, canonical_url),
+    )
+    return cur.fetchone() is not None
+
+
+def reset_for_republish(conn: sqlite3.Connection, canonical_url: str) -> None:
+    """Remove the state row so a rolled-back package can be re-published cleanly.
+
+    B1 rollback fix: rollback_package only reverts the manifest; without this the
+    state row keeps status='published', causing _state_published_url to return the
+    old URL on the next run and forward-completing instead of re-clicking.
+    """
+    conn.execute("DELETE FROM items WHERE canonical_url = ?", (canonical_url,))
 
 
 def upsert(conn: sqlite3.Connection, *, canonical_url: str, title: str,

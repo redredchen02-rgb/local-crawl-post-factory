@@ -4,10 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "local-crawl-post-factory"
-version = "0.2.3.0"
+version = "0.3.0"
 description = "Local-first, CLI-first crawl-to-post automation pipeline for owned/private sites."
 readme = "README.md"
 license = { text = "Proprietary — All rights reserved" }
+classifiers = [
+    "Private :: Do Not Upload",
+]
 requires-python = ">=3.11"
 # Upper bounds cap the next major so a fresh `pip install` stays reproducible and
 # can't silently pull a breaking release (e.g. the Starlette 1.0 jump). Bounds are

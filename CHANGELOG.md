@@ -2,6 +2,45 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+## [0.3.0] - 2026-06-23
+
+### Added
+- **多來源匯整**（#34）：`configs/webui.yaml` 新增 `sources` 列表；`crawl_all_sources` 逐源爬取並隔離 `source_id`；per-source 選擇器覆蓋（`body_selector`/`date_selector` 等）；Settings 唯讀來源面板（可啟停用顯示）；typed `BackendInvocation` 合約。
+- **今日備稿工作台**（#32）：`/today` 單頁工作台串接備稿 → 瓜清單（可排序/篩選/多選）→ 批次生稿；`generate-article` CLI 指令（以 members 全文 + LLM 生成原創文章）。
+
+### Changed
+- **聚瓜與打分**（#30）：`library-ingest` 入庫後可跑 `cluster-scoops`（同事件多源叢集）與 `score-scoops`（多源可信度 × 內容品質）。
+- **封面停用**（#31）：`crawl-posts`/pipeline 停止下載封面圖（刻意關閉，非 bug）；全文已留底至 `source_text.txt` 供後續清洗/摘要。
+- **`source_id` 空值修正 + 完整度基準校正**（#33）：空 `source_id` 不再進庫；完整度分數基準調整為真實可達值。
+- **Pipeline 重構：collapse 迴圈 + `BackendInvocation`**（#35）：`run_auto_pipeline` collapse 多層巢狀迴圈；stage runner 統一以 `BackendInvocation` 傳遞乾跑/核准/預期 content_id/重試/無頭/逾時，draft/verify/publish 三路可互換。
+
+### Refactored
+- **命名空間遷移**（#36）：所有套件從頂層移至 `cpost/` 子目錄，解決 `pip install` 與系統套件的命名衝突；同步新增 `LICENSE`（Proprietary）。
+
+### Fixed
+- **Bug sweep Phase 1（#37）— 高嚴重性**：
+  - **U1**：`build-manifest` post_id 碰撞改為碰撞偵測 + 內容漂移警告（不靜默覆蓋）。
+  - **U2**：`edit_package` 同步更新 `content.body`（發布來源），不再只改 `caption.txt`（顯示用）。
+  - **U3 / U9**：`publish-post` 重試改為冪等重入（不遮蔽原始錯誤）；auto-pipeline 移除重複的發布成功 run-record。
+- **Bug sweep Phase 2+3（`47fc969` / #42）— 中低嚴重性**：
+  - **U4**：重排發布尾段寫入順序，pre-publish 狀態預留；adversarial review 追加 blocker 修正（重複發布去重 + 空 published_url 清理）。
+  - **U5**：`cluster-scoops` 時間戳排序由字典序改為時間序。
+  - **U6**：`generate-article` 快取鍵納入 members 內容（避免 membership 變動但快取命中）。
+  - **U7**：`normalize-items` 單筆壞記錄不再中斷全批。
+  - **U8**：`library-ingest` stdout 僅輸出已提交至 DB 的記錄。
+  - **U10**：LLM socket/讀取逾時包裝為 `ExternalError`（exit 4）。
+  - **U11**：`crawl-posts` 子行程加壁鐘逾時，不再永掛。
+  - **U12**：`set_backend` 清除 `published_url`，rollback 一致。
+  - **U13 / U14**：抽出原子寫 helper（`atomic_write_text`），manifest.save 與 WebUI 雙寫全改原子。
+  - **U15**：browser backend driver 四修（retry 隔離、failure capture、headless flag、逾時傳遞）。
+  - **U16**：`normalize_url` IPv6 host 補方括號。
+  - **U17**：`render-caption` 不再重複/碎裂 canonical_url。
+  - **U18**：prep pipeline crawl progress callback 改為 dict 形（不再崩）。
+  - **U19**：failure 圖路徑對 package 目錄解析（不再找不到圖）。
+  - **U20**：多語句 migration 改為逐語句套用 + savepoint，部分失敗不阻塞後續語句。
+
 ## [0.2.3.0] - 2026-06-18
 
 ### Added

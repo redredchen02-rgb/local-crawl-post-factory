@@ -9,6 +9,7 @@ from fastapi import Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
+import cpost
 from cpost.core import jobs, runs, webui_config
 from cpost.core.errors import SessionExpiredError
 from cpost.cli import draft_post, verify_draft
@@ -17,7 +18,7 @@ _HERE = Path(__file__).parent.parent
 templates = Jinja2Templates(directory=str(_HERE / "templates"))
 
 try:
-    _app_version = version("local-crawl-post-factory")
+    _app_version = version(cpost.__dist_name__)
 except PackageNotFoundError:
     _app_version = "dev"
 
