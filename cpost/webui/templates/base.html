@@ -70,13 +70,14 @@
   var sidebar=document.querySelector('.sidebar');
   var backdrop=document.getElementById('sidebar-backdrop');
   var toggle=document.getElementById('nav-toggle');
-  function close(){sidebar.classList.remove('open');backdrop.classList.remove('open');document.body.style.overflow='';}
+  function close(){if(sidebar)sidebar.classList.remove('open');if(backdrop)backdrop.classList.remove('open');document.body.style.overflow='';}
   if(toggle) toggle.addEventListener('click',function(){
     var open=sidebar.classList.toggle('open');
     backdrop.classList.toggle('open',open);
     document.body.style.overflow=open?'hidden':'';
   });
   if(backdrop) backdrop.addEventListener('click',close);
+  document.addEventListener('keydown',function(e){if(e.key==='Escape')close();});
   document.querySelectorAll('.nav-item').forEach(function(a){
     var href=a.getAttribute('href');
     var path=window.location.pathname;

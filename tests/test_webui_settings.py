@@ -50,9 +50,9 @@ def test_settings_empty_state_when_no_sources(tmp_path):
     r = client.get("/settings")
     assert r.status_code == 200
     assert "尚無設定來源" in r.text
-    # no source badges rendered (no table rows) — check text content absence is tricky
-    # since "啟用"/"停用" appears in button labels too; check for source-list context
-    assert "尚無設定來源" in r.text
+    # no source pill badges rendered when sources list is empty
+    assert 'pill ok' not in r.text
+    assert 'pill error' not in r.text
 
 
 def test_settings_all_disabled_indication(tmp_path):
@@ -80,8 +80,8 @@ def test_settings_disabled_source_is_demphasized(tmp_path):
     assert "全部停用" not in r.text
     # the disabled row carries the de-emphasis marker class + 停用/啟用 badges
     assert "source-disabled" in r.text
-    assert "停用" in r.text
-    assert "啟用" in r.text
+    assert 'class="pill error"' in r.text
+    assert 'class="pill ok"' in r.text
 
 
 def test_settings_enabled_defaults_true_when_omitted(tmp_path):
@@ -91,7 +91,7 @@ def test_settings_enabled_defaults_true_when_omitted(tmp_path):
     ])
     r = client.get("/settings")
     assert r.status_code == 200
-    assert "啟用" in r.text
+    assert 'class="pill ok"' in r.text
     assert "全部停用" not in r.text
 
 
