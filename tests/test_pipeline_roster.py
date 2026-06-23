@@ -11,9 +11,8 @@ Covers:
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import patch
 
-import pytest
 
 from cpost.core.pipeline import crawl_all_sources
 
@@ -134,7 +133,7 @@ def test_yaml_host_takes_priority_over_roster(
     ]
     mock_crawl.side_effect = lambda *a, **kw: [{"title": "item"}]
 
-    result = crawl_all_sources(cfg)
+    crawl_all_sources(cfg)
 
     # Only the YAML source is crawled; roster duplicate is skipped.
     assert mock_crawl.call_count == 1
@@ -284,7 +283,7 @@ def test_update_crawled_at_error_does_not_abort_remaining(
     # update_crawled_at fails for the first site.
     mock_update_at.side_effect = [Exception("db write error"), None]
 
-    result = crawl_all_sources(cfg)
+    crawl_all_sources(cfg)
 
     # Both roster sites (plus fallback start_url) were crawled.
     assert mock_crawl.call_count == 3

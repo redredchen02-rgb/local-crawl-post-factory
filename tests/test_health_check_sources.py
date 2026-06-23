@@ -14,7 +14,6 @@
 
 from __future__ import annotations
 
-import os
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from unittest.mock import patch
@@ -22,7 +21,6 @@ from unittest.mock import patch
 import pytest
 
 from cpost.core import site_roster
-from cpost.cli import health_check_sources as hcs
 from cpost.cli.health_check_sources import run, _compute_mirror_overlap, _is_fresh
 
 

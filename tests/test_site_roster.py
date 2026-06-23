@@ -1,6 +1,5 @@
 """Tests for cpost.core.site_roster — U1."""
 
-import os
 import pytest
 
 from cpost.core.site_roster import (

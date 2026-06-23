@@ -15,8 +15,6 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from cpost.core import reviewed, runs, site_roster, state
-
-logger = logging.getLogger(__name__)
 from cpost.core.backend_args import BackendInvocation
 from cpost.core.errors import SessionExpiredError, ValidationError
 from cpost.core.schema import AutoPipelineResult, PipelineFailed, PipelineItem, PipelineResult
@@ -30,6 +28,8 @@ from cpost.cli import (
     render_caption,
     verify_draft,
 )
+
+logger = logging.getLogger(__name__)
 
 
 _PER_SOURCE_OVERRIDE_KEYS: frozenset[str] = frozenset({

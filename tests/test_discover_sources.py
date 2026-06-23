@@ -5,8 +5,6 @@
 
 import io
 import os
-import sys
-import tempfile
 from typing import Any
 from unittest.mock import MagicMock, patch
 
@@ -221,8 +219,6 @@ class TestDiscoverEdgeCases:
         roster_path = str(tmp_path / "roster.db")
 
         good_html = _html_with_links("https://discovered.org/")
-
-        call_count = {"n": 0}
 
         def fake_urlopen(req: Any, timeout: int = 10) -> Any:
             url = req.full_url if hasattr(req, "full_url") else str(req)
