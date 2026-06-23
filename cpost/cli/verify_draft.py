@@ -6,13 +6,14 @@ import sys
 from pathlib import Path
 
 from cpost.core import cli, manifest as mf, audit
+from cpost.core.backend_args import BackendInvocation
 from cpost.browser.selector_recipe import load_backend
 from cpost.browser import backend_driver
 
 LOG_PATH = "./logs/audit.jsonl"
 
 
-def _parse(argv):
+def _parse(argv: list[str]) -> argparse.Namespace:
     p = argparse.ArgumentParser(prog="verify-draft")
     p.add_argument("--manifest", required=True)
     p.add_argument("--backend", required=True)
@@ -23,7 +24,7 @@ def _parse(argv):
     return p.parse_args(argv)
 
 
-def _run(args) -> int:
+def _run(args: argparse.Namespace | BackendInvocation) -> int:
     manifest = mf.load(args.manifest)
     cfg = load_backend(args.backend)
     mf.require_status(manifest, "drafted")
@@ -48,7 +49,7 @@ def _run(args) -> int:
 run = _run
 
 
-def main(argv=None):
+def main(argv: list[str] | None = None) -> None:
     args = _parse(sys.argv[1:] if argv is None else argv)
     cli.main_wrapper(lambda: _run(args))
 

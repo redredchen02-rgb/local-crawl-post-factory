@@ -82,7 +82,7 @@ def normalize_one(obj: dict) -> dict:
 _normalize = normalize_one  # deprecated: remove in vNEXT (use normalize_one)
 
 
-def _run():
+def _run() -> None:
     emitted = 0
     quarantined = 0
     # NOTE: iterating read_lines() may raise ValidationError on a malformed JSON
@@ -106,7 +106,7 @@ def _run():
         )
 
 
-def main():
+def main() -> None:
     argparse.ArgumentParser(
         prog="normalize-items",
         description="Clean/validate crawled NDJSON into normalized NDJSON (stdin->stdout).",

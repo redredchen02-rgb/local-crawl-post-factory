@@ -1,5 +1,7 @@
 # 排程 / Agent 自動化範例
 
+> 先決條件：先 `pip install -e .`，確認以下 console script 都在 PATH（`auth-login`、`crawl-posts`、`normalize-items`、`library-ingest`、`cluster-scoops`、`score-scoops`、`generate-article`、`build-manifest`、`draft-post`、`verify-draft`、`publish-post`、`dedupe-posts`；WebUI 為 `crawl-post-webui`）。
+
 所有命令都是無狀態、stdin→stdout NDJSON、退出碼穩定，因此可安全進 cron 或 coding agent。
 **預設安全原則：排程只到「建草稿」或「驗證」為止；發布維持人工 `--approve`。** 若已在 WebUI 明確啟用 `auto_pipeline`，可由本機 WebUI job 串接發布，但這是 opt-in 風險模式，會預先滿足審核門。
 

@@ -48,10 +48,15 @@ DEFAULTS = {
     # list = single-site behavior via crawl_all_sources' start_url fallback.
     # Each entry is a dict, validated by _validate_sources (NOT _coerce).
     "sources": [],
+    # Retention windows (days) for the durable logs. 0 = disabled (keep all);
+    # consumed by cli.maintenance.run_retention, never by the pipeline directly.
+    "audit_retention_days": 0,
+    "runs_retention_days": 0,
 }
 
 _INT_FIELDS = ("limit", "max_pages", "concurrency", "max_text_chars",
-               "min_confidence", "min_text_chars")
+               "min_confidence", "min_text_chars",
+               "audit_retention_days", "runs_retention_days")
 _FLOAT_FIELDS = ("download_delay", "min_score")
 # Checkbox fields: form POST sends "on" when checked, absent when unchecked.
 _BOOL_FIELDS = ("auto_pipeline",)
@@ -177,6 +182,10 @@ def validate(cfg: dict) -> None:
         raise ValidationError("min_confidence must be >= 0")
     if float(cfg.get("min_score", 0)) < 0:
         raise ValidationError("min_score must be >= 0")
+    if int(cfg.get("audit_retention_days", 0)) < 0:
+        raise ValidationError("audit_retention_days must be >= 0")
+    if int(cfg.get("runs_retention_days", 0)) < 0:
+        raise ValidationError("runs_retention_days must be >= 0")
     _validate_sources(cfg)
 
 

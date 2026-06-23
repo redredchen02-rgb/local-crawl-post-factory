@@ -587,3 +587,194 @@ def test_default_budget_is_generous_and_finite():
     from cpost.cli.crawl_posts import DEFAULT_CRAWL_MAX_RUNTIME_SEC
 
     assert 60.0 <= DEFAULT_CRAWL_MAX_RUNTIME_SEC < float("inf")
+
+
+# -- L6: --download-delay CLI/config parity --------------------------------- #
+
+def test_download_delay_flag_flows_into_opts(monkeypatch):
+    """`--download-delay 1.0` parses and reaches the opts that drive Scrapy.
+
+    Asserts the parsed value lands in the opts dict handed to crawl_items (which
+    the worker maps onto Scrapy DOWNLOAD_DELAY), without spawning a real crawl.
+    Mirrors the existing same-pattern flags wired through cli_map.
+    """
+    import argparse
+
+    from cpost.cli import crawl_posts
+
+    # Capture the opts crawl_items would receive instead of running a crawl.
+    captured = {}
+
+    def fake_crawl_items(opts, *a, **k):
+        captured.update(opts)
+        return []
+
+    monkeypatch.setattr(crawl_posts, "crawl_items", fake_crawl_items)
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("urls", nargs="*")
+    parser.add_argument("--stdin", action="store_true")
+    parser.add_argument("--config", default="configs/crawler.yaml")
+    parser.add_argument("--item-regex", dest="item_regex")
+    parser.add_argument("--allow-regex", dest="allow_regex")
+    parser.add_argument("--deny-regex", dest="deny_regex")
+    parser.add_argument("--max-pages", dest="max_pages", type=int)
+    parser.add_argument("--limit", type=int)
+    parser.add_argument("--depth", type=int)
+    parser.add_argument("--min-text-chars", dest="min_text_chars", type=int)
+    parser.add_argument("--max-text-chars", dest="max_text_chars", type=int)
+    parser.add_argument("--source-id", dest="source_id")
+    parser.add_argument("--user-agent", dest="user_agent")
+    parser.add_argument("--timeout-sec", dest="timeout_sec", type=int)
+    parser.add_argument("--concurrency", type=int)
+    parser.add_argument("--download-delay", dest="download_delay", type=float)
+    parser.add_argument("--no-robots", dest="no_robots", action="store_true")
+    args = parser.parse_args(
+        ["http://127.0.0.1:1/x", "--no-robots", "--download-delay", "1.0"]
+    )
+
+    assert crawl_posts._run(args) == 0
+    # Parsed as a float and threaded through to the crawl opts (→ DOWNLOAD_DELAY).
+    assert captured["download_delay"] == 1.0
+    assert isinstance(captured["download_delay"], float)
+
+
+def test_download_delay_default_is_unchanged_when_flag_absent(monkeypatch):
+    """Omitting --download-delay leaves the CONFIG_DEFAULTS value (0.0) intact."""
+    import argparse
+
+    from cpost.cli import crawl_posts
+
+    captured = {}
+
+    def fake_crawl_items(opts, *a, **k):
+        captured.update(opts)
+        return []
+
+    monkeypatch.setattr(crawl_posts, "crawl_items", fake_crawl_items)
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("urls", nargs="*")
+    parser.add_argument("--stdin", action="store_true")
+    parser.add_argument("--config", default="configs/crawler.yaml")
+    parser.add_argument("--item-regex", dest="item_regex")
+    parser.add_argument("--allow-regex", dest="allow_regex")
+    parser.add_argument("--deny-regex", dest="deny_regex")
+    parser.add_argument("--max-pages", dest="max_pages", type=int)
+    parser.add_argument("--limit", type=int)
+    parser.add_argument("--depth", type=int)
+    parser.add_argument("--min-text-chars", dest="min_text_chars", type=int)
+    parser.add_argument("--max-text-chars", dest="max_text_chars", type=int)
+    parser.add_argument("--source-id", dest="source_id")
+    parser.add_argument("--user-agent", dest="user_agent")
+    parser.add_argument("--timeout-sec", dest="timeout_sec", type=int)
+    parser.add_argument("--concurrency", type=int)
+    parser.add_argument("--download-delay", dest="download_delay", type=float)
+    parser.add_argument("--no-robots", dest="no_robots", action="store_true")
+    args = parser.parse_args(["http://127.0.0.1:1/x", "--no-robots"])
+
+    assert crawl_posts._run(args) == 0
+    from cpost.cli.crawl_posts import CONFIG_DEFAULTS
+    assert captured["download_delay"] == CONFIG_DEFAULTS["download_delay"] == 0.0
+
+
+# -- L6: crawl wall-clock timeout via CLI → exit 4, pure-NDJSON stdout ------- #
+
+@pytest.fixture
+def sinkhole():
+    """A TCP server that accepts connections but never replies → a hung crawl.
+
+    Unlike a closed port (which refuses fast), this keeps the crawl child alive so
+    the wall-clock budget — not a connection error — is what ends it, exercising
+    the U11 timeout → ExternalError (exit 4) path deterministically.
+    """
+    srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    srv.bind(("127.0.0.1", 0))
+    srv.listen(8)
+    port = srv.getsockname()[1]
+    held = []
+
+    def _accept_loop():
+        while True:
+            try:
+                conn, _ = srv.accept()
+            except OSError:
+                return
+            held.append(conn)  # keep open, never respond
+
+    t = threading.Thread(target=_accept_loop, daemon=True)
+    t.start()
+    try:
+        yield f"http://127.0.0.1:{port}"
+    finally:
+        srv.close()
+        for c in held:
+            try:
+                c.close()
+            except OSError:
+                pass
+
+
+def test_crawl_timeout_exits_4_with_empty_stdout(sinkhole):
+    """Exceeding the wall-clock budget → child killed, exit 4, stdout pure (empty).
+
+    Mirrors test_unreachable_host_exits_4 but the failure mode is the U11 budget
+    overrun (CPOST_CRAWL_MAX_RUNTIME_SEC), not connection refusal. A tiny budget
+    keeps it fast; the sinkhole guarantees the crawl can't finish first.
+    """
+    import os
+
+    env = dict(os.environ)
+    env["CPOST_CRAWL_MAX_RUNTIME_SEC"] = "0.5"
+    cmd = [
+        sys.executable, "-m", "cpost.cli.crawl_posts",
+        f"{sinkhole}/index.html", "--no-robots", "--timeout-sec", "30",
+    ]
+    proc = subprocess.run(
+        cmd, cwd=str(ROOT), capture_output=True, text=True, timeout=60, env=env
+    )
+    assert proc.returncode == 4, (
+        f"rc={proc.returncode} out={proc.stdout!r} err={proc.stderr!r}"
+    )
+    # Contract: stdout stays pure NDJSON — here that means nothing leaked.
+    assert proc.stdout.strip() == ""
+    # The diagnostic must mention the budget overrun, on stderr only.
+    assert proc.stderr.strip() != ""
+    assert "budget" in proc.stderr.lower()
+
+
+# -- L6: bad/invalid CSS selector → silent fallback, no stderr noise -------- #
+
+def test_invalid_source_selector_silently_falls_back_no_stderr_noise(
+    index_c, tmp_path
+):
+    """A source whose config gives a syntactically invalid CSS selector → built-in
+    extraction, no stderr noise.
+
+    A per-source ``body_selector`` is config-driven (no CLI flag), so this routes
+    a bad selector in through --config exactly as a real source would. The handler
+    swallows the parsel/cssselect SelectorSyntaxError and uses the default
+    extraction (R6); the crawl must still emit a valid item, and no selector error
+    (no traceback, no 'SelectorSyntaxError') may leak to stderr or pollute stdout.
+    """
+    cfg = tmp_path / "crawler.yaml"
+    cfg.write_text("body_selector: 'div[unclosed'\n", encoding="utf-8")
+
+    rc, out, err = _run_crawl(
+        f"{index_c}/index-c.html",
+        "--no-robots",
+        "--item-regex",
+        r"/news/c",
+        "--config",
+        str(cfg),
+    )
+    assert rc == 0, err
+    # Fell back to default extraction: the decoy <p> and heading are captured,
+    # i.e. the bad selector did NOT zero the source.
+    items = _parse_ndjson(out)
+    c = next(it for it in items if "news/c.html" in it["url"])
+    assert "IGNORED" in c["text"], c["text"]
+    assert "Article C Heading" in c["text"], c["text"]
+    # The fallback is silent: no selector error / traceback surfaced on stderr.
+    assert "SelectorSyntaxError" not in err
+    assert "Traceback" not in err

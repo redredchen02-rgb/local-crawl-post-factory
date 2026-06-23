@@ -4,6 +4,41 @@ All selectors come from ``backend.yaml`` via :mod:`cpost.browser.selector_recipe
 this module never hardcodes a selector string (R7). Login is carried by a
 Playwright ``storage_state`` file; this driver never handles passwords and never
 bypasses access controls (origin §15).
+
+Retry strategy
+--------------
+Each backend action (``create_draft`` / ``verify_draft`` / ``publish_draft``)
+runs its browser steps through :func:`_run_with_retry`, which retries on
+*transient* failures only.
+
+* **What fires a retry.** Generic ``PlaywrightTimeout`` / ``PlaywrightError``
+  (navigation hiccups, a selector that is briefly not yet present) are treated
+  as transient: each failure captures a screenshot + ``failure.json`` (R2) and
+  the step is retried. Non-transient outcomes are NOT retried —
+  ``SessionExpiredError`` (remedy is re-login, see :func:`_check_session`) and
+  ``ValidationError`` (e.g. a missing configured selector) propagate immediately.
+
+* **Where the counts come from.** Retry count and backoff are resolved by
+  :func:`retry_kwargs` from the ``backend.yaml`` ``retry`` block
+  (``count`` / ``backoff_sec``), falling back to the module defaults
+  ``DEFAULT_RETRIES`` (1) and ``DEFAULT_BACKOFF_SEC`` (0.0) when unset; ``count``
+  may also be overridden by a caller. ``retries`` is the *total* number of
+  attempts (floored at 1), not the number of extra tries after the first.
+
+* **Backoff shape: linear.** Between attempts the driver sleeps
+  ``backoff_sec * attempt`` (see ~line 99) — a linear ramp, NOT exponential.
+  Linear is deliberate and sufficient here: the target is a single localhost /
+  self-hosted backend the operator controls, not a shared remote API with
+  rate-limit / thundering-herd concerns. There is exactly one client (this
+  tool), so escalating backoff buys nothing; a small fixed-growth delay just
+  rides out a momentary page-not-ready without inflating total wall time.
+
+* **Per-action timeout.** The Playwright default timeout (``DEFAULT_TIMEOUT_MS``,
+  ~line 20, 30000 ms) is applied once per :func:`session` via
+  ``context.set_default_timeout``. It is supplied by the CLI ``--timeout-ms``
+  flag (see ``cpost/cli/draft_post.py`` and siblings), NOT by ``backend.yaml``.
+  Timeout bounds how long a single step waits before raising; retries then
+  decide whether that timeout is retried.
 """
 
 import json

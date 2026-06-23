@@ -70,9 +70,10 @@ warn_redundant_casts = true
 warn_unused_ignores = true
 
 [[tool.mypy.overrides]]
-# cpost.core is the correctness-critical zone -- hold it a notch higher than cli/browser/webui.
-# Kept to high-signal flags that add zero noise today but raise the bar for new code.
-module = "cpost.core.*"
+# cpost.core and cpost.cli are the correctness-critical zones -- hold them a notch
+# higher than browser/webui. cpost.cli holds the irreversible publish/draft commands,
+# so its argument and return contracts are worth pinning down.
+module = ["cpost.core.*", "cpost.cli.*"]
 disallow_untyped_defs = true
 warn_return_any = true
 warn_unreachable = true

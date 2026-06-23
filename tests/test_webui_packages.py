@@ -590,3 +590,59 @@ def test_edit_manifest_written_before_caption(tmp_path, monkeypatch):
     assert manifest_idx < caption_idx, (
         f"manifest must be written before caption; got order {write_order}"
     )
+
+
+# --- L2: multi-source provenance (source_id) display --------------------------
+
+def _pkg_with_source(out_dir, post_id, title, source_id, status="package_built"):
+    """Build a package whose manifest carries a source.source_id (provenance)."""
+    d = Path(out_dir) / post_id
+    d.mkdir(parents=True)
+    (d / "manifest.json").write_text(json.dumps(
+        {"post_id": post_id, "content": {"title": title},
+         "source": {"source_id": source_id,
+                    "canonical_url": f"https://example.com/{post_id}"},
+         "backend": {"status": status}}),
+        encoding="utf-8")
+    (d / "caption.txt").write_text("文案內容", encoding="utf-8")
+
+
+def test_source_id_renders_in_list_and_detail(tmp_path):
+    """Happy: a manifest with source_id shows it in both the list and detail."""
+    out = tmp_path / "out"
+    _pkg_with_source(out, "20260615_a", "甲文", "tech-blog")
+    client = _client(tmp_path, out)
+    assert "tech-blog" in client.get("/packages").text
+    assert "tech-blog" in client.get("/packages/20260615_a").text
+
+
+def test_missing_source_block_renders_placeholder(tmp_path):
+    """Edge: a manifest without a source block must render '—' without error."""
+    out = tmp_path / "out"
+    d = out / "20260615_n"
+    d.mkdir(parents=True)
+    (d / "manifest.json").write_text(json.dumps(
+        {"post_id": "20260615_n", "content": {"title": "無來源文"},
+         "backend": {"status": "package_built"}}), encoding="utf-8")
+    (d / "caption.txt").write_text("文案內容", encoding="utf-8")
+    client = _client(tmp_path, out)
+    r = client.get("/packages")
+    assert r.status_code == 200
+    assert "無來源文" in r.text and "—" in r.text
+    d2 = client.get("/packages/20260615_n")
+    assert d2.status_code == 200
+    assert "—" in d2.text
+
+
+def test_two_packages_show_distinct_source_ids(tmp_path):
+    """Integration: each package's detail shows its own source_id."""
+    out = tmp_path / "out"
+    _pkg_with_source(out, "20260615_a", "甲文", "source-alpha")
+    _pkg_with_source(out, "20260615_b", "乙文", "source-beta")
+    client = _client(tmp_path, out)
+    lst = client.get("/packages").text
+    assert "source-alpha" in lst and "source-beta" in lst
+    ra = client.get("/packages/20260615_a").text
+    assert "source-alpha" in ra and "source-beta" not in ra
+    rb = client.get("/packages/20260615_b").text
+    assert "source-beta" in rb and "source-alpha" not in rb
