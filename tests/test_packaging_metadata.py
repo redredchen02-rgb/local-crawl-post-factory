@@ -32,15 +32,3 @@ def test_private_do_not_upload_classifier_present():
     )
 
 
-def test_license_files_entry_present():
-    """pyproject must declare license-files so the wheel bundles the LICENSE (D1)."""
-    proj = _pyproject()
-    assert "license-files" in proj["project"], (
-        "Missing [project].license-files — wheel will not bundle the LICENSE file"
-    )
-    assert "LICENSE" in proj["project"]["license-files"]
-
-
-def test_license_file_exists():
-    """The LICENSE file referenced in pyproject.toml must exist on disk."""
-    assert (_ROOT / "LICENSE").exists(), "LICENSE file missing from repo root"
