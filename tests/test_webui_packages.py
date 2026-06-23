@@ -534,7 +534,6 @@ def test_edit_caption_failure_rolls_back_manifest_body(tmp_path, monkeypatch):
 
     out = tmp_path / "out"
     _pkg(out, "20260615_a", "甲文", caption="原始文案")
-    client = _client(tmp_path, out)
 
     orig_m = json.loads((out / "20260615_a" / "manifest.json").read_text(encoding="utf-8"))
     orig_body = orig_m.get("content", {}).get("body")  # None — _pkg sets no body
