@@ -1,7 +1,4 @@
-"""U8 (R3): WebUI read-only sources list on the settings page.
-
-This round is display-only — no add/edit/delete controls (those are R3b).
-"""
+"""R3 + R3b: WebUI sources list with full CRUD controls on the settings page."""
 
 from fastapi.testclient import TestClient
 
@@ -34,17 +31,18 @@ def test_settings_lists_sources_when_configured(tmp_path):
     assert "全部停用" not in r.text
 
 
-def test_settings_is_read_only_no_crud_controls(tmp_path):
-    """R3 is display-only: no add/edit/delete affordances for sources (that's R3b)."""
+def test_settings_has_crud_controls(tmp_path):
+    """R3b: CRUD endpoints are wired — add form, delete and toggle buttons present."""
     client = _client(tmp_path, [
         {"source_id": "a", "start_url": "https://a.example.com/", "enabled": True},
     ])
     r = client.get("/settings")
-    assert "唯讀" in r.text  # clearly labeled read-only
-    # no per-source CRUD endpoints wired this round
-    assert "/sources/add" not in r.text
-    assert "/sources/delete" not in r.text
-    assert "/sources/edit" not in r.text
+    assert r.status_code == 200
+    # add form endpoint exists
+    assert "/sources/add" in r.text
+    # per-source toggle + delete buttons exist
+    assert "/sources/toggle/a" in r.text
+    assert "/sources/delete/a" in r.text
 
 
 def test_settings_empty_state_when_no_sources(tmp_path):
@@ -145,3 +143,137 @@ def test_settings_valid_dict_sources_still_render(tmp_path):
     assert "ok" in r.text
     assert "https://ok.example.com/" in r.text
     assert "部分來源設定格式有誤" not in r.text
+
+
+# --- B3: CRUD routes ---------------------------------------------------------
+
+def test_sources_add_valid(tmp_path):
+    client = _client(tmp_path, [])
+    r = client.post("/sources/add", data={
+        "source_id": "newsite", "start_url": "https://newsite.example.com/", "enabled": "on"})
+    assert r.status_code == 200
+    assert "newsite" in r.text
+    assert "https://newsite.example.com/" in r.text
+
+
+def test_sources_add_duplicate_source_id_400(tmp_path):
+    client = _client(tmp_path, [
+        {"source_id": "dup", "start_url": "https://dup.example.com/"},
+    ])
+    r = client.post("/sources/add", data={
+        "source_id": "dup", "start_url": "https://other.example.com/", "enabled": "on"})
+    assert r.status_code == 400
+    assert "duplicate" in r.text.lower() or "dup" in r.text
+
+
+def test_sources_add_bad_url_400(tmp_path):
+    client = _client(tmp_path, [])
+    r = client.post("/sources/add", data={
+        "source_id": "bad", "start_url": "not-a-url", "enabled": "on"})
+    assert r.status_code == 400
+
+
+def test_sources_delete_removes_entry(tmp_path):
+    from cpost.core import webui_config as wc
+    cfgp = tmp_path / "webui.yaml"
+    wc.save(str(cfgp), {"start_url": "https://example.com", "sources": [
+        {"source_id": "keep", "start_url": "https://keep.example.com/"},
+        {"source_id": "gone", "start_url": "https://gone.example.com/"},
+    ]})
+    from fastapi.testclient import TestClient
+    from cpost.webui.app import create_app
+    client = TestClient(create_app(str(cfgp)))
+    r = client.post("/sources/delete/gone")
+    assert r.status_code == 200
+    assert "gone" not in r.text
+    assert "keep" in r.text
+    # config persisted
+    cfg = wc.load(str(cfgp))
+    ids = [s["source_id"] for s in cfg.get("sources", [])]
+    assert "gone" not in ids
+    assert "keep" in ids
+
+
+def test_sources_delete_unknown_404(tmp_path):
+    client = _client(tmp_path, [
+        {"source_id": "a", "start_url": "https://a.example.com/"},
+    ])
+    r = client.post("/sources/delete/nonexistent")
+    assert r.status_code == 404
+
+
+def test_sources_toggle_disables_enabled_source(tmp_path):
+    from cpost.core import webui_config as wc
+    cfgp = tmp_path / "webui.yaml"
+    wc.save(str(cfgp), {"start_url": "https://example.com", "sources": [
+        {"source_id": "live", "start_url": "https://live.example.com/", "enabled": True},
+    ]})
+    from fastapi.testclient import TestClient
+    from cpost.webui.app import create_app
+    client = TestClient(create_app(str(cfgp)))
+    r = client.post("/sources/toggle/live")
+    assert r.status_code == 200
+    # entry now has explicit enabled: False in the config
+    cfg = wc.load(str(cfgp))
+    src = next(s for s in cfg["sources"] if s["source_id"] == "live")
+    assert src["enabled"] is False
+
+
+def test_sources_toggle_stores_explicit_false_not_omitted(tmp_path):
+    """toggle-off must write enabled: False explicitly — omitting the key lets
+    the template default-true re-enable the source silently."""
+    import yaml
+    from cpost.core import webui_config as wc
+    cfgp = tmp_path / "webui.yaml"
+    wc.save(str(cfgp), {"start_url": "https://example.com", "sources": [
+        {"source_id": "s", "start_url": "https://s.example.com/", "enabled": True},
+    ]})
+    from fastapi.testclient import TestClient
+    from cpost.webui.app import create_app
+    client = TestClient(create_app(str(cfgp)))
+    client.post("/sources/toggle/s")
+    raw = yaml.safe_load(cfgp.read_text(encoding="utf-8"))
+    src = next(s for s in raw["sources"] if s["source_id"] == "s")
+    assert "enabled" in src, "enabled key must be explicitly present after toggle-off"
+    assert src["enabled"] is False
+
+
+def test_sources_edit_preserves_unknown_keys(tmp_path):
+    """Editing a source must not drop unknown per-source keys (in-place update)."""
+    from cpost.core import webui_config as wc
+    cfgp = tmp_path / "webui.yaml"
+    # Write a source with an extra key directly (bypass save() which strips unknowns at cfg level)
+    raw_yaml = (
+        "start_url: https://example.com/\n"
+        "sources:\n"
+        "  - source_id: s\n"
+        "    start_url: https://s.example.com/\n"
+        "    enabled: true\n"
+        "    item_regex: /news/\n"  # known per-source override, preserved
+    )
+    cfgp.write_text(raw_yaml, encoding="utf-8")
+    from fastapi.testclient import TestClient
+    from cpost.webui.app import create_app
+    client = TestClient(create_app(str(cfgp)))
+    r = client.post("/sources/edit/s", data={
+        "start_url": "https://s-new.example.com/", "enabled": "on"})
+    assert r.status_code == 200
+    cfg = wc.load(str(cfgp))
+    src = next(s for s in cfg["sources"] if s["source_id"] == "s")
+    assert src["start_url"] == "https://s-new.example.com/"
+    assert src.get("item_regex") == "/news/", "item_regex must survive the edit"
+
+
+def test_sources_portability_after_crud(tmp_path):
+    """After add + toggle, webui.yaml must contain no absolute paths."""
+    from cpost.core import webui_config as wc
+    cfgp = tmp_path / "webui.yaml"
+    wc.save(str(cfgp), {"start_url": "https://example.com", "sources": []})
+    from fastapi.testclient import TestClient
+    from cpost.webui.app import create_app
+    client = TestClient(create_app(str(cfgp)))
+    client.post("/sources/add", data={
+        "source_id": "check", "start_url": "https://check.example.com/", "enabled": "on"})
+    client.post("/sources/toggle/check")
+    text = cfgp.read_text(encoding="utf-8")
+    assert str(tmp_path) not in text, "absolute path leaked into webui.yaml after CRUD"

@@ -1,21 +1,20 @@
-{# Read-only sources list (R3). Full CRUD is R3b. Editing this round is via YAML. #}
-<section class="sources-panel">
-  <h2>來源清單（唯讀）</h2>
-  <p class="hint">本輪為唯讀顯示，新增／編輯／刪除來源請直接修改 config 的 <code>sources</code>（YAML）。</p>
+{# Sources list with CRUD controls (R3b). #}
+<section class="sources-panel" id="sources-panel">
+  <h2>來源清單</h2>
   {% if sources_malformed %}
     <p class="error">部分來源設定格式有誤，已略過（請檢查 YAML）。</p>
   {% endif %}
   {% set ns = namespace(enabled_count=0) %}
   {% for src in sources if src is mapping %}{% if src.get('enabled', true) %}{% set ns.enabled_count = ns.enabled_count + 1 %}{% endif %}{% endfor %}
   {% if not sources %}
-    <p class="hint">尚無設定來源。請在 config 的 <code>sources</code>（YAML）新增。</p>
+    <p class="hint">尚無設定來源。請使用下方表單新增。</p>
   {% else %}
     {% if ns.enabled_count == 0 %}
       <p class="error">全部停用：目前所有來源皆為停用狀態，爬取時不會抓取任何來源。</p>
     {% endif %}
     <table class="diag-table sources-table">
       <thead>
-        <tr><th>來源代號</th><th>start_url</th><th>狀態</th></tr>
+        <tr><th>來源代號</th><th>start_url</th><th>狀態</th><th>操作</th></tr>
       </thead>
       <tbody>
         {% for src in sources if src is mapping %}
@@ -30,9 +29,30 @@
               <span class="pill">停用</span>
             {% endif %}
           </td>
+          <td class="row-actions">
+            <button type="button" class="sm secondary"
+                    hx-post="/sources/toggle/{{ src.source_id }}"
+                    hx-target="#sources-panel" hx-swap="outerHTML">
+              {% if is_enabled %}停用{% else %}啟用{% endif %}
+            </button>
+            <button type="button" class="sm danger"
+                    hx-post="/sources/delete/{{ src.source_id }}"
+                    hx-target="#sources-panel" hx-swap="outerHTML"
+                    hx-confirm="確定刪除來源「{{ src.source_id }}」？">刪除</button>
+          </td>
         </tr>
         {% endfor %}
       </tbody>
     </table>
   {% endif %}
+
+  <details class="sources-add-form">
+    <summary>新增來源</summary>
+    <form hx-post="/sources/add" hx-target="#sources-panel" hx-swap="outerHTML">
+      <label>來源代號 <input type="text" name="source_id" placeholder="site_a" required></label>
+      <label>Start URL <input type="url" name="start_url" placeholder="https://example.com/" required></label>
+      <label><input type="checkbox" name="enabled" checked> 啟用</label>
+      <button type="submit">新增</button>
+    </form>
+  </details>
 </section>
