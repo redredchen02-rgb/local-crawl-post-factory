@@ -24,6 +24,9 @@ source_id: '51cg'
 #     image_selector: ""            # optional (R6)
 #     date_selector: ""             # optional (R6)
 sources: []
+# roster_path: path to the site_roster SQLite DB (U4 roster integration).
+# Empty string = skip roster (default). Set to activate roster-driven crawls.
+roster_path: ../state/roster.sqlite
 start_url: https://51cg1.com/
 state_path: ../state/published.sqlite
 storage_state: ../auth/storage-state.json
