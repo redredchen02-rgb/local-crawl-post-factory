@@ -193,8 +193,6 @@ def discover(
     total_count = 0
 
     for src in seeds:
-        if not isinstance(src, dict):
-            continue
         seed_url = src.get("start_url", "")
         if not isinstance(seed_url, str) or not seed_url:
             continue
