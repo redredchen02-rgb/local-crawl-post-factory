@@ -119,6 +119,7 @@ def test_dashboard_stats_partial(tmp_path):
     r = client.get("/_dashboard_stats")
     assert r.status_code == 200
     assert "待處理" in r.text
+    assert r.text.strip().startswith('<div class="stat-cards"')
 
 
 def test_settings_still_reachable(tmp_path):

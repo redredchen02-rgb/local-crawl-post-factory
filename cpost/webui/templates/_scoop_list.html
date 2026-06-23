@@ -13,11 +13,20 @@
       <tbody>
         {% for c in rows %}
         <tr>
-          <td><input type="checkbox" name="cluster_ids" value="{{ c.cluster_id }}"></td>
-          <td>{{ c.representative_title or c.cluster_id }}</td>
+          <td style="width:2.5rem"><input type="checkbox" name="cluster_ids" value="{{ c.cluster_id }}"></td>
+          <td>
+            {% if c.multi_source %}<span class="pill error">🔥 多站</span> {% endif %}
+            {{ c.representative_title or c.cluster_id }}
+          </td>
           <td>{{ c.source_count }}</td>
           <td>{{ '%.2f'|format(c.quality or 0) }}</td>
-          <td>{{ '%.2f'|format(c.score or 0) }}</td>
+          <td>
+            {% set s = c.score or 0 %}
+            {% if s >= 0.7 %}<span class="score-high">{{ '%.2f'|format(s) }}</span>
+            {% elif s >= 0.4 %}<span class="score-mid">{{ '%.2f'|format(s) }}</span>
+            {% else %}<span class="score-low">{{ '%.2f'|format(s) }}</span>
+            {% endif %}
+          </td>
           <td>{{ c.sources | join(', ') }}</td>
         </tr>
         {% endfor %}

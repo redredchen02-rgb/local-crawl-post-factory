@@ -1,26 +1,24 @@
 {% extends "base.html" %}
 {% block heading %}今日備稿{% endblock %}
 {% block content %}
-<section class="prep">
+<div style="background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:1rem;margin-bottom:1rem;">
   <form hx-post="/today/prep" hx-target="#prep-status" hx-swap="innerHTML"
         hx-confirm="重新備稿會重抓並重新聚合，下方清單會刷新（清除目前勾選）。確定開始？">
     <button type="submit">開始備稿（爬取 → 聚瓜 → 打分）</button>
     <span class="hint">抓取最新資訊、聚合成「瓜」並打分，完成後在下方挑選要生成的。</span>
   </form>
   <div id="prep-status"></div>
-</section>
+</div>
 
-<section class="filters">
-  <form hx-get="/today/list" hx-target="#scoop-list" hx-swap="outerHTML"
-        hx-trigger="change delay:300ms from:input">
-    <label>最低來源數
-      <input type="number" name="min_confidence" min="0" value="{{ min_confidence }}">
-    </label>
-    <label>最低分
-      <input type="number" name="min_score" min="0" step="0.01" value="{{ min_score }}">
-    </label>
-  </form>
-</section>
+<form class="toolbar" hx-get="/today/list" hx-target="#scoop-list" hx-swap="outerHTML"
+      hx-trigger="change delay:300ms from:input">
+  <label>最低來源數
+    <input type="number" name="min_confidence" min="0" value="{{ min_confidence }}" style="width:5rem;">
+  </label>
+  <label>最低分
+    <input type="number" name="min_score" min="0" step="0.01" value="{{ min_score }}" style="width:5rem;">
+  </label>
+</form>
 
 {% include "_scoop_list.html" %}
 {% endblock %}

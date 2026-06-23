@@ -13,7 +13,6 @@ import yaml
 
 from cpost.cli.discover_sources import (
     _LinkExtractor,
-    _make_source_id,
     discover,
 )
 from cpost.core import site_roster
@@ -24,10 +23,20 @@ from cpost.core.validators import is_safe_external_host
 # Helper fixtures
 # ---------------------------------------------------------------------------
 
-def _make_yaml(sources: list[dict[str, str]], tmpdir: str) -> str:
+def _make_yaml(
+    sources: list[dict[str, str]],
+    tmpdir: str,
+    top_start_url: str = "",
+    top_source_id: str = "",
+) -> str:
     path = os.path.join(tmpdir, "webui.yaml")
+    data: dict = {"sources": sources}
+    if top_start_url:
+        data["start_url"] = top_start_url
+    if top_source_id:
+        data["source_id"] = top_source_id
     with open(path, "w", encoding="utf-8") as f:
-        yaml.dump({"sources": sources}, f)
+        yaml.dump(data, f)
     return path
 
 
@@ -74,22 +83,6 @@ class TestIsSafeExternalHost:
 
     def test_empty_string(self) -> None:
         assert is_safe_external_host("") is False
-
-
-# ---------------------------------------------------------------------------
-# _make_source_id
-# ---------------------------------------------------------------------------
-
-class TestMakeSourceId:
-    def test_basic(self) -> None:
-        assert _make_source_id("example.com") == "example-com"
-
-    def test_max_64_chars(self) -> None:
-        assert len(_make_source_id("a" * 100 + ".com")) <= 64
-
-    def test_special_chars_replaced(self) -> None:
-        sid = _make_source_id("hello_world.org")
-        assert sid == "hello-world-org"
 
 
 # ---------------------------------------------------------------------------
@@ -511,3 +504,273 @@ class TestDiscoverEdgeCases:
                 stderr=io.StringIO(),
             )
         assert exc_info.value.code != 0
+
+
+# ---------------------------------------------------------------------------
+# U1: 頂層 start_url 種子補漏
+# ---------------------------------------------------------------------------
+
+class TestDiscoverTopLevelSeed:
+    """U1: 頂層 start_url 補進種子清單，_yaml_domains 也收錄其 hostname。"""
+
+    def _mock_urlopen_factory(self, seed_host: str, external_host: str):
+        homepage_html = _html_with_links(f"https://{external_host}/")
+
+        def fake_urlopen(req: Any, timeout: int = 10) -> Any:
+            url = req.full_url if hasattr(req, "full_url") else str(req)
+            method = req.get_method() if hasattr(req, "get_method") else "GET"
+            if method == "HEAD":
+                m = MagicMock()
+                m.status = 200
+                m.__enter__ = lambda s: s
+                m.__exit__ = MagicMock(return_value=False)
+                return m
+            if seed_host in url and all(
+                p not in url for p in ["/links/", "/friends/", "/tuijian/", "/link.html"]
+            ):
+                m = MagicMock()
+                m.read.return_value = homepage_html
+                m.headers.get_content_charset.return_value = "utf-8"
+                m.status = 200
+                m.__enter__ = lambda s: s
+                m.__exit__ = MagicMock(return_value=False)
+                return m
+            raise Exception("404")
+
+        return fake_urlopen
+
+    def test_top_level_only_discovers_candidates(self, tmp_path: Any) -> None:
+        """YAML 只有頂層 start_url（無 sources: 清單）→ 頂層站被當種子，能探索外部候選。"""
+        yaml_path = _make_yaml(
+            [],
+            str(tmp_path),
+            top_start_url="https://topseed.com/",
+            top_source_id="topseed",
+        )
+        roster_path = str(tmp_path / "roster.db")
+
+        with (
+            patch("cpost.cli.discover_sources.urlopen",
+                  side_effect=self._mock_urlopen_factory("topseed.com", "found.org")),
+            patch("cpost.cli.discover_sources.time.sleep"),
+            patch("cpost.core.validators.socket.gethostbyname", return_value="1.2.3.4"),
+        ):
+            result = discover(
+                sources_yaml=yaml_path,
+                roster_path=roster_path,
+                dry_run=False,
+                max_per_seed=20,
+                max_total=50,
+                stderr=io.StringIO(),
+            )
+
+        assert "found.org" in result
+        rows = site_roster.list_by_tier(roster_path, site_roster.CANDIDATE)
+        assert "found.org" in [r["domain"] for r in rows]
+
+    def test_top_level_plus_sources_both_seeded(self, tmp_path: Any) -> None:
+        """頂層 + sources: 清單各一個站 → 兩個站都被當種子。"""
+        yaml_path = _make_yaml(
+            [{"start_url": "https://secondary.com/", "source_id": "secondary"}],
+            str(tmp_path),
+            top_start_url="https://primary.com/",
+            top_source_id="primary",
+        )
+        roster_path = str(tmp_path / "roster.db")
+
+        primary_html = _html_with_links("https://from-primary.org/")
+        secondary_html = _html_with_links("https://from-secondary.org/")
+
+        def fake_urlopen(req: Any, timeout: int = 10) -> Any:
+            url = req.full_url if hasattr(req, "full_url") else str(req)
+            method = req.get_method() if hasattr(req, "get_method") else "GET"
+            if method == "HEAD":
+                m = MagicMock()
+                m.status = 200
+                m.__enter__ = lambda s: s
+                m.__exit__ = MagicMock(return_value=False)
+                return m
+            if "primary.com" in url and all(
+                p not in url for p in ["/links/", "/friends/", "/tuijian/", "/link.html"]
+            ):
+                m = MagicMock()
+                m.read.return_value = primary_html
+                m.headers.get_content_charset.return_value = "utf-8"
+                m.__enter__ = lambda s: s
+                m.__exit__ = MagicMock(return_value=False)
+                return m
+            if "secondary.com" in url and all(
+                p not in url for p in ["/links/", "/friends/", "/tuijian/", "/link.html"]
+            ):
+                m = MagicMock()
+                m.read.return_value = secondary_html
+                m.headers.get_content_charset.return_value = "utf-8"
+                m.__enter__ = lambda s: s
+                m.__exit__ = MagicMock(return_value=False)
+                return m
+            raise Exception("404")
+
+        with (
+            patch("cpost.cli.discover_sources.urlopen", side_effect=fake_urlopen),
+            patch("cpost.cli.discover_sources.time.sleep"),
+            patch("cpost.core.validators.socket.gethostbyname", return_value="1.2.3.4"),
+        ):
+            result = discover(
+                sources_yaml=yaml_path,
+                roster_path=roster_path,
+                dry_run=False,
+                max_per_seed=20,
+                max_total=50,
+                stderr=io.StringIO(),
+            )
+
+        assert "from-primary.org" in result
+        assert "from-secondary.org" in result
+
+    def test_top_level_host_not_emitted_as_candidate(self, tmp_path: Any) -> None:
+        """Critical: 頂層 hostname 已在 known 集合 → 不被自己的外連誤列為 candidate。"""
+        # sources: 清單的站連到頂層站 primary.com → 應被 already-known skip
+        yaml_path = _make_yaml(
+            [{"start_url": "https://secondary.com/", "source_id": "secondary"}],
+            str(tmp_path),
+            top_start_url="https://primary.com/",
+            top_source_id="primary",
+        )
+        roster_path = str(tmp_path / "roster.db")
+
+        # secondary.com 的首頁連到 primary.com（頂層站本身）
+        secondary_html = _html_with_links("https://primary.com/some-page")
+
+        def fake_urlopen(req: Any, timeout: int = 10) -> Any:
+            url = req.full_url if hasattr(req, "full_url") else str(req)
+            method = req.get_method() if hasattr(req, "get_method") else "GET"
+            if method == "HEAD":
+                m = MagicMock()
+                m.status = 200
+                m.__enter__ = lambda s: s
+                m.__exit__ = MagicMock(return_value=False)
+                return m
+            if "secondary.com" in url and all(
+                p not in url for p in ["/links/", "/friends/", "/tuijian/", "/link.html"]
+            ):
+                m = MagicMock()
+                m.read.return_value = secondary_html
+                m.headers.get_content_charset.return_value = "utf-8"
+                m.__enter__ = lambda s: s
+                m.__exit__ = MagicMock(return_value=False)
+                return m
+            raise Exception("404")
+
+        stderr_buf = io.StringIO()
+        with (
+            patch("cpost.cli.discover_sources.urlopen", side_effect=fake_urlopen),
+            patch("cpost.cli.discover_sources.time.sleep"),
+            patch("cpost.core.validators.socket.gethostbyname", return_value="1.2.3.4"),
+        ):
+            result = discover(
+                sources_yaml=yaml_path,
+                roster_path=roster_path,
+                dry_run=False,
+                max_per_seed=20,
+                max_total=50,
+                stderr=stderr_buf,
+            )
+
+        assert "primary.com" not in result
+        assert "already-known" in stderr_buf.getvalue()
+
+    def test_top_level_same_host_as_sources_deduped(self, tmp_path: Any) -> None:
+        """頂層 start_url 和 sources: 清單中有相同 host → 去重後只爬一次。"""
+        yaml_path = _make_yaml(
+            [{"start_url": "https://same.com/", "source_id": "same-secondary"}],
+            str(tmp_path),
+            top_start_url="https://same.com/",
+            top_source_id="same",
+        )
+        roster_path = str(tmp_path / "roster.db")
+
+        crawl_count = {"n": 0}
+        homepage_html = _html_with_links("https://external.org/")
+
+        def fake_urlopen(req: Any, timeout: int = 10) -> Any:
+            url = req.full_url if hasattr(req, "full_url") else str(req)
+            method = req.get_method() if hasattr(req, "get_method") else "GET"
+            if method == "HEAD":
+                m = MagicMock()
+                m.status = 200
+                m.__enter__ = lambda s: s
+                m.__exit__ = MagicMock(return_value=False)
+                return m
+            if "same.com" in url and all(
+                p not in url for p in ["/links/", "/friends/", "/tuijian/", "/link.html"]
+            ):
+                crawl_count["n"] += 1
+                m = MagicMock()
+                m.read.return_value = homepage_html
+                m.headers.get_content_charset.return_value = "utf-8"
+                m.__enter__ = lambda s: s
+                m.__exit__ = MagicMock(return_value=False)
+                return m
+            raise Exception("404")
+
+        with (
+            patch("cpost.cli.discover_sources.urlopen", side_effect=fake_urlopen),
+            patch("cpost.cli.discover_sources.time.sleep"),
+            patch("cpost.core.validators.socket.gethostbyname", return_value="1.2.3.4"),
+        ):
+            discover(
+                sources_yaml=yaml_path,
+                roster_path=roster_path,
+                dry_run=False,
+                max_per_seed=20,
+                max_total=50,
+                stderr=io.StringIO(),
+            )
+
+        # same.com 的首頁只應被爬一次（頂層去重排除了 sources: 清單中的重複條目）
+        assert crawl_count["n"] == 1
+
+    def test_top_level_empty_no_crash(self, tmp_path: Any) -> None:
+        """頂層 start_url 為空 → 不 crash，只用 sources: 清單中的種子。"""
+        yaml_path = _make_yaml(
+            [{"start_url": "https://seed.com/", "source_id": "seed"}],
+            str(tmp_path),
+        )
+        roster_path = str(tmp_path / "roster.db")
+        homepage_html = _html_with_links("https://found.org/")
+
+        def fake_urlopen(req: Any, timeout: int = 10) -> Any:
+            url = req.full_url if hasattr(req, "full_url") else str(req)
+            method = req.get_method() if hasattr(req, "get_method") else "GET"
+            if method == "HEAD":
+                m = MagicMock()
+                m.status = 200
+                m.__enter__ = lambda s: s
+                m.__exit__ = MagicMock(return_value=False)
+                return m
+            if "seed.com" in url and all(
+                p not in url for p in ["/links/", "/friends/", "/tuijian/", "/link.html"]
+            ):
+                m = MagicMock()
+                m.read.return_value = homepage_html
+                m.headers.get_content_charset.return_value = "utf-8"
+                m.__enter__ = lambda s: s
+                m.__exit__ = MagicMock(return_value=False)
+                return m
+            raise Exception("404")
+
+        with (
+            patch("cpost.cli.discover_sources.urlopen", side_effect=fake_urlopen),
+            patch("cpost.cli.discover_sources.time.sleep"),
+            patch("cpost.core.validators.socket.gethostbyname", return_value="1.2.3.4"),
+        ):
+            result = discover(
+                sources_yaml=yaml_path,
+                roster_path=roster_path,
+                dry_run=False,
+                max_per_seed=20,
+                max_total=50,
+                stderr=io.StringIO(),
+            )
+
+        assert "found.org" in result

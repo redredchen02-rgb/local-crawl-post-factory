@@ -29,7 +29,6 @@
     var ct=xhr.getResponseHeader('content-type')||'';
     if(!ct.includes('text/html')) return;
     var txt=xhr.responseText||'';
-    // extract first <p class="ok"> or <p class="error"> from response
     var mOk=txt.match(/<p[^>]*\bok\b[^>]*>([\s\S]*?)<\/p>/);
     var mErr=txt.match(/<p[^>]*\berror\b[^>]*>([\s\S]*?)<\/p>/);
     if(mOk) show(mOk[1].replace(/<[^>]+>/g,'').trim(),'ok');
@@ -38,11 +37,53 @@
   });
 })();
 </script>
-  <nav>
-    <a href="/">總覽</a><a href="/today">今日備稿</a><a href="/packages">上膛清單</a><a href="/settings">設定</a><a href="/history">運行歷史</a><a href="/audit">Audit</a><a href="/trash">垃圾桶</a>
-  </nav>
-  <h1>{% block heading %}{% endblock %}</h1>
-  {% block content %}{% endblock %}
-  <footer>local-crawl-post-factory v{{ app_version }}</footer>
+<div class="app-shell">
+  <button id="nav-toggle" aria-label="開啟選單">☰</button>
+  <div id="sidebar-backdrop"></div>
+  <aside class="sidebar">
+    <div class="sidebar-brand">local-crawl-post-factory</div>
+    <nav class="sidebar-nav">
+      <a href="/" class="nav-item">總覽</a>
+      <a href="/today" class="nav-item">今日備稿</a>
+      <a href="/packages" class="nav-item">上膛清單</a>
+      <a href="/scoops" class="nav-item">瓜清單</a>
+      <a href="/roster" class="nav-item">站點名冊</a>
+      <a href="/settings" class="nav-item">設定</a>
+      <a href="/history" class="nav-item">運行歷史</a>
+      <a href="/audit" class="nav-item">Audit</a>
+      <a href="/trash" class="nav-item">垃圾桶</a>
+    </nav>
+    <div class="sidebar-footer">v{{ app_version }}</div>
+  </aside>
+  <div class="main">
+    <div class="page-header">
+      <h1>{% block heading %}{% endblock %}</h1>
+    </div>
+    <div class="page-body">
+      {% block content %}{% endblock %}
+    </div>
+    <footer>local-crawl-post-factory v{{ app_version }}</footer>
+  </div>
+</div>
+<script>
+(function(){
+  var sidebar=document.querySelector('.sidebar');
+  var backdrop=document.getElementById('sidebar-backdrop');
+  var toggle=document.getElementById('nav-toggle');
+  function close(){if(sidebar)sidebar.classList.remove('open');if(backdrop)backdrop.classList.remove('open');document.body.style.overflow='';}
+  if(toggle) toggle.addEventListener('click',function(){
+    var open=sidebar.classList.toggle('open');
+    backdrop.classList.toggle('open',open);
+    document.body.style.overflow=open?'hidden':'';
+  });
+  if(backdrop) backdrop.addEventListener('click',close);
+  document.addEventListener('keydown',function(e){if(e.key==='Escape')close();});
+  document.querySelectorAll('.nav-item').forEach(function(a){
+    var href=a.getAttribute('href');
+    var path=window.location.pathname;
+    if(href===path||(href!=='/'&&path.startsWith(href))) a.classList.add('active');
+  });
+})();
+</script>
 </body>
 </html>

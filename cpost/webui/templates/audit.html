@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block heading %}Audit Log{% endblock %}
 {% block content %}
-<div hx-get="/audit" hx-trigger="every 5s" hx-swap="innerHTML">
+<div id="audit-table" hx-get="/audit" hx-trigger="every 5s" hx-swap="innerHTML">
 {% include "_audit_table.html" %}
 </div>
 {% endblock %}

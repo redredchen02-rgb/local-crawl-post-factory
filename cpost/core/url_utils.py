@@ -50,6 +50,14 @@ def host_of(url: str) -> str:
     return (urlsplit(url).hostname or "").lower()
 
 
+_SOURCE_ID_RE = re.compile(r"[^a-z0-9-]")
+
+
+def make_source_id(host: str) -> str:
+    """Derive a short, filesystem-safe source_id from a hostname."""
+    return _SOURCE_ID_RE.sub("-", host.lower())[:64]
+
+
 def clean_text(value: str) -> str:
     """Collapse whitespace and trim."""
     return _WS.sub(" ", value).strip()

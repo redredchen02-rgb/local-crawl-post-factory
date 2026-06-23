@@ -1,3 +1,4 @@
+import html
 import re
 
 from fastapi import APIRouter, Form, Request
@@ -5,6 +6,8 @@ from fastapi.responses import HTMLResponse
 
 from cpost.core import webui_config
 from cpost.core.errors import CliError, ValidationError
+from cpost.core.url_utils import host_of, make_source_id
+from cpost.core.validators import is_safe_external_host, valid_url
 from cpost.webui.routers._ctx import auth_light, cfg_from_request, templates
 
 
@@ -102,13 +105,13 @@ def save_settings(request: Request,
                                    "diag": _diag(cfg, config_path)})
 
 
-def _sources_partial(request: Request) -> HTMLResponse:
+def _sources_partial(request: Request, *, hint: str = "") -> HTMLResponse:
     """Re-render _sources_list.html as an HTMX swap fragment."""
     cfg = cfg_from_request(request)
     sources, malformed = _sources_view(cfg)
     return templates.TemplateResponse(
         request, "_sources_list.html",
-        {"sources": sources, "sources_malformed": malformed})
+        {"sources": sources, "sources_malformed": malformed, "batch_hint": hint})
 
 
 def _save_sources(config_path: str, sources: list[dict]) -> None:
@@ -136,7 +139,7 @@ def sources_add(request: Request,
     except ValidationError as exc:
         field = _extract_field(exc.message)
         return HTMLResponse(
-            f'<p class="error" data-field="{field or ""}">{exc.message}</p>',
+            f'<p class="error" data-field="{html.escape(field or "")}">{html.escape(exc.message)}</p>',
             status_code=400)
     return _sources_partial(request)
 
@@ -167,7 +170,7 @@ def sources_edit(request: Request, sid: str,
     except ValidationError as exc:
         field = _extract_field(exc.message)
         return HTMLResponse(
-            f'<p class="error" data-field="{field or ""}">{exc.message}</p>',
+            f'<p class="error" data-field="{html.escape(field or "")}">{html.escape(exc.message)}</p>',
             status_code=400)
     return _sources_partial(request)
 
@@ -183,7 +186,7 @@ def sources_delete(request: Request, sid: str):
     try:
         _save_sources(config_path, updated)
     except ValidationError as exc:
-        return HTMLResponse(f'<p class="error">{exc.message}</p>', status_code=400)
+        return HTMLResponse(f'<p class="error">{html.escape(exc.message)}</p>', status_code=400)
     return _sources_partial(request)
 
 
@@ -206,6 +209,51 @@ def sources_toggle(request: Request, sid: str):
         return HTMLResponse('<p class="error">找不到此來源</p>', status_code=404)
     _save_sources(config_path, updated)
     return _sources_partial(request)
+
+
+@router.post("/sources/batch-add", response_class=HTMLResponse)
+def sources_batch_add(request: Request, urls: str = Form("")):
+    config_path = request.app.state.config_path
+    cfg = cfg_from_request(request)
+    sources, _ = _sources_view(cfg)
+    existing_ids = {s.get("source_id") for s in sources if s.get("source_id")}
+
+    lines = [line.strip() for line in urls.split("\n") if line.strip()]
+    new_entries: list[dict] = []
+    skipped_count = 0
+
+    for line in lines:
+        if not valid_url(line):
+            skipped_count += 1
+            continue
+        h = host_of(line)
+        if not h:
+            skipped_count += 1
+            continue
+        if not is_safe_external_host(h):
+            skipped_count += 1
+            continue
+        sid = make_source_id(h)
+        if sid in existing_ids:
+            skipped_count += 1
+            continue
+        existing_ids.add(sid)
+        new_entries.append({"source_id": sid, "start_url": line, "enabled": True})
+
+    if new_entries:
+        try:
+            _save_sources(config_path, [*sources, *new_entries])
+        except ValidationError as exc:
+            return _sources_partial(request, hint=html.escape(exc.message))
+
+    parts = []
+    if new_entries:
+        parts.append(f"已新增 {len(new_entries)} 筆")
+    if skipped_count:
+        parts.append(f"跳過 {skipped_count} 筆")
+    hint = "；".join(parts) if parts else ""
+
+    return _sources_partial(request, hint=hint)
 
 
 @router.get("/auth-status", response_class=HTMLResponse)

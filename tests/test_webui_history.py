@@ -66,8 +66,8 @@ def test_history_hx_request_returns_fragment(tmp_path):
     runs.record_run(str(tp / "state.sqlite"), stage="publish", post_id="p1", status="ok")
     full = client.get("/history")
     frag = client.get("/history", headers={"HX-Request": "true"})
-    assert "<nav>" in full.text
-    assert "<nav>" not in frag.text and "publish" in frag.text
+    assert 'href="/packages"' in full.text
+    assert 'href="/packages"' not in frag.text and "publish" in frag.text
 
 
 def test_audit_hx_request_returns_fragment(tmp_path):
@@ -75,7 +75,7 @@ def test_audit_hx_request_returns_fragment(tmp_path):
     (tp / "audit.jsonl").write_text(
         '{"ts":"t","stage":"draft-post","status":"ok","post_id":"p1"}\n', encoding="utf-8")
     frag = client.get("/audit", headers={"HX-Request": "true"})
-    assert "<nav>" not in frag.text and "draft-post" in frag.text
+    assert 'href="/packages"' not in frag.text and "draft-post" in frag.text
 
 
 def test_history_filter_by_post_id(tmp_path):
