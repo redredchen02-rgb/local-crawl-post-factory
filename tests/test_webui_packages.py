@@ -439,6 +439,34 @@ def test_rollback_clears_stale_published_url(tmp_path):
     assert manifest["backend"]["published_url"] is None
 
 
+def test_b1_rollback_clears_state_row(tmp_path):
+    """B1 rollback fix: rollback_package must remove the 'published' state row so a
+    subsequent re-publish triggers a fresh browser click, not a forward-complete."""
+    from cpost.core import state as state_mod, url_utils
+    state_db = str(tmp_path / "state.sqlite")
+    out = tmp_path / "out"
+    _pkg(out, "20260615_a", "甲文", status="published")
+    canonical_url = "https://example.com/20260615_a"
+    # Pre-populate state row as if a prior publish succeeded
+    with state_mod.connect(state_db) as conn:
+        state_mod.upsert(conn, canonical_url=canonical_url, title="甲文",
+                         title_hash=url_utils.title_hash("甲文"),
+                         status=state_mod.PUBLISHED, now="2026-06-23T00:00:00",
+                         published_url="https://example.com/live/1")
+        assert state_mod.is_processed(conn, canonical_url)
+    # Client with state_path in config
+    cfgp = tmp_path / "webui.yaml"
+    webui_config.save(str(cfgp), {"start_url": "https://example.com",
+                                   "out_dir": str(out), "state_path": state_db})
+    client = TestClient(create_app(str(cfgp)))
+    r = client.post("/packages/20260615_a/rollback")
+    assert r.status_code == 200
+    # State row must be gone — re-publish can now click fresh
+    with state_mod.connect(state_db) as conn:
+        assert not state_mod.is_processed(conn, canonical_url)
+        assert not state_mod.is_publishing(conn, canonical_url)
+
+
 # --- U14: generate_article dual-write consistency -----------------------------
 
 def _stub_llm(monkeypatch, article):

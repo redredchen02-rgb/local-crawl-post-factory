@@ -261,3 +261,63 @@ def test_marker_lock_then_retry_does_not_republish(tmp_path):
     m = json.loads(open(args.manifest, encoding="utf-8").read())
     assert m["backend"]["status"] == "published"
     assert len(_publish_ok_rows(state)) == 1                       # exactly one ok row (U9)
+
+
+# --- B1: pre-publish state reservation + crash-window detection ---
+
+def test_b1_publishing_state_stops_reentry(tmp_path):
+    """B1: a 'publishing' state row from a crashed prior run raises ExternalError
+    (exit 4) instead of silently re-clicking publish. Operator must confirm."""
+    state = str(tmp_path / "state.sqlite")
+    mpath = _publishable_manifest(tmp_path)
+    with state_mod.connect(state) as conn:
+        state_mod.upsert(conn, canonical_url="https://x.com/p1", title="T",
+                         title_hash=url_utils.title_hash("T"),
+                         status=state_mod.PUBLISHING, now="2026-06-23T00:00:00")
+    args = _ns(manifest=mpath, approve=True, state=state)
+    code = cli.run(lambda: publish_post._run(args))
+    assert code == 4   # ExternalError — stops without re-clicking
+
+
+def test_b1_reserve_publishing_written_before_click(tmp_path):
+    """B1: _reserve_publishing writes status='publishing' so that a crash between
+    reserve and browser click is detectable on the next re-entry."""
+    state = str(tmp_path / "state.sqlite")
+    manifest = {"post_id": "p1",
+                "source": {"canonical_url": "https://x.com/p1"},
+                "content": {"title": "T"}}
+    publish_post._reserve_publishing(state, manifest)
+    with state_mod.connect(state) as conn:
+        assert state_mod.is_publishing(conn, "https://x.com/p1")
+        assert not state_mod.is_processed(conn, "https://x.com/p1")
+
+
+def test_b1_after_successful_publish_state_is_published_not_publishing(tmp_path):
+    """B1: a successful publish transitions state from 'publishing' → 'published'.
+    The 'publishing' pre-reservation must not linger after a clean publish."""
+    state = str(tmp_path / "state.sqlite")
+    mpath = _publishable_manifest(tmp_path)
+    args = _ns(manifest=mpath, approve=True, state=state, headless=True)
+    with patch.object(publish_post.backend_driver, "session", _fake_session), \
+         patch.object(publish_post.backend_driver, "publish_draft",
+                      return_value={"published_url": "https://pub/p1"}), \
+         patch.object(publish_post.audit, "record"):
+        assert cli.run(lambda: publish_post._run(args)) == 0
+    with state_mod.connect(state) as conn:
+        assert state_mod.is_processed(conn, "https://x.com/p1")
+        assert not state_mod.is_publishing(conn, "https://x.com/p1")
+
+
+def test_b1_reset_for_republish_clears_published_row(tmp_path):
+    """B1 rollback: state_mod.reset_for_republish removes the 'published' row so
+    a re-publish after rollback triggers a fresh browser click, not forward-complete."""
+    state = str(tmp_path / "state.sqlite")
+    with state_mod.connect(state) as conn:
+        state_mod.upsert(conn, canonical_url="https://x.com/p1", title="T",
+                         title_hash=url_utils.title_hash("T"),
+                         status=state_mod.PUBLISHED, now="2026-06-23T00:00:00",
+                         published_url="https://pub/1")
+        assert state_mod.is_processed(conn, "https://x.com/p1")
+        state_mod.reset_for_republish(conn, "https://x.com/p1")
+        assert not state_mod.is_processed(conn, "https://x.com/p1")
+        assert not state_mod.is_publishing(conn, "https://x.com/p1")
