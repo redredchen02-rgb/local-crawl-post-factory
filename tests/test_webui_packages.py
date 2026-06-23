@@ -522,3 +522,72 @@ def test_failure_image_relative_traversal_still_blocked(tmp_path):
     (out / "escape.png").write_bytes(b"\x89PNG\r\n")
     client = _client(tmp_path, out)
     assert client.get("/packages/20260615_f/failure-image").status_code == 404
+
+
+# --- B2: edit_package write-order / three-store consistency ------------------
+
+def test_edit_caption_failure_rolls_back_manifest_body(tmp_path, monkeypatch):
+    """If caption.txt atomic-write fails, manifest body is rolled back so the
+    two stores stay consistent (old-or-new, never permanently diverged)."""
+    import cpost.webui.routers.packages as pkg_router
+    from cpost.core import filesystem
+
+    out = tmp_path / "out"
+    _pkg(out, "20260615_a", "甲文", caption="原始文案")
+    client = _client(tmp_path, out)
+
+    orig_m = json.loads((out / "20260615_a" / "manifest.json").read_text(encoding="utf-8"))
+    orig_body = orig_m.get("content", {}).get("body")  # None — _pkg sets no body
+
+    real_atomic = filesystem.atomic_write_text
+
+    def fail_caption(path, text):
+        if Path(path).name == "caption.txt":
+            raise OSError("simulated caption write failure")
+        real_atomic(path, text)
+
+    monkeypatch.setattr(pkg_router, "atomic_write_text", fail_caption)
+
+    # raise_server_exceptions=False: the OSError is re-raised by the route's
+    # `raise` in the rollback; we want to inspect the on-disk state, not get it
+    # surfaced as a test exception.
+    from fastapi.testclient import TestClient as TC
+    from cpost.webui.app import create_app
+    cfgp = tmp_path / "webui.yaml"
+    safe_client = TC(create_app(str(cfgp)), raise_server_exceptions=False)
+
+    r = safe_client.post("/packages/20260615_a/edit", data={"caption": "全新文案"})
+    assert r.status_code == 500
+
+    # manifest body must be back to original (None — rolled back / popped)
+    m_after = json.loads((out / "20260615_a" / "manifest.json").read_text(encoding="utf-8"))
+    assert m_after.get("content", {}).get("body") == orig_body
+
+
+def test_edit_manifest_written_before_caption(tmp_path, monkeypatch):
+    """manifest.json must be written before caption.txt (anchor-first order)."""
+    import cpost.webui.routers.packages as pkg_router
+    from cpost.core import filesystem
+
+    out = tmp_path / "out"
+    _pkg(out, "20260615_a", "甲文", caption="原始文案")
+    client = _client(tmp_path, out)
+
+    write_order: list[str] = []
+    real_atomic = filesystem.atomic_write_text
+
+    def record_order(path, text):
+        write_order.append(Path(path).name)
+        real_atomic(path, text)
+
+    monkeypatch.setattr(pkg_router, "atomic_write_text", record_order)
+
+    client.post("/packages/20260615_a/edit", data={"caption": "新文案"})
+
+    manifest_idx = next((i for i, n in enumerate(write_order) if n == "manifest.json"), None)
+    caption_idx = next((i for i, n in enumerate(write_order) if n == "caption.txt"), None)
+    assert manifest_idx is not None, "manifest.json not written"
+    assert caption_idx is not None, "caption.txt not written"
+    assert manifest_idx < caption_idx, (
+        f"manifest must be written before caption; got order {write_order}"
+    )

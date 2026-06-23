@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from cpost.core.errors import ValidationError, DependencyError
+from cpost.core.filesystem import atomic_write_text
 from cpost.core.validators import valid_url
 
 DEFAULTS = {
@@ -153,8 +154,7 @@ def save(path: str, cfg: dict) -> dict:
     validate(merged)
     p = Path(path)
     p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(yaml.safe_dump(merged, allow_unicode=True, sort_keys=True),
-                 encoding="utf-8")
+    atomic_write_text(p, yaml.safe_dump(merged, allow_unicode=True, sort_keys=True))
     return merged
 
 
