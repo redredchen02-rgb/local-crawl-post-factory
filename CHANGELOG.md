@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-06-23
+
+### Added
+- **自動來源探索**（#60）：`site_roster` CRUD 模組管理站點健康分層（CANDIDATE/MONITORED/ACTIVE/MIRROR/FAILED/INACTIVE）；`discover-sources` CLI 透過 stdlib HTTP 發現外連站點（含 SSRF 防護）；`health-check-sources` CLI 執行 tier 狀態機轉換；`crawl_all_sources` 整合 roster 站點自動爬取；`score-scoops` 新增 `--min-sources` 過濾；WebUI roster 面板。
+
 ## [0.3.0] - 2026-06-23
 
 ### Added
