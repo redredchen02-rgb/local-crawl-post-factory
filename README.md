@@ -102,6 +102,16 @@ discover-sources \
 
 內建 SSRF 防護（過濾 RFC-1918/loopback/link-local）、HTTP HEAD 存活檢查，以及 politeness sleep（每頁 0.5 s）。
 
+`health-check-sources` 對 roster 中的 candidate/monitored 站點進行健康評估，包含取樣爬取、新鮮度判斷、鏡像偵測（canonical URL 重疊率），並依結果推進 tier 狀態機（candidate → monitored → active；鏡像 → mirror；連續失敗 → failed/inactive）：
+
+```bash
+health-check-sources \
+  --roster-path state/roster.db \
+  --library-db  state/published.sqlite \
+  --tier candidate,monitored
+# 加 --dry-run 只印評估結果，不寫入 roster
+```
+
 ## 多源聚合細節
 
 - **可信度只在真獨立媒體成立**：`confidence` 看的是該瓜的獨立來源數；鏡像站共用 canonical 會塌縮成單一來源，故不計入。

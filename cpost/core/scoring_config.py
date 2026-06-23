@@ -33,6 +33,9 @@ DEFAULTS = {
     # actionable filter (plan U5): CLI --min-sources reads this as default;
     # 0 = no filter (backward-compatible).
     "actionable_min_sources": 0,
+    # mirror detection (U3): candidate canonical URL overlap fraction above this
+    # value triggers MIRROR classification (health-check-sources).
+    "mirror_overlap_threshold": 0.6,
 }
 
 
