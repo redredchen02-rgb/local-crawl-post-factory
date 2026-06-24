@@ -37,16 +37,30 @@ def crawl_url(url: str, cfg: dict,
         "start_url": url,
         "source_id": source_id,
         "max_pages": max_pages,
+        # Gossip crawls must not filter by the main pipeline's site-specific
+        # item_regex (e.g. "archives/\d+"). Emit every page with a title.
+        "item_regex": "",
     }
 
+    def _progress_cb(snap: object) -> None:
+        if not progress_cb:
+            return
+        if isinstance(snap, dict):
+            r = snap.get("responses", 0)
+            i = snap.get("items", 0)
+            last = snap.get("last_title") or snap.get("last_url") or ""
+            progress_cb(f"已抓 {r} 頁，收到 {i} 篇" + (f"：{last[:60]}" if last else ""))
+        else:
+            progress_cb(str(snap))
+
     try:
-        raw = crawl_items(source_cfg, progress_cb=progress_cb)
+        raw = crawl_items(source_cfg, progress_cb=_progress_cb)
         _report(f"爬取完成：{len(raw)} 篇")
     except Exception as exc:  # noqa: BLE001
         with library.connect(cfg["state_path"]) as conn:
             library.update_gossip_crawl_status(
                 conn, url, status="failed", error_msg=str(exc), now=now)
-        return {"item_count": 0, "failed": 0}
+        raise
 
     normalized: list[dict] = []
     failed_count = 0
