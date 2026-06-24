@@ -9,7 +9,6 @@ re-score each run keeps results idempotent.
 """
 
 import argparse
-import json
 import sqlite3
 from datetime import datetime, timezone
 
