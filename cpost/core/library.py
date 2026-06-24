@@ -59,7 +59,23 @@ CREATE TABLE IF NOT EXISTS generations (
 """
 
 _MIGRATIONS = [
-    (1, "ALTER TABLE generations ADD COLUMN tags TEXT;"),  # ids must be monotonically increasing
+    # NOTE: versions are offset by 100 to avoid collisions with runs.py (versions 1,2)
+    # in the shared _schema_meta table. _schema_meta is shared across modules but
+    # each module's version space is independent, so global MAX(schema_version)
+    # would skip migrations whose version ≤ the max from another module.
+    (101, "ALTER TABLE generations ADD COLUMN tags TEXT;"),
+    # 4D scoring v2: new dimension scores + external search enrichment
+    (102, (
+        "ALTER TABLE clusters ADD COLUMN freshness REAL;"
+        "ALTER TABLE clusters ADD COLUMN importance REAL;"
+        "ALTER TABLE clusters ADD COLUMN traffic_potential REAL;"
+        "ALTER TABLE clusters ADD COLUMN cross_site_coverage REAL;"
+        "ALTER TABLE clusters ADD COLUMN score_legacy REAL;"
+        "ALTER TABLE clusters ADD COLUMN external_article_count INTEGER;"
+        "ALTER TABLE clusters ADD COLUMN external_source_count INTEGER;"
+        "ALTER TABLE clusters ADD COLUMN external_latest_at TEXT;"
+        "ALTER TABLE clusters ADD COLUMN search_volume_proxy REAL;"
+    )),
 ]
 
 
@@ -197,12 +213,32 @@ def get_cluster_members(conn: sqlite3.Connection, cluster_id: str) -> list[dict]
 
 def set_cluster_scores(conn: sqlite3.Connection, cluster_id: str, *,
                        confidence: float, quality: float, score: float,
-                       now: str) -> None:
-    """Write the two score axes + combined score onto a cluster (idempotent)."""
+                       now: str, **extra: float | str | None) -> None:
+    """Write dimension scores onto a cluster (idempotent).
+
+    Accepts the original ``{confidence, quality, score}`` plus any extras from
+    ``scoring.score_cluster_v2()`` such as ``freshness``, ``importance``,
+    ``traffic_potential``, ``cross_site_coverage``, ``score_legacy``,
+    ``external_article_count``, ``external_source_count``, ``external_latest_at``,
+    and ``search_volume_proxy``. Unknown keys are silently ignored.
+    """
+    known = {
+        "confidence": confidence, "quality": quality, "score": score,
+        "updated_at": now,
+    }
+    persist_keys = {
+        "freshness", "importance", "traffic_potential", "cross_site_coverage",
+        "score_legacy", "external_article_count", "external_source_count",
+        "external_latest_at", "search_volume_proxy",
+    }
+    for k in persist_keys:
+        if k in extra:
+            known[k] = extra[k]
+    placeholders = ", ".join(f"{k} = ?" for k in known)
+    values = list(known.values()) + [cluster_id]
     conn.execute(
-        "UPDATE clusters SET confidence = ?, quality = ?, score = ?, updated_at = ? "
-        "WHERE cluster_id = ?",
-        (confidence, quality, score, now, cluster_id),
+        f"UPDATE clusters SET {placeholders} WHERE cluster_id = ?",
+        values,
     )
 
 

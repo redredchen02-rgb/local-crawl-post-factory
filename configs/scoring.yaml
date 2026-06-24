@@ -25,6 +25,35 @@ weight_material: 0.3
 weight_confidence: 0.0
 weight_quality: 1.0
 
+# --- 4D 打分 v2（cpost.core.scoring, plan scoring-pipeline-v2）---
+# 新鮮度（freshness）
+freshness_w_recency: 0.6
+freshness_w_velocity: 0.4
+freshness_velocity_window_hours: 24
+# 重要性（importance）
+importance_w_completeness: 0.5
+importance_w_material: 0.3
+importance_w_diversity: 0.2
+importance_diversity_threshold: 0.3
+# 流量潛力（traffic_potential）
+traffic_w_volume: 0.4
+traffic_w_sources: 0.3
+traffic_w_diversity: 0.3
+traffic_article_cap: 50
+traffic_source_cap: 10
+traffic_diversity_cap: 3
+# 跨站覆蓋度（cross_site_coverage）
+cross_site_source_cap: 5
+# 四維聚合權重
+weight_freshness: 0.25
+weight_importance: 0.25
+weight_traffic_potential: 0.25
+weight_cross_site_coverage: 0.25
+# 外部檢索（config-gated，預設關閉）
+external_search_enabled: false
+external_search_max_results: 5
+external_search_engines: ["duckduckgo"]
+
 # actionable 過濾（plan U5）：score-scoops --min-sources 未明確指定時讀此值作為預設。
 # 0 = 不過濾（向後相容）；設 2 表示只輸出 2+ 站交集的 scoop。
 actionable_min_sources: 2

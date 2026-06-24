@@ -64,7 +64,7 @@ def _run_command(db, monkeypatch, config=None):
     out, err = io.StringIO(), io.StringIO()
     monkeypatch.setattr("sys.stdout", out)
     monkeypatch.setattr("sys.stderr", err)
-    code = cli.run(lambda: _run(SimpleNamespace(state=db, config=config)))
+    code = cli.run(lambda: _run(SimpleNamespace(state=db, config=config, format="json")))
     return code, out.getvalue(), err.getvalue()
 
 
@@ -146,7 +146,7 @@ def _run_command_min_sources(db, monkeypatch, min_sources):
     monkeypatch.setattr("sys.stderr", err)
     code = cli.run(
         lambda: score_scoops._run(
-            SimpleNamespace(state=db, config=None, min_sources=min_sources)
+            SimpleNamespace(state=db, config=None, min_sources=min_sources, format="json")
         )
     )
     return code, out.getvalue(), err.getvalue()
@@ -230,7 +230,7 @@ def test_min_sources_scoop_missing_source_count_treated_as_zero(tmp_path, monkey
         monkeypatch.setattr("sys.stderr", err)
         code = cli.run(
             lambda: score_scoops._run(
-                SimpleNamespace(state=db, config=None, min_sources=2)
+                SimpleNamespace(state=db, config=None, min_sources=2, format="json")
             )
         )
 

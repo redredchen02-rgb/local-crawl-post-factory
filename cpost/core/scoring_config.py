@@ -30,6 +30,34 @@ DEFAULTS = {
     # even when no yaml is loaded.
     "weight_confidence": 0.0,
     "weight_quality": 1.0,
+    # --- 4D scoring (freshness / importance / traffic_potential / cross_site_coverage) ---
+    # Top-level weights for the four new dimensions (normalised in score_cluster_v2).
+    "weight_freshness": 0.25,
+    "weight_importance": 0.25,
+    "weight_traffic_potential": 0.25,
+    "weight_cross_site_coverage": 0.25,
+    # Freshness sub-dimensions: recency (latest article age) + velocity (article burst).
+    "freshness_w_recency": 0.6,
+    "freshness_w_velocity": 0.4,
+    "freshness_velocity_window_hours": 24,   # burst detection window (articles/hours)
+    # Importance sub-dimensions: text completeness + member count + text diversity.
+    "importance_w_completeness": 0.5,
+    "importance_w_material": 0.3,
+    "importance_w_diversity": 0.2,
+    "importance_diversity_threshold": 0.3,   # Jaccard threshold for "different content"
+    # Traffic potential sub-dimensions: external article volume + source diversity.
+    "traffic_article_cap": 50,
+    "traffic_source_cap": 10,
+    "traffic_diversity_cap": 3,
+    "traffic_w_volume": 0.4,
+    "traffic_w_sources": 0.3,
+    "traffic_w_diversity": 0.3,
+    # Cross-site coverage: distinct source_id count.
+    "cross_site_source_cap": 5,
+    # --- External search (cpost.core.external_search) ---
+    "external_search_enabled": False,
+    "external_search_timeout": 10,
+    "external_search_max_per_source": 10,
     # actionable filter (plan U5): CLI --min-sources reads this as default;
     # 0 = no filter (backward-compatible).
     "actionable_min_sources": 0,
