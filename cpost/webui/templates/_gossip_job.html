@@ -1,0 +1,15 @@
+{% if job.status in ('pending', 'running') %}
+<div hx-get="/gossip-materials/jobs/{{ job_id }}" hx-trigger="every 2s" hx-swap="outerHTML">
+  <p>狀態：{{ job.status }}…</p>
+  {% if job.current %}<p class="current">{{ job.current }}</p>{% endif %}
+  <ul>{% for step in job.progress %}<li>{{ step }}</li>{% endfor %}</ul>
+</div>
+{% elif job.status == 'done' %}
+{% set r = job.result %}
+<div>
+  <p class="ok">爬取完成 ✓ 收到 {{ r.item_count }} 篇，失敗 {{ r.failed }} 篇。</p>
+  <p class="hint">文章已收進素材庫。交集面板在下次「開始備稿」後更新。</p>
+</div>
+{% else %}
+<div><p class="error">爬取失敗：{{ job.error }}</p></div>
+{% endif %}

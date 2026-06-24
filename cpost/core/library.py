@@ -56,6 +56,16 @@ CREATE TABLE IF NOT EXISTS generations (
   created_at  TEXT NOT NULL,
   tags        TEXT
 );
+
+CREATE TABLE IF NOT EXISTS gossip_urls (
+  url              TEXT PRIMARY KEY,
+  label            TEXT,
+  submitted_at     TEXT NOT NULL,
+  last_crawled_at  TEXT,
+  crawl_status     TEXT NOT NULL DEFAULT 'pending',
+  item_count       INTEGER NOT NULL DEFAULT 0,
+  error_msg        TEXT
+);
 """
 
 _MIGRATIONS = [
@@ -75,6 +85,17 @@ _MIGRATIONS = [
         "ALTER TABLE clusters ADD COLUMN external_source_count INTEGER;"
         "ALTER TABLE clusters ADD COLUMN external_latest_at TEXT;"
         "ALTER TABLE clusters ADD COLUMN search_volume_proxy REAL;"
+    )),
+    (103, (
+        "CREATE TABLE IF NOT EXISTS gossip_urls ("
+        "  url TEXT PRIMARY KEY,"
+        "  label TEXT,"
+        "  submitted_at TEXT NOT NULL,"
+        "  last_crawled_at TEXT,"
+        "  crawl_status TEXT NOT NULL DEFAULT 'pending',"
+        "  item_count INTEGER NOT NULL DEFAULT 0,"
+        "  error_msg TEXT"
+        ");"
     )),
 ]
 
@@ -275,3 +296,67 @@ def put_generation(conn: sqlite3.Connection, *, cache_key: str, cluster_id: str,
         """,
         (cache_key, cluster_id, title, body, model, now, json.dumps(tags or [])),
     )
+
+
+# --- gossip_urls: user-submitted URLs for on-demand crawl (plan gossip-materials) --
+
+def submit_gossip_url(conn: sqlite3.Connection, url: str, label: str | None,
+                      now: str) -> None:
+    """Record a user-submitted gossip URL. INSERT OR IGNORE preserves submitted_at."""
+    conn.execute(
+        """
+        INSERT OR IGNORE INTO gossip_urls (url, label, submitted_at, crawl_status)
+        VALUES (?, ?, ?, 'pending')
+        """,
+        (url, label or None, now),
+    )
+
+
+def list_gossip_urls(conn: sqlite3.Connection) -> list[dict]:
+    """Return all gossip_urls rows, newest submitted first."""
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute(
+        "SELECT * FROM gossip_urls ORDER BY submitted_at DESC"
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def update_gossip_crawl_status(conn: sqlite3.Connection, url: str, *,
+                                status: str, item_count: int = 0,
+                                error_msg: str | None = None, now: str) -> None:
+    """Update crawl_status, item_count, error_msg, and last_crawled_at for a URL."""
+    conn.execute(
+        """
+        UPDATE gossip_urls
+        SET crawl_status=?, item_count=?, error_msg=?, last_crawled_at=?
+        WHERE url=?
+        """,
+        (status, item_count, error_msg, now, url),
+    )
+
+
+def list_intersection_clusters(conn: sqlite3.Connection) -> list[dict]:
+    """Return clusters that contain both user-submitted and roster-source members.
+
+    A cluster qualifies when it has at least one member with source_id LIKE
+    'user:%' (from gossip crawl) AND at least one member without that prefix
+    (from the roster pipeline). Results are ordered by score DESC.
+    """
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute(
+        """
+        SELECT c.* FROM clusters c
+        WHERE EXISTS (
+          SELECT 1 FROM library_items li
+          WHERE li.cluster_id = c.cluster_id
+            AND li.source_id LIKE 'user:%'
+        )
+        AND EXISTS (
+          SELECT 1 FROM library_items li2
+          WHERE li2.cluster_id = c.cluster_id
+            AND (li2.source_id IS NULL OR li2.source_id NOT LIKE 'user:%')
+        )
+        ORDER BY COALESCE(c.score, 0) DESC
+        """
+    ).fetchall()
+    return [dict(r) for r in rows]
