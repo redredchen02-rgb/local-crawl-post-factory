@@ -227,7 +227,7 @@ def sources_batch_add(request: Request, urls: str = Form("")):
             skipped_count += 1
             continue
         h = host_of(line)
-        if not h:
+        if not h:  # pragma: no cover — valid_url() already rejects URLs without hostname
             skipped_count += 1
             continue
         if not is_safe_external_host(h):

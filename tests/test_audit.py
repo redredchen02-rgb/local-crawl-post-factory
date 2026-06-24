@@ -119,3 +119,41 @@ def test_purge_before_mid_write_failure_keeps_original(tmp_path, monkeypatch):
     # No leftover temp files beside the destination.
     leftovers = [p.name for p in tmp_path.iterdir() if p.name != log.name]
     assert leftovers == []
+
+
+def test_purge_before_blank_lines_skipped(tmp_path):
+    """Blank lines in JSONL are skipped without error (audit.py:29)."""
+    log = tmp_path / "audit.jsonl"
+    log.write_text(
+        json.dumps({"ts": "2026-06-01T00:00:00+00:00", "post_id": "old"}) + "\n"
+        + "\n"  # blank line
+        + json.dumps({"ts": "2026-06-20T00:00:00+00:00", "post_id": "recent"}) + "\n",
+        encoding="utf-8",
+    )
+    removed = audit.purge_before(str(log), "2026-06-10T00:00:00+00:00")
+    assert removed == 1
+    lines = [x for x in log.read_text().splitlines() if x.strip()]
+    assert len(lines) == 1
+    assert json.loads(lines[0])["post_id"] == "recent"
+
+
+def test_atomic_write_temp_cleanup_error_does_not_reraise(tmp_path, monkeypatch):
+    """When os.unlink(tmp_name) fails during cleanup (audit.py:55-56),
+    the OSError is swallowed — the caller's raise still propagates."""
+    log = tmp_path / "audit.jsonl"
+    log.write_text(
+        json.dumps({"ts": "2026-06-01T00:00:00+00:00"}) + "\n",
+        encoding="utf-8",
+    )
+
+    def boom_replace(*_a, **_k):
+        raise OSError("replace failed")
+
+    def boom_unlink(*_a, **_k):
+        raise OSError("unlink also failed")
+
+    monkeypatch.setattr(audit.os, "replace", boom_replace)
+    monkeypatch.setattr(audit.os, "unlink", boom_unlink)
+
+    with pytest.raises(OSError):
+        audit.purge_before(str(log), "2026-06-10T00:00:00+00:00")

@@ -269,3 +269,15 @@ def test_run_emits_distinct_manifest_paths_for_colliding_pair(tmp_path, monkeypa
     assert len(paths) == 2
     assert paths[0] != paths[1]
     assert len(list(out.iterdir())) == 2
+
+
+def test_corrupt_manifest_raises_instead_of_silent_overwrite(tmp_path):
+    """L76-77: unreadable JSON in existing manifest -> ValidationError."""
+    out = tmp_path / "out"
+    log = tmp_path / "logs" / "audit.jsonl"
+    _build(_record(tmp_path), str(out), str(log))
+    folder = out / "20260615_https_example_com_post_1"
+    # Corrupt the manifest
+    (folder / "manifest.json").write_text("{corrupt", encoding="utf-8")
+    with pytest.raises(ValidationError, match="unreadable"):
+        _build(_record(tmp_path), str(out), str(log))

@@ -292,3 +292,42 @@ def test_mixed_state_recovery_forward_completes_without_republish(tmp_path):
     assert m["backend"]["published_url"] == PUB_URL
     # exactly one ok run row (U9 coupling preserved)
     assert len(_publish_ok_rows(state)) == 1
+
+
+# --------------------------------------------------------------------------- #
+# Helper early-return guards (state_path=None / missing canonical_url)         #
+# --------------------------------------------------------------------------- #
+
+def test_reserve_publishing_no_state_path():
+    """_reserve_publishing returns immediately when state_path is None."""
+    assert publish_post._reserve_publishing(None, {}) is None
+
+
+def test_reserve_publishing_no_canonical_url():
+    """_reserve_publishing returns immediately when canonical_url is missing."""
+    assert publish_post._reserve_publishing("/tmp/dummy", {}) is None
+
+
+def test_state_is_publishing_no_canonical_url():
+    """_state_is_publishing returns False when canonical_url is missing."""
+    assert publish_post._state_is_publishing("/tmp/dummy", {}) is False
+
+
+def test_state_published_url_no_state_path():
+    """_state_published_url returns None when state_path is None."""
+    assert publish_post._state_published_url(None, {}) is None
+
+
+def test_state_published_url_no_canonical_url():
+    """_state_published_url returns None when canonical_url is missing."""
+    assert publish_post._state_published_url("/tmp/dummy", {}) is None
+
+
+def test_publish_run_recorded_no_state_path():
+    """_publish_run_recorded returns False when state_path is None."""
+    assert publish_post._publish_run_recorded(None, "p1") is False
+
+
+def test_mark_published_no_canonical_url():
+    """_mark_published returns immediately when canonical_url is missing."""
+    assert publish_post._mark_published("/tmp/dummy", {}, "p1", "https://x") is None

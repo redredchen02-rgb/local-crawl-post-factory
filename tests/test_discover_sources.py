@@ -13,6 +13,11 @@ import yaml
 
 from cpost.cli.discover_sources import (
     _LinkExtractor,
+    _fetch_links,
+    _head_ok,
+    _load_yaml_sources,
+    _run,
+    _yaml_domains,
     discover,
 )
 from cpost.core import site_roster

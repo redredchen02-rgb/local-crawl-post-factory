@@ -288,3 +288,35 @@ def test_scoops_empty_library(tmp_path):
     client, _ = _client_and_state(tmp_path)
     r = client.get("/scoops")
     assert r.status_code == 200
+
+
+def test_generate_with_cluster_ids_submits_job(tmp_path, monkeypatch):
+    """POST /today/generate with valid cluster_ids covers submit path (scoops.py:114-122)."""
+    import cpost.core.scoop_pipeline as sp
+    import cpost.core.jobs as jobs_mod
+    import time
+    monkeypatch.setattr(sp, "run_generation_pipeline",
+                        lambda cids, cfg, progress_cb=None: {
+                            "kind": "generate",
+                            "built": [{"post_id": cids[0], "title": "瓜一"}],
+                            "failed": []})
+    def sync_submit(fn):
+        job_id = "sync-gen"
+        job = jobs_mod.Job(job_id)
+        jobs_mod._JOBS[job_id] = job
+        try:
+            result = fn(job)
+            job.result = result
+            job.status = "done"
+            job.finished_at = time.time()
+        except Exception as exc:
+            job.error = str(exc)
+            job.status = "failed"
+            job.finished_at = time.time()
+        return job_id
+    monkeypatch.setattr(jobs_mod, "submit", sync_submit)
+    client, state = _client_and_state(tmp_path)
+    _seed(state, [("c1", "瓜一", ["s1"], 0.5, 0.5)])
+    r = client.post("/today/generate", data={"cluster_ids": ["c1"]})
+    assert r.status_code == 200
+    assert "生成完成" in r.text

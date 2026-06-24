@@ -5,7 +5,7 @@ from types import SimpleNamespace
 from cpost.core import cli, library, scoop_pipeline, webui_config
 from cpost.cli import generate_article
 from cpost.cli.cluster_scoops import cluster_library
-from cpost.cli.score_scoops import _run, score_all
+from cpost.cli.score_scoops import _emit, _run, score_all
 
 NOW = "2026-06-18T00:00:00+00:00"
 
@@ -140,3 +140,19 @@ def test_generation_result_declared_keys(tmp_path, monkeypatch):
     assert result["built"]
     for entry in result["built"]:
         assert set(entry) == {"post_id", "title"}
+
+
+def test_emit_table_format(capsys):
+    """L66-67: _emit with fmt=table prints a terminal table."""
+    scored = [{"cluster_id": "c1", "title": "A", "source_count": 2}]
+    _emit(scored, "table")
+    out = capsys.readouterr().out
+    assert "c1" in out
+
+
+def test_emit_markdown_format(capsys):
+    """L68-69: _emit with fmt=markdown prints a markdown table."""
+    scored = [{"cluster_id": "c1", "title": "A", "source_count": 2}]
+    _emit(scored, "markdown")
+    out = capsys.readouterr().out
+    assert "c1" in out

@@ -232,3 +232,118 @@ def test_webui_config_save_atomic_old_intact_on_replace_failure(tmp_path, monkey
 
     # original content must be intact (old-or-new, never truncated)
     assert p.read_text(encoding="utf-8") == old_text
+
+
+# --- atomic_write_text / copy_no_overwrite / write_text_no_overwrite ---
+# --- cleanup double-failure branches (lines 34-35, 64-69, 95-96) ------
+
+def test_atomic_write_text_replace_fails_cleanup_unlink_also_fails(tmp_path, monkeypatch):
+    """When os.replace fails AND os.unlink cleanup also fails,
+    the original exception is still re-raised and the OSError from cleanup
+    is swallowed (filesystem.py:34-35)."""
+    from cpost.core.filesystem import atomic_write_text, os as fs_os
+
+    p = tmp_path / "out.txt"
+
+    def boom_replace(src, dst):
+        raise ValueError("replace failed")
+
+    def boom_unlink(path):
+        raise OSError("cleanup also failed")
+
+    monkeypatch.setattr(fs_os, "replace", boom_replace)
+    monkeypatch.setattr(fs_os, "unlink", boom_unlink)
+    with pytest.raises(ValueError, match="replace failed"):
+        atomic_write_text(p, "payload")
+    # The temp file may still exist (cleanup failed) — no data loss, no crash
+
+
+def test_copy_no_overwrite_copy_fails_cleanup_unlink_also_fails(tmp_path, monkeypatch):
+    """When copyfileobj fails AND os.unlink cleanup also fails,
+    the original exception is re-raised (filesystem.py:64-69)."""
+    import shutil
+    from cpost.core.filesystem import copy_no_overwrite, os as fs_os
+
+    src = tmp_path / "src.txt"
+    src.write_text("data", encoding="utf-8")
+    dst = tmp_path / "dst.txt"
+
+    def boom_copy(*a, **kw):
+        raise ValueError("copy failed")
+
+    def boom_unlink(path):
+        raise OSError("cleanup also failed")
+
+    monkeypatch.setattr(shutil, "copyfileobj", boom_copy)
+    monkeypatch.setattr(fs_os, "unlink", boom_unlink)
+    with pytest.raises(ValueError, match="copy failed"):
+        copy_no_overwrite(src, dst)
+    # dst may still exist (cleanup failed) — no crash
+
+
+def test_write_text_no_overwrite_cleanup_file_not_found(tmp_path, monkeypatch):
+    """When write fails and os.unlink raises FileNotFoundError (already deleted),
+    the FileNotFoundError is swallowed (filesystem.py:95-96)."""
+    from cpost.core.filesystem import write_text_no_overwrite, os as fs_os
+
+    p = tmp_path / "out.txt"
+    real_open = open
+
+    class _BoomFile:
+        def __init__(self):
+            self._fh = None
+        def write(self, _text):
+            raise OSError("disk full")
+        def __enter__(self):
+            return self
+        def __exit__(self, *exc):
+            return None
+
+    def fake_open(path, mode="r", *args, **kwargs):
+        if "x" in mode:
+            return _BoomFile()
+        return real_open(path, mode, *args, **kwargs)
+
+    monkeypatch.setattr("cpost.core.filesystem.open", fake_open, raising=False)
+    # Make os.unlink also fail with FileNotFoundError
+    def boom_unlink(path):
+        raise FileNotFoundError("already gone")
+
+    monkeypatch.setattr(fs_os, "unlink", boom_unlink)
+    with pytest.raises(OSError, match="disk full"):
+        write_text_no_overwrite(p, "hello")
+
+
+# --- manifest.load non-dict JSON (manifest.py:48) -------------------------
+
+def test_manifest_load_non_dict_raises(tmp_path):
+    """manifest.load with a JSON array (not a dict) raises ValidationError."""
+    from cpost.core.manifest import load
+
+    p = tmp_path / "manifest.json"
+    p.write_text('["a", "b"]', encoding="utf-8")
+    with pytest.raises(ValidationError, match="JSON object"):
+        load(str(p))
+
+
+def test_manifest_require_status_unknown_raises(tmp_path):
+    """require_status with an unrecognised status raises ValidationError."""
+    from cpost.core.manifest import load, save, require_status
+
+    p = tmp_path / "m.json"
+    save(p, {"backend": {"status": "nonexistent"}})
+    manifest = load(p)
+    with pytest.raises(ValidationError, match="unknown manifest status"):
+        require_status(manifest, "drafted")
+
+
+def test_manifest_require_status_valid_not_expected_raises(tmp_path):
+    """require_status with a valid status not in the expected tuple
+    raises ValidationError (manifest.py:67-68)."""
+    from cpost.core.manifest import load, save, require_status
+
+    p = tmp_path / "m.json"
+    save(p, {"backend": {"status": "package_built"}})
+    manifest = load(p)
+    with pytest.raises(ValidationError, match="refusing"):
+        require_status(manifest, "drafted")

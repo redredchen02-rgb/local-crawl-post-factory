@@ -114,3 +114,32 @@ def test_schema_has_expected_columns_and_reopen_idempotent(tmp_path):
         cols2 = {r[1] for r in conn.execute("PRAGMA table_info(library_items)").fetchall()}
         assert cols2 == cols  # reopen does not alter schema
         assert library.count(conn) == 1  # data preserved
+
+
+def test_list_items_limit(tmp_path):
+    """list_items with a limit returns at most N rows (library.py:134-135)."""
+    db = _db(tmp_path)
+    with library.connect(db) as conn:
+        for i in range(5):
+            library.upsert(conn, **_item(canonical_url=f"https://a.com/{i}",
+                                          now=f"2026-06-18T00:00:0{i}+00:00"))
+    with library.connect(db) as conn:
+        result = library.list_items(conn, limit=2)
+        assert len(result) == 2
+
+
+def test_list_clusters_limit(tmp_path):
+    """list_clusters with by_score and limit returns at most N rows (library.py:190-191)."""
+    db = _db(tmp_path)
+    with library.connect(db) as conn:
+        library.assign_clusters(conn, [
+            {"cluster_id": "c1", "members": ["https://a.com/1"], "member_count": 1,
+             "source_count": 1},
+            {"cluster_id": "c2", "members": ["https://a.com/2"], "member_count": 1,
+             "source_count": 1},
+            {"cluster_id": "c3", "members": ["https://a.com/3"], "member_count": 1,
+             "source_count": 1},
+        ], now="2026-06-18T00:00:00")
+    with library.connect(db) as conn:
+        result = library.list_clusters(conn, by_score=True, limit=2)
+        assert len(result) == 2

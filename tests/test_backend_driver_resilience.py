@@ -1,6 +1,7 @@
 """U1: retry, failure capture, and session-expiry detection in backend_driver."""
 
 import json
+import time
 from pathlib import Path
 
 import pytest
@@ -23,6 +24,32 @@ class FakePage:
     def screenshot(self, path):
         Path(path).write_bytes(b"\x89PNG\r\n")  # minimal placeholder
         self.shots.append(path)
+
+
+class _FakeMethodsPage(FakePage):
+    """FakePage extended with goto/fill/click/wait_for_selector/select_option.
+
+    All methods are no-ops that record their calls for later assertions.
+    """
+
+    def __init__(self, url="https://example.com/admin/posts/create"):
+        super().__init__(url)
+        self.log: list[tuple] = []
+
+    def goto(self, url):
+        self.log.append(("goto", url))
+
+    def fill(self, selector, value):
+        self.log.append(("fill", selector, value))
+
+    def click(self, selector):
+        self.log.append(("click", selector))
+
+    def wait_for_selector(self, selector):
+        self.log.append(("wait_for_selector", selector))
+
+    def select_option(self, selector, value):
+        self.log.append(("select_option", selector, value))
 
 
 def test_success_no_retry_no_screenshot(tmp_path):
@@ -259,3 +286,188 @@ def test_canonical_recipe_injection_safe_title_with_chevrons():
     backend_driver._wait_for_result_title(page, "table >> text={title}", "a >> b")
     assert page.locator_calls == ["table"]
     assert page.wait_for_selector_calls == []
+
+
+# ---------------------------------------------------------------------------
+# Coverage gap: _check_session marker-missing, _capture_failure edges,
+# _run_with_retry backoff, create_draft/verify_draft/publish_draft steps,
+# session() context manager.
+# ---------------------------------------------------------------------------
+
+
+def test_check_session_marker_missing():
+    """L80: _check_session raises ValidationError when verify.login_required_url_contains is missing."""
+    cfg = {"verify": {}}  # no login_required_url_contains
+    page = FakePage()
+    with pytest.raises(ValidationError, match="missing verify key"):
+        backend_driver._check_session(cfg, page)
+
+
+def test_capture_failure_no_pkg_dir(tmp_path):
+    """L91-92: _capture_failure returns early when pkg_dir is None."""
+    page = FakePage()
+    # Should not raise and not create any files
+    backend_driver._capture_failure(None, "stage", page, ValueError("x"))
+    assert page.shots == []
+    assert not (tmp_path / "failure.json").exists()
+
+
+def test_capture_failure_screenshot_raises(tmp_path):
+    """L97-101: screenshot exception is swallowed, shot becomes None, failure.json still written."""
+    class _RaisingPage:
+        def __init__(self):
+            self.url = "https://x.com"
+        def screenshot(self, path):
+            raise OSError("disk full")
+    page = _RaisingPage()
+    backend_driver._capture_failure(str(tmp_path), "publish", page, ValueError("boom"))
+    data = json.loads((tmp_path / "failure.json").read_text(encoding="utf-8"))
+    assert data["stage"] == "publish"
+    assert data["screenshot"] is None
+    assert "boom" in data["error"]
+
+
+def test_run_with_retry_backoff_called(tmp_path):
+    """L133-134: backoff_sec > 0 causes time.sleep to be called between retries."""
+    page = FakePage()
+    calls = {"n": 0}
+
+    def steps():
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise PlaywrightTimeout("first")
+        return {"ok": True}
+
+    original_sleep = time.sleep
+    slept_for = []
+
+    def _fake_sleep(secs):
+        slept_for.append(secs)
+        # Don't actually sleep — speed up the test
+
+    time.sleep = _fake_sleep
+    try:
+        result = backend_driver._run_with_retry(
+            "draft", steps, page, retries=2, backoff_sec=0.1, pkg_dir=str(tmp_path))
+    finally:
+        time.sleep = original_sleep
+    assert result == {"ok": True}
+    # backoff_sec * attempt → 0.1 * 1 → 0.1
+    assert abs(slept_for[0] - 0.1) < 0.01
+
+
+def test_create_draft_missing_content_field(tmp_path):
+    """L186: create_draft with manifest missing content raises ValidationError."""
+    page = FakePage()
+    cfg = {"create_url": "https://x/create", "selectors": {}, "verify": {"login_required_url_contains": "/login"}}
+    manifest = {}  # no "content" key
+    with pytest.raises(ValidationError, match="manifest missing required field: content"):
+        backend_driver.create_draft(page, cfg, manifest, str(tmp_path / "manifest.json"),
+                                    retries=1, backoff_sec=0, pkg_dir=str(tmp_path))
+
+
+def test_create_draft_missing_title(tmp_path):
+    """L188: create_draft with content but no title raises ValidationError."""
+    page = FakePage()
+    cfg = {"create_url": "https://x/create", "selectors": {}, "verify": {"login_required_url_contains": "/login"}}
+    manifest = {"content": {"body": "hello"}}  # no "title"
+    with pytest.raises(ValidationError, match="manifest missing required field: content.title"):
+        backend_driver.create_draft(page, cfg, manifest, str(tmp_path / "manifest.json"),
+                                    retries=1, backoff_sec=0, pkg_dir=str(tmp_path))
+
+
+def _make_draft_cfg():
+    return {
+        "create_url": "https://example.com/admin/posts/create",
+        "selectors": {
+            "title": "#title",
+            "body": "#body",
+            "category": "#category",
+            "tags": "#tags",
+            "save_draft": "#save",
+            "publish": "#publish",
+        },
+        "verify": {
+            "draft_success_text": "saved",
+            "publish_success_text": "published",
+            "login_required_url_contains": "/login",
+        },
+    }
+
+
+def _make_draft_manifest():
+    return {
+        "content": {
+            "title": "Test Post",
+            "body": "Test body content",
+            "category": "news",
+            "tags": ["tag1", "tag2"],
+        },
+    }
+
+
+def test_create_draft_steps_execute(tmp_path):
+    """L193-204: create_draft steps execute through _run_with_retry, performing goto/fill/click/wait."""
+    page = _FakeMethodsPage()
+    cfg = _make_draft_cfg()
+    manifest = _make_draft_manifest()
+    result = backend_driver.create_draft(
+        page, cfg, manifest, str(tmp_path / "manifest.json"),
+        retries=1, backoff_sec=0, pkg_dir=str(tmp_path),
+    )
+    assert result == {"draft_url": page.url}
+    # Verify step methods were called
+    assert any(c[0] == "goto" for c in page.log)
+    assert any(c[0] == "fill" for c in page.log)
+    assert any(c[0] == "click" for c in page.log)
+    assert any(c[0] == "wait_for_selector" for c in page.log)
+    # category -> select_option
+    assert any(c[0] == "select_option" for c in page.log)
+
+
+def test_create_draft_steps_without_category_tags(tmp_path):
+    """L193-204: category/tags branch coverage — when category/tags absent, no select_option/fill for tags."""
+    page = _FakeMethodsPage()
+    cfg = _make_draft_cfg()
+    manifest = {"content": {"title": "Minimal", "body": "Just body"}}  # no category, no tags
+    result = backend_driver.create_draft(
+        page, cfg, manifest, str(tmp_path / "manifest.json"),
+        retries=1, backoff_sec=0, pkg_dir=str(tmp_path),
+    )
+    assert result == {"draft_url": page.url}
+    # No select_option calls (category absent)
+    assert not any(c[0] == "select_option" for c in page.log)
+    # title + body fills happened
+    fill_calls = [c for c in page.log if c[0] == "fill"]
+    assert len(fill_calls) == 2  # title + body only
+
+
+def test_verify_draft_steps_execute(tmp_path):
+    """L217-221: verify_draft steps execute through _run_with_retry."""
+    page = _FakeMethodsPage(url="https://example.com/admin/posts")
+    verify_cfg = _make_draft_cfg()
+    verify_cfg["verify"]["search_url"] = "https://example.com/admin/posts/search?q="
+    verify_cfg["verify"]["search_input"] = "#search-input"
+    verify_cfg["verify"]["search_button"] = "#search-btn"
+    verify_cfg["verify"]["result_title"] = 'tr:has-text("{title}")'  # custom recipe path
+    page = _FakeMethodsPage(url="https://example.com/admin/posts/search?q=")
+    result = backend_driver.verify_draft(
+        page, verify_cfg, "Test Post",
+        retries=1, backoff_sec=0, pkg_dir=str(tmp_path),
+    )
+    assert result is True
+    assert page.log[0] == ("goto", "https://example.com/admin/posts/search?q=")
+
+
+def test_publish_draft_steps_execute(tmp_path):
+    """L264-267: publish_draft steps execute through _run_with_retry."""
+    page = _FakeMethodsPage()
+    cfg = _make_draft_cfg()
+    result = backend_driver.publish_draft(
+        page, cfg, "https://example.com/admin/posts/42/edit",
+        retries=1, backoff_sec=0, pkg_dir=str(tmp_path),
+    )
+    assert result == {"published_url": page.url}
+    assert any(c[0] == "goto" for c in page.log)
+    assert any(c[0] == "click" for c in page.log)
+    assert any(c[0] == "wait_for_selector" for c in page.log)

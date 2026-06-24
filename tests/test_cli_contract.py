@@ -73,6 +73,33 @@ def test_malformed_ndjson_raises_validation():
         list(read_lines(io.StringIO("{not json}\n")))
 
 
+def test_broken_pipe_returns_zero():
+    """BrokenPipeError is absorbed and returns 0 (cli.py:34)."""
+    def handler():
+        raise BrokenPipeError()
+
+    assert cli.run(handler) == 0
+
+
+def test_keyboard_interrupt_returns_one(capsys):
+    """KeyboardInterrupt maps to exit 1 with stderr message (cli.py:36-37)."""
+    def handler():
+        raise KeyboardInterrupt()
+
+    code = cli.run(handler)
+    assert code == 1
+    assert "interrupted" in capsys.readouterr().err
+
+
+def test_main_wrapper_exits_with_handler_code():
+    """main_wrapper calls sys.exit with the handler's return code (cli.py:50)."""
+    import pytest
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main_wrapper(lambda: 3)
+    assert exc_info.value.code == 3
+
+
 def _raiser(exc):
     def handler():
         raise exc

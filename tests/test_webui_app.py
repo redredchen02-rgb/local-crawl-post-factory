@@ -1,5 +1,8 @@
 """WebUI settings page + localhost binding (Unit 3)."""
 
+import json
+from pathlib import Path
+
 import yaml
 from fastapi.testclient import TestClient
 
@@ -127,3 +130,71 @@ def test_settings_still_reachable(tmp_path):
     r = client.get("/settings")
     assert r.status_code == 200
     assert "https://example.com/news" in r.text
+
+
+def _make_pkg(out_dir: str, post_id: str, status: str, title: str = ""):
+    pkg_dir = Path(out_dir) / post_id
+    pkg_dir.mkdir(parents=True, exist_ok=True)
+    manifest = {
+        "post_id": post_id,
+        "content": {"title": title},
+        "backend": {"status": status},
+        "source": {"source_id": f"src-{post_id}"},
+    }
+    (pkg_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+
+def test_dashboard_with_packages(tmp_path):
+    out = tmp_path / "out"
+    state = tmp_path / "state"
+    state.mkdir()
+    cfgp = tmp_path / "webui.yaml"
+    webui_config.save(str(cfgp), {
+        "start_url": "https://example.com/news",
+        "out_dir": str(out),
+        "state_path": str(state / "db.sqlite"),
+    })
+    _make_pkg(out, "pkg_a", "published", "Article A")
+    _make_pkg(out, "pkg_b", "draft_verified", "Article B")
+    _make_pkg(out, "pkg_c", "package_built", "Article C")
+    from fastapi.testclient import TestClient
+    from cpost.webui.app import create_app
+    client = TestClient(create_app(str(cfgp)))
+    r = client.get("/")
+    assert r.status_code == 200
+    assert "📥 待處理" in r.text
+    assert "🚀 已發布" in r.text
+
+
+def test_dashboard_stats_partial_with_packages(tmp_path):
+    out = tmp_path / "out"
+    _make_pkg(out, "a", "published", "A")
+    _make_pkg(out, "b", "draft_verified", "B")
+    _make_pkg(out, "c", "package_built", "C")
+    cfgp = tmp_path / "webui.yaml"
+    webui_config.save(str(cfgp), {
+        "start_url": "https://example.com/news",
+        "out_dir": str(out),
+    })
+    from fastapi.testclient import TestClient
+    from cpost.webui.app import create_app
+    client = TestClient(create_app(str(cfgp)))
+    r = client.get("/_dashboard_stats")
+    assert r.status_code == 200
+    assert "待處理" in r.text or 'data-actionable="2"' in r.text
+
+
+def test_dashboard_list_runs_fails_gracefully(tmp_path):
+    out = tmp_path / "out"
+    cfgp = tmp_path / "webui.yaml"
+    webui_config.save(str(cfgp), {
+        "start_url": "https://example.com/news",
+        "out_dir": str(out),
+        "state_path": str(tmp_path / "not-a-db"),
+    })
+    Path(tmp_path / "not-a-db").mkdir()
+    from fastapi.testclient import TestClient
+    from cpost.webui.app import create_app
+    client = TestClient(create_app(str(cfgp)))
+    r = client.get("/")
+    assert r.status_code == 200

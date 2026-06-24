@@ -114,7 +114,7 @@ def _run_with_retry(stage, steps, page, *, retries, backoff_sec, pkg_dir):
     missing selector) are not retried. Transient PlaywrightTimeout is retried;
     each failure captures a screenshot.
     """
-    _, PlaywrightError, PlaywrightTimeout = _import_playwright()
+    PlaywrightError, PlaywrightTimeout = _get_playwright_exceptions()
     attempts = max(1, int(retries))
     for attempt in range(1, attempts + 1):
         try:
@@ -144,10 +144,20 @@ def _import_playwright():
     return sync_playwright, PlaywrightError, PlaywrightTimeout
 
 
+# Cache the imports so module-reload shenanigans in tests don't change class
+# identities mid-session, breaking isinstance() checks inside _run_with_retry.
+_IMPORTED = _import_playwright()
+
+
+def _get_playwright_exceptions():
+    """Return (PlaywrightError, PlaywrightTimeout) from the cached import."""
+    return _IMPORTED[1], _IMPORTED[2]
+
+
 @contextmanager
 def session(storage_state=None, headless=True, timeout_ms=DEFAULT_TIMEOUT_MS):
     """Yield a Playwright ``page`` with optional saved login state."""
-    sync_playwright, PlaywrightError, _ = _import_playwright()
+    sync_playwright, PlaywrightError, _ = _IMPORTED
     state = None
     if storage_state and Path(storage_state).exists():
         state = storage_state

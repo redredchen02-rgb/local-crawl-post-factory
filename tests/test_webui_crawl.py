@@ -326,3 +326,26 @@ def test_crawl_sources_as_string_400(tmp_path):
     r = client.post("/crawl")
     assert r.status_code == 400
     assert "設定錯誤" in r.text
+
+
+def test_run_auto_pipeline_directly(tmp_path, monkeypatch):
+    """_run_auto_pipeline reaches pipeline.run_auto_pipeline (_auto_pipeline.py:16)."""
+    from cpost.webui._auto_pipeline import _run_auto_pipeline
+    from cpost.core import pipeline as pipeline_mod
+    from cpost.core.jobs import Job
+    from cpost.core.schema import AutoPipelineResult
+
+    called = []
+
+    def mock_run_auto_pipeline(built, cfg, **kw):
+        called.append((built, cfg))
+        return AutoPipelineResult(ok=1, failed=[], verify_fail_count=0)
+
+    monkeypatch.setattr(pipeline_mod, "run_auto_pipeline", mock_run_auto_pipeline)
+
+    job = Job("test-auto-pipeline")
+    result = _run_auto_pipeline(job, {"key": "val"}, [{"post_id": "p1"}])
+    assert result["ok"] == 1
+    assert len(called) == 1
+    assert called[0][0] == [{"post_id": "p1"}]
+    assert called[0][1] == {"key": "val"}

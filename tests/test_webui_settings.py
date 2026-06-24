@@ -276,4 +276,191 @@ def test_sources_portability_after_crud(tmp_path):
         "source_id": "check", "start_url": "https://check.example.com/", "enabled": "on"})
     client.post("/sources/toggle/check")
     text = cfgp.read_text(encoding="utf-8")
+    text = cfgp.read_text(encoding="utf-8")
     assert str(tmp_path) not in text, "absolute path leaked into webui.yaml after CRUD"
+
+
+def test_sources_batch_add_valid(tmp_path):
+    client = _client(tmp_path, [])
+    r = client.post("/sources/batch-add", data={"urls": (
+        "https://example.com/\n"
+        "https://example.org/\n"
+        "https://example.net/"
+    )})
+    assert r.status_code == 200
+    assert "已新增 3 筆" in r.text
+    assert "example-com" in r.text or "example.com" in r.text
+    assert "example-org" in r.text or "example.org" in r.text
+
+
+def test_sources_batch_add_partial_skip(tmp_path):
+    client = _client(tmp_path, [])
+    r = client.post("/sources/batch-add", data={"urls": (
+        "https://example.com/\n"
+        "not-a-url\n"
+        "https://example.org/"
+    )})
+    assert r.status_code == 200
+    assert "已新增 2 筆" in r.text
+    assert "跳過 1 筆" in r.text
+    assert "example-com" in r.text or "example.com" in r.text
+
+
+def test_sources_batch_add_duplicate_source_id(tmp_path):
+    client = _client(tmp_path, [
+        {"source_id": "example-com", "start_url": "https://example.com/", "enabled": True},
+    ])
+    r = client.post("/sources/batch-add", data={"urls": "https://example.com/"})
+    assert r.status_code == 200
+    assert "跳過 1 筆" in r.text
+    assert "example-com" in r.text
+
+
+def test_sources_batch_add_internal_host_skipped(tmp_path):
+    client = _client(tmp_path, [])
+    r = client.post("/sources/batch-add", data={"urls": "https://127.0.0.1/admin/"})
+    assert r.status_code == 200
+    assert "跳過 1 筆" in r.text
+
+
+def test_sources_batch_add_empty_input(tmp_path):
+    client = _client(tmp_path, [])
+    r = client.post("/sources/batch-add", data={"urls": "   \n\n  "})
+    assert r.status_code == 200
+    assert r.text.strip() != ""
+
+
+def test_sources_batch_add_all_skipped_no_new(tmp_path):
+    client = _client(tmp_path, [])
+    r = client.post("/sources/batch-add", data={"urls": "not-url\nstill-bad\n"})
+    assert r.status_code == 200
+    assert "跳過 2 筆" in r.text
+    assert "已新增" not in r.text
+
+
+def test_save_settings_happy(tmp_path):
+    from cpost.core import webui_config as wc
+    cfgp = tmp_path / "webui.yaml"
+    wc.save(str(cfgp), {"start_url": "https://example.com", "sources": []})
+    from fastapi.testclient import TestClient
+    from cpost.webui.app import create_app
+    client = TestClient(create_app(str(cfgp)))
+    r = client.post("/settings", data={
+        "start_url": "https://example.com/news",
+        "limit": "50",
+    })
+    assert r.status_code == 200
+    assert "已儲存" in r.text or "saved" in r.text.lower()
+    cfg = wc.load(str(cfgp))
+    assert cfg["start_url"] == "https://example.com/news"
+
+
+def test_save_settings_validation_error(tmp_path):
+    from cpost.core import webui_config as wc
+    cfgp = tmp_path / "webui.yaml"
+    wc.save(str(cfgp), {"start_url": "https://example.com", "sources": []})
+    from fastapi.testclient import TestClient
+    from cpost.webui.app import create_app
+    client = TestClient(create_app(str(cfgp)))
+    r = client.post("/settings", data={
+        "start_url": "https://example.com",
+        "limit": "-5",
+    })
+    assert r.status_code == 200
+    assert "must be" in r.text or ">= 0" in r.text
+
+
+def test_save_settings_cli_error(tmp_path):
+    from cpost.core.errors import CliError
+    import cpost.webui.app as webapp
+    cfgp = tmp_path / "webui.yaml"
+    webui_config.save(str(cfgp), {"start_url": "https://example.com", "sources": []})
+    original_save = webui_config.save
+    def _raise_cli(*args, **kwargs):
+        raise CliError("something went wrong")
+    webui_config.save = _raise_cli
+    try:
+        from fastapi.testclient import TestClient
+        client = TestClient(webapp.create_app(str(cfgp)))
+        r = client.post("/settings", data={"start_url": "https://example.com"})
+        assert r.status_code == 400
+        assert "something went wrong" in r.text
+    finally:
+        webui_config.save = original_save
+
+
+def test_sources_toggle_unknown_404(tmp_path):
+    client = _client(tmp_path, [
+        {"source_id": "a", "start_url": "https://a.example.com/"},
+    ])
+    r = client.post("/sources/toggle/nonexistent")
+    assert r.status_code == 404
+
+
+def test_sources_edit_unknown_404(tmp_path):
+    client = _client(tmp_path, [
+        {"source_id": "a", "start_url": "https://a.example.com/"},
+    ])
+    r = client.post("/sources/edit/nonexistent", data={
+        "start_url": "https://other.example.com/", "enabled": "on"})
+    assert r.status_code == 404
+
+
+def test_sources_delete_validation_error(tmp_path):
+    from cpost.core.errors import ValidationError
+    import cpost.webui.routers.settings_auth as sa
+    original = sa._save_sources
+    def _raise_val(*args, **kwargs):
+        raise ValidationError("sources[0].enabled must be a boolean")
+    sa._save_sources = _raise_val
+    try:
+        client = _client(tmp_path, [
+            {"source_id": "a", "start_url": "https://a.example.com/"},
+        ])
+        r = client.post("/sources/delete/a")
+        assert r.status_code == 400
+    finally:
+        sa._save_sources = original
+
+
+def test_sources_edit_validation_error(tmp_path):
+    """sources_edit handles ValidationError from _save_sources (settings_auth.py:170-172)."""
+    from cpost.core.errors import ValidationError
+    import cpost.webui.routers.settings_auth as sa
+    original = sa._save_sources
+    def _raise_val(*args, **kwargs):
+        raise ValidationError("enabled must be a boolean")
+    sa._save_sources = _raise_val
+    try:
+        client = _client(tmp_path, [
+            {"source_id": "a", "start_url": "https://a.example.com/"},
+        ])
+        r = client.post("/sources/edit/a", data={
+            "start_url": "https://a.example.com/", "enabled": "on"})
+        assert r.status_code == 400
+        assert "enabled" in r.text
+    finally:
+        sa._save_sources = original
+
+
+def test_sources_batch_add_validation_error(tmp_path):
+    """sources_batch_add handles ValidationError from _save_sources (settings_auth.py:246-247)."""
+    from cpost.core.errors import ValidationError
+    import cpost.webui.routers.settings_auth as sa
+    original = sa._save_sources
+    def _raise_val(*args, **kwargs):
+        raise ValidationError("config validation failed")
+    sa._save_sources = _raise_val
+    try:
+        client = _client(tmp_path, [])
+        r = client.post("/sources/batch-add", data={"urls": "https://example.com/\n"})
+        assert r.status_code == 200
+    finally:
+        sa._save_sources = original
+
+
+def test_auth_status_returns_page(tmp_path):
+    client = _client(tmp_path, [])
+    r = client.get("/auth-status")
+    assert r.status_code == 200
+    assert r.text.strip() != ""
