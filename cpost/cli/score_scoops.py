@@ -1,10 +1,11 @@
-"""score-scoops: score each scoop on confidence + quality (plan U4).
+"""score-scoops: score each scoop on 4D dimensions (plan scoring-pipeline-v2).
 
 Reads the clusters produced by ``cluster-scoops`` plus their member items, scores
-each on the two axes (``cpost.core.scoring``), writes the scores back onto the
-``clusters`` rows, and emits a JSON summary sorted by combined score. Operates on
-the library store: requires ``--state``; ``--config`` points at scoring.yaml
-(optional). A full re-score each run keeps results idempotent.
+each on four dimensions (freshness, importance, traffic potential, cross-site
+coverage) via ``cpost.core.scoring.score_cluster_v2``, persists the scores, and
+emits a summary (JSON, terminal table, or markdown). Operates on the library store:
+requires ``--state``; ``--config`` points at scoring.yaml (optional). A full
+re-score each run keeps results idempotent.
 """
 
 import argparse
@@ -13,6 +14,7 @@ from datetime import datetime, timezone
 
 from cpost.core import cli, library, scoring, scoring_config
 from cpost.core.io_ndjson import write_line
+from cpost.core.output_table import markdown as md_table, terminal as term_table
 
 
 def score_all(conn: sqlite3.Connection, cfg: dict, now: str) -> list[dict]:
@@ -33,7 +35,15 @@ def summary(scored: list[dict]) -> dict:
         "by_cluster": [
             {"cluster_id": r["cluster_id"], "source_count": r["source_count"],
              "confidence": round(r["confidence"], 4), "quality": round(r["quality"], 4),
-             "score": round(r["score"], 4)}
+             "score": round(r["score"], 4),
+             "freshness": round(r.get("freshness", 0), 4),
+             "importance": round(r.get("importance", 0), 4),
+             "traffic_potential": round(r.get("traffic_potential", 0), 4),
+             "cross_site_coverage": round(r.get("cross_site_coverage", 0), 4),
+             "external_article_count": r.get("external_article_count"),
+             "external_source_count": r.get("external_source_count"),
+             "representative_title": r.get("representative_title"),
+             }
             for r in scored
         ],
     }
@@ -50,9 +60,17 @@ def _apply_min_sources(scored: list[dict], min_sources: int) -> list[dict]:
     return [s for s in scored if s.get("source_count", 0) >= min_sources]
 
 
+def _emit(scored: list[dict], fmt: str) -> None:
+    if fmt == "json":
+        write_line(summary(scored))
+    elif fmt == "table":
+        print(term_table(scored))
+    elif fmt == "markdown":
+        print(md_table(scored))
+
+
 def _run(args: argparse.Namespace) -> int:
     cfg = scoring_config.load(args.config)
-    # --min-sources: explicit CLI value takes precedence; fall back to config key.
     min_sources_raw: int | None = getattr(args, "min_sources", None)
     min_sources: int = (
         min_sources_raw
@@ -63,14 +81,14 @@ def _run(args: argparse.Namespace) -> int:
     with library.connect(args.state) as conn:
         scored = score_all(conn, cfg, now)
     scored = _apply_min_sources(scored, min_sources)
-    write_line(summary(scored))
+    _emit(scored, args.format)
     return 0
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(
         prog="score-scoops",
-        description="Score scoops (clusters) by multi-source confidence + content quality.",
+        description="Score scoops (clusters) on 4 dimensions: freshness, importance, traffic potential, cross-site coverage.",
     )
     parser.add_argument("--state", required=True, help="path to the SQLite state file")
     parser.add_argument("--config", default=None, help="path to scoring.yaml (optional)")
@@ -81,6 +99,10 @@ def main() -> None:
             "only output scoops with source_count >= N "
             "(default: read actionable_min_sources from config, or 0 = no filter)"
         ),
+    )
+    parser.add_argument(
+        "--format", choices=["json", "table", "markdown"], default="json",
+        help="output format (default: json)",
     )
     args = parser.parse_args()
     cli.main_wrapper(lambda: _run(args))

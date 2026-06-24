@@ -172,7 +172,12 @@ def test_prep_result_declared_keys(tmp_path, monkeypatch):
     for entry in result["top"]:
         assert set(entry) == {
             "cluster_id", "representative_title", "source_count",
-            "confidence", "quality", "score"}
+            "confidence", "quality", "score",
+            "score_legacy", "freshness", "importance",
+            "traffic_potential", "cross_site_coverage",
+            "external_article_count", "external_source_count",
+            "external_latest_at", "search_volume_proxy",
+        }
 
 
 def test_idempotent_rerun(tmp_path, monkeypatch):

@@ -124,10 +124,331 @@ def test_score_cluster_multisource_beats_singlesource():
 
 def test_score_cluster_empty_members_no_crash():
     s = scoring.score_cluster(_cluster(0, 0, None), [], NOW, _CFG)
-    assert s == {"confidence": 0.0, "quality": 0.0, "score": 0.0}
+    assert s["confidence"] == 0.0
+    assert s["quality"] == 0.0
+    assert s["score"] == 0.0
+    # Extra 4D fields present
+    assert "freshness" in s and "importance" in s
+    assert "traffic_potential" in s and "cross_site_coverage" in s
 
 
 def test_score_cluster_deterministic():
     a = scoring.score_cluster(_cluster(2, 2, NOW), [{"source_text": "x" * 500}], NOW, _CFG)
     b = scoring.score_cluster(_cluster(2, 2, NOW), [{"source_text": "x" * 500}], NOW, _CFG)
     assert a == b
+
+
+# --- 4D: freshness ---
+
+def test_freshness_weighted_average():
+    v = scoring.freshness(recency_v=1.0, velocity_v=0.5,
+                          w_recency=0.6, w_velocity=0.4)
+    assert v == 0.8  # (1.0*0.6 + 0.5*0.4) / 1.0
+
+
+def test_freshness_only_velocity_counts():
+    v = scoring.freshness(recency_v=0.0, velocity_v=1.0,
+                          w_recency=0.0, w_velocity=1.0)
+    assert v == 1.0
+
+
+def test_freshness_zero_weights():
+    v = scoring.freshness(recency_v=0.8, velocity_v=0.4,
+                          w_recency=0.0, w_velocity=0.0)
+    assert v == 0.0
+
+
+def test_freshness_clamps_excess():
+    v = scoring.freshness(recency_v=1.5, velocity_v=1.5,
+                          w_recency=0.5, w_velocity=0.5)
+    assert v == 1.0
+
+
+# --- 4D: freshness_velocity ---
+
+def test_freshness_velocity_all_recent():
+    # 3 members all published within the 24h window
+    v = scoring.freshness_velocity(
+        3, window_hours=24,
+        published_ats=[NOW, NOW, NOW],
+        now=NOW, velocity_cap=5)
+    assert v == 0.6  # 3/5
+
+
+def test_freshness_velocity_some_recent():
+    # 2 out of 3 in window
+    v = scoring.freshness_velocity(
+        3, window_hours=72,
+        published_ats=[NOW, "2026-01-01T00:00:00+00:00", "2026-06-17T00:00:00+00:00"],
+        now=NOW, velocity_cap=5)
+    assert v == 0.4  # 2/5
+
+
+def test_freshness_velocity_none_recent():
+    v = scoring.freshness_velocity(
+        3, window_hours=24,
+        published_ats=["2026-01-01T00:00:00+00:00"] * 3,
+        now=NOW, velocity_cap=5)
+    assert v == 0.0
+
+
+def test_freshness_velocity_all_old_becomes_zero():
+    v = scoring.freshness_velocity(
+        3, window_hours=24,
+        published_ats=["2026-01-01T00:00:00+00:00"],
+        now=NOW, velocity_cap=5)
+    assert v == 0.0
+
+
+def test_freshness_velocity_saturates():
+    v = scoring.freshness_velocity(
+        10, window_hours=24,
+        published_ats=[NOW] * 10,
+        now=NOW, velocity_cap=3)
+    assert v == 1.0  # capped at 3/3
+
+
+def test_freshness_velocity_no_members():
+    v = scoring.freshness_velocity(
+        0, window_hours=24,
+        published_ats=[], now=NOW, velocity_cap=5)
+    assert v == 0.0
+
+
+def test_freshness_velocity_zero_window():
+    v = scoring.freshness_velocity(
+        5, window_hours=0,
+        published_ats=[NOW] * 5, now=NOW, velocity_cap=5)
+    assert v == 0.0
+
+
+def test_freshness_velocity_none_published_at():
+    v = scoring.freshness_velocity(
+        3, window_hours=24,
+        published_ats=[None, None, None],
+        now=NOW, velocity_cap=5)
+    assert v == 0.0
+
+
+def test_freshness_velocity_mixed_none_and_valid():
+    v = scoring.freshness_velocity(
+        3, window_hours=24,
+        published_ats=[None, NOW, "2026-01-01T00:00:00+00:00"],
+        now=NOW, velocity_cap=5)
+    assert v == 0.2  # 1/5 (only NOW counts)
+
+
+# --- 4D: importance ---
+
+def test_importance_weighted_average():
+    v = scoring.importance(completeness_v=1.0, material_v=0.5, diversity_v=0.0,
+                           w_completeness=1.0, w_material=0.0, w_diversity=0.0)
+    assert v == 1.0
+
+
+def test_importance_spreads():
+    v = scoring.importance(completeness_v=1.0, material_v=0.5, diversity_v=0.5,
+                           w_completeness=0.5, w_material=0.3, w_diversity=0.2)
+    expected = (1.0 * 0.5 + 0.5 * 0.3 + 0.5 * 0.2) / 1.0
+    assert v == expected
+
+
+def test_importance_all_zero():
+    v = scoring.importance(completeness_v=0.0, material_v=0.0, diversity_v=0.0,
+                           w_completeness=0.3, w_material=0.3, w_diversity=0.4)
+    assert v == 0.0
+
+
+def test_importance_zero_weights():
+    v = scoring.importance(completeness_v=1.0, material_v=1.0, diversity_v=1.0,
+                           w_completeness=0.0, w_material=0.0, w_diversity=0.0)
+    assert v == 0.0
+
+
+# --- 4D: importance_diversity + _jaccard_str ---
+
+def test_importance_diversity_identical():
+    members = [{"title": "Breaking News"}, {"title": "Breaking News"}]
+    assert scoring.importance_diversity(members, threshold=0.3) == 0.0
+
+
+def test_importance_diversity_completely_different():
+    members = [{"title": "Apple Launch Event"}, {"title": "Earthquake in Japan"}]
+    v = scoring.importance_diversity(members, threshold=0.3)
+    assert v == 1.0
+
+
+def test_importance_diversity_empty():
+    assert scoring.importance_diversity([], threshold=0.3) == 0.0
+
+
+def test_importance_diversity_single():
+    members = [{"title": "Only One"}]
+    assert scoring.importance_diversity(members, threshold=0.3) == 1.0
+
+
+def test_importance_diversity_no_title_field():
+    members = [{}, {}]
+    v = scoring.importance_diversity(members, threshold=0.3)
+    assert v == 1.0  # both empty → jaccard 0.0 for each → diversity counted
+
+
+def test_importance_diversity_threshold_adjustment():
+    # two similar but not identical titles
+    members = [{"title": "Apple iPhone 16 Launch"}, {"title": "Apple iPhone 16 Pro Launch"}]
+    strict = scoring.importance_diversity(members, threshold=0.2)
+    loose = scoring.importance_diversity(members, threshold=0.8)
+    assert strict >= loose  # stricter threshold → more pairs count as diverse
+
+
+# --- 4D: cross_site_coverage ---
+
+def test_cross_site_coverage_linear():
+    assert scoring.cross_site_coverage(0, source_cap=5) == 0.0
+    assert scoring.cross_site_coverage(1, source_cap=5) == 0.2
+    assert scoring.cross_site_coverage(3, source_cap=5) == 0.6
+    assert scoring.cross_site_coverage(5, source_cap=5) == 1.0
+    assert scoring.cross_site_coverage(20, source_cap=5) == 1.0
+
+
+def test_cross_site_coverage_zero_cap():
+    assert scoring.cross_site_coverage(0, source_cap=0) == 0.0
+    assert scoring.cross_site_coverage(3, source_cap=0) == 1.0
+
+
+# --- 4D: traffic_potential ---
+
+def test_traffic_potential_all_max():
+    v = scoring.traffic_potential(volume_v=1.0, source_diversity_v=1.0, coverage_v=1.0,
+                                  w_volume=0.4, w_sources=0.3, w_diversity=0.3)
+    assert v == 1.0
+
+
+def test_traffic_potential_volume_zero():
+    v = scoring.traffic_potential(volume_v=0.0, source_diversity_v=1.0, coverage_v=1.0,
+                                  w_volume=1.0, w_sources=0.0, w_diversity=0.0)
+    assert v == 0.0
+
+
+def test_traffic_potential_zero_weights():
+    v = scoring.traffic_potential(volume_v=0.5, source_diversity_v=0.5, coverage_v=0.5,
+                                  w_volume=0.0, w_sources=0.0, w_diversity=0.0)
+    assert v == 0.0
+
+
+# --- 4D: traffic_volume ---
+
+def test_traffic_volume_linear():
+    assert scoring.traffic_volume(0, cap=50) == 0.0
+    assert scoring.traffic_volume(25, cap=50) == 0.5
+    assert scoring.traffic_volume(50, cap=50) == 1.0
+    assert scoring.traffic_volume(200, cap=50) == 1.0
+
+
+def test_traffic_volume_none():
+    assert scoring.traffic_volume(None, cap=50) == 0.0
+
+
+def test_traffic_volume_zero_cap():
+    assert scoring.traffic_volume(10, cap=0) == 0.0
+
+
+# --- 4D: traffic_source_diversity ---
+
+def test_traffic_source_diversity_linear():
+    assert scoring.traffic_source_diversity(0, cap=10) == 0.0
+    assert scoring.traffic_source_diversity(5, cap=10) == 0.5
+    assert scoring.traffic_source_diversity(10, cap=10) == 1.0
+    assert scoring.traffic_source_diversity(50, cap=10) == 1.0
+
+
+def test_traffic_source_diversity_none():
+    assert scoring.traffic_source_diversity(None, cap=10) == 0.0
+
+
+def test_traffic_source_diversity_zero_cap():
+    assert scoring.traffic_source_diversity(5, cap=0) == 0.0
+
+
+# --- score_cluster_v2 integration ---
+
+_CFG_V2 = {**_CFG,
+    "freshness_w_recency": 0.6, "freshness_w_velocity": 0.4,
+    "freshness_velocity_window_hours": 24,
+    "importance_w_completeness": 0.5, "importance_w_material": 0.3, "importance_w_diversity": 0.2,
+    "importance_diversity_threshold": 0.3,
+    "traffic_w_volume": 0.4, "traffic_w_sources": 0.3, "traffic_w_diversity": 0.3,
+    "traffic_article_cap": 50, "traffic_source_cap": 10, "traffic_diversity_cap": 3,
+    "cross_site_source_cap": 5,
+    "weight_freshness": 0.25, "weight_importance": 0.25,
+    "weight_traffic_potential": 0.25, "weight_cross_site_coverage": 0.25,
+}
+
+
+def test_score_cluster_v2_returns_all_keys():
+    result = scoring.score_cluster_v2(
+        _cluster(2, 2, NOW),
+        [{"source_text": "x" * 500, "title": "A", "published_at": NOW}],
+        NOW, _CFG_V2)
+    expected_keys = {
+        "confidence", "quality", "score", "score_legacy",
+        "freshness", "importance", "traffic_potential", "cross_site_coverage",
+        "external_article_count", "external_source_count",
+        "external_latest_at", "search_volume_proxy",
+    }
+    assert set(result.keys()) == expected_keys
+
+
+def test_score_cluster_v2_empty():
+    result = scoring.score_cluster_v2(_cluster(0, 0, None), [], NOW, _CFG_V2)
+    for k in ("score", "score_legacy", "freshness", "importance",
+              "traffic_potential", "cross_site_coverage"):
+        assert result[k] == 0.0, f"{k} should be 0.0, got {result[k]}"
+    assert result["confidence"] == 0.0
+    assert result["quality"] == 0.0
+
+
+def test_score_cluster_v2_with_external_data():
+    result = scoring.score_cluster_v2(
+        _cluster(3, 3, NOW),
+        [{"source_text": "x" * 1000, "title": "A", "published_at": NOW}] * 3,
+        NOW, _CFG_V2,
+        external={
+            "external_article_count": 30,
+            "external_source_count": 5,
+            "external_latest_at": NOW,
+            "search_volume_proxy": 0.8,
+        })
+    assert result["external_article_count"] == 30
+    assert result["external_source_count"] == 5
+    assert result["traffic_potential"] > 0.0
+
+
+def test_score_cluster_v2_without_external_data():
+    """Without external data, traffic-related sub-scores default to 0."""
+    result = scoring.score_cluster_v2(
+        _cluster(2, 2, NOW),
+        [{"source_text": "x" * 500, "title": "A", "published_at": NOW}] * 2,
+        NOW, _CFG_V2)
+    assert result["external_article_count"] is None
+    assert result["external_source_count"] is None
+    assert result["external_latest_at"] is None
+    assert result["search_volume_proxy"] is None
+
+
+def test_score_cluster_v2_old_cfg_no_crash():
+    """score_cluster_v2 must not crash when called with an old-style cfg (no 4D keys)."""
+    result = scoring.score_cluster_v2(
+        _cluster(1, 1, NOW),
+        [{"source_text": "x" * 500, "title": "A", "published_at": NOW}],
+        NOW, _CFG)  # uses in-code defaults for missing keys
+    assert result["score"] >= 0.0
+
+
+# --- score_cluster (legacy) backward compat ---
+
+def test_score_cluster_still_works():
+    s = scoring.score_cluster(
+        _cluster(2, 2, NOW),
+        [{"source_text": "x" * 500}] * 2, NOW, _CFG)
+    assert set(s.keys()) >= {"confidence", "quality", "score"}

@@ -77,13 +77,22 @@ class ScoopFailed(TypedDict, total=True):
 
 
 class PrepTopScoop(TypedDict, total=True):
-    """One ranked scoop summary in PrepPipelineResult.top."""
+    """One ranked scoop summary in PrepPipelineResult.top (4D scoring v2)."""
     cluster_id: str
     representative_title: str | None
     source_count: int
     confidence: float
     quality: float
     score: float
+    score_legacy: NotRequired[float]
+    freshness: NotRequired[float]
+    importance: NotRequired[float]
+    traffic_potential: NotRequired[float]
+    cross_site_coverage: NotRequired[float]
+    external_article_count: NotRequired[int | None]
+    external_source_count: NotRequired[int | None]
+    external_latest_at: NotRequired[str | None]
+    search_volume_proxy: NotRequired[float | None]
 
 
 class PrepPipelineResult(TypedDict, total=True):

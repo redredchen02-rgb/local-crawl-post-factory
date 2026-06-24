@@ -100,7 +100,17 @@ def run_prep_pipeline(webui_cfg: dict,
          "source_count": s["source_count"],
          "confidence": round(s["confidence"], 4),
          "quality": round(s["quality"], 4),
-         "score": round(s["score"], 4)}
+         "score": round(s["score"], 4),
+         "score_legacy": round(s.get("score_legacy", s["score"]), 4),
+         "freshness": round(s.get("freshness", 0), 4),
+         "importance": round(s.get("importance", 0), 4),
+         "traffic_potential": round(s.get("traffic_potential", 0), 4),
+         "cross_site_coverage": round(s.get("cross_site_coverage", 0), 4),
+         "external_article_count": s.get("external_article_count"),
+         "external_source_count": s.get("external_source_count"),
+         "external_latest_at": s.get("external_latest_at"),
+         "search_volume_proxy": s.get("search_volume_proxy"),
+         }
         for s in scored[:10]
     ]
     return {

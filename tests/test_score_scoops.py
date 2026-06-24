@@ -98,7 +98,7 @@ def _run_command(db, monkeypatch, config=None):
     out, err = io.StringIO(), io.StringIO()
     monkeypatch.setattr("sys.stdout", out)
     monkeypatch.setattr("sys.stderr", err)
-    code = cli.run(lambda: _run(SimpleNamespace(state=db, config=config)))
+    code = cli.run(lambda: _run(SimpleNamespace(state=db, config=config, format="json")))
     return code, out.getvalue(), err.getvalue()
 
 
