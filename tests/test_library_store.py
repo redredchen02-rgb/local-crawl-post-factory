@@ -205,6 +205,24 @@ def test_update_gossip_crawl_status_failed(tmp_path):
     assert rows[0]["error_msg"] == "timeout"
 
 
+def test_delete_gossip_url(tmp_path):
+    db = _db(tmp_path)
+    with library.connect(db) as conn:
+        library.submit_gossip_url(conn, "https://foo.com/", "my label", NOW)
+    with library.connect(db) as conn:
+        library.delete_gossip_url(conn, "https://foo.com/")
+    with library.connect(db) as conn:
+        assert library.list_gossip_urls(conn) == []
+
+
+def test_delete_gossip_url_nonexistent_is_noop(tmp_path):
+    db = _db(tmp_path)
+    with library.connect(db) as conn:
+        library.delete_gossip_url(conn, "https://nobody.com/")
+    with library.connect(db) as conn:
+        assert library.list_gossip_urls(conn) == []
+
+
 def test_list_gossip_urls_empty(tmp_path):
     db = _db(tmp_path)
     with library.connect(db) as conn:

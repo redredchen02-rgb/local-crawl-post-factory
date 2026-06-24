@@ -73,6 +73,14 @@ def start_gossip_crawl(request: Request, url: str = Form(...),
         {"job": jobs.get(job_id), "job_id": job_id})
 
 
+@router.post("/gossip-materials/delete", response_class=HTMLResponse)
+def delete_gossip_url_route(request: Request, url: str = Form(...)):
+    cfg = cfg_from_request(request)
+    with library.connect(cfg["state_path"]) as conn:
+        library.delete_gossip_url(conn, url)
+    return HTMLResponse("", status_code=200)
+
+
 @router.get("/gossip-materials/jobs/{job_id}", response_class=HTMLResponse)
 def gossip_job(request: Request, job_id: str):
     job = jobs.get(job_id)

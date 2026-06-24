@@ -312,6 +312,11 @@ def submit_gossip_url(conn: sqlite3.Connection, url: str, label: str | None,
     )
 
 
+def delete_gossip_url(conn: sqlite3.Connection, url: str) -> None:
+    """Remove a gossip URL entry (no-op if not found)."""
+    conn.execute("DELETE FROM gossip_urls WHERE url = ?", (url,))
+
+
 def list_gossip_urls(conn: sqlite3.Connection) -> list[dict]:
     """Return all gossip_urls rows, newest submitted first."""
     conn.row_factory = sqlite3.Row

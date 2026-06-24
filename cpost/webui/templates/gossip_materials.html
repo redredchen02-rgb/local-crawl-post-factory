@@ -46,12 +46,17 @@
         </td>
         <td>{{ g.item_count }}</td>
         <td>{{ g.last_crawled_at[:10] if g.last_crawled_at else '—' }}</td>
-        <td>
+        <td style="white-space:nowrap">
           <form hx-post="/gossip-materials/crawl" hx-target="#gossip-job-status" hx-swap="innerHTML"
                 style="display:inline">
             <input type="hidden" name="url" value="{{ g.url }}">
             <input type="hidden" name="label" value="{{ g.label or '' }}">
-            <button type="submit" class="secondary" style="padding:0.2rem 0.6rem">重新爬取</button>
+            <button type="submit" class="secondary" style="padding:0.2rem 0.6rem">🔄 刷新</button>
+          </form>
+          <form hx-post="/gossip-materials/delete" hx-target="closest tr" hx-swap="outerHTML"
+                style="display:inline">
+            <input type="hidden" name="url" value="{{ g.url }}">
+            <button type="submit" class="secondary" style="padding:0.2rem 0.6rem">刪除</button>
           </form>
         </td>
       </tr>

@@ -82,6 +82,38 @@ def test_get_job_not_found_returns_404(tmp_path):
     assert resp.status_code == 404
 
 
+def test_post_delete_removes_url(tmp_path):
+    client, state_path = _client_and_state(tmp_path)
+    with library.connect(state_path) as conn:
+        library.submit_gossip_url(conn, "https://gone.com/", "bye", NOW)
+
+    resp = client.post("/gossip-materials/delete", data={"url": "https://gone.com/"})
+    assert resp.status_code == 200
+    assert resp.text == ""
+
+    with library.connect(state_path) as conn:
+        rows = library.list_gossip_urls(conn)
+    assert len(rows) == 0
+
+
+def test_post_delete_missing_url_returns_422(tmp_path):
+    client, _ = _client_and_state(tmp_path)
+    resp = client.post("/gossip-materials/delete", data={})
+    assert resp.status_code == 422
+
+
+def test_gossip_materials_has_refresh_and_delete_buttons(tmp_path):
+    client, state_path = _client_and_state(tmp_path)
+    with library.connect(state_path) as conn:
+        library.submit_gossip_url(conn, "https://btn-test.com/", "test", NOW)
+
+    resp = client.get("/gossip-materials")
+    assert resp.status_code == 200
+    assert "🔄 刷新" in resp.text
+    assert "刪除" in resp.text
+    assert "/gossip-materials/delete" in resp.text
+
+
 def test_get_gossip_materials_shows_url_after_submit(tmp_path):
     client, state_path = _client_and_state(tmp_path)
     with library.connect(state_path) as conn:
