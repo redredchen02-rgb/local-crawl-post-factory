@@ -140,3 +140,45 @@ def test_audit_post_id_links_to_detail(tmp_path):
         encoding="utf-8")
     r = client.get("/audit")
     assert '/packages/20260615_abc' in r.text
+
+
+def test_audit_handles_one_line_directly(tmp_path):
+    """Direct coverage for _tail_audit for-loop (_helpers.py:131)."""
+    from cpost.webui._helpers import _tail_audit
+    log = tmp_path / "audit.jsonl"
+    log.write_text('{"ts":"t","stage":"s","status":"ok","post_id":"p"}\n', encoding="utf-8")
+    rows = _tail_audit(str(log), 200)
+    assert len(rows) == 1
+
+
+def test_audit_tail_large_file_skips_partial_first_line(tmp_path):
+    """_tail_audit with >32KB file triggers lines=lines[1:] (_helpers.py:131)."""
+    from cpost.webui._helpers import _tail_audit
+    log = tmp_path / "audit_fullsize.jsonl"
+    big = "\n".join(
+        f'{{"ts":"2026-06-{d:02d}T00:00:00Z","stage":"ok","status":"ok","post_id":"p{d}"}}'
+        for d in range(1, 4)
+    )
+    single_len = len(big) + 1
+    repeat = (66000 // single_len) + 1
+    content = "\n".join([big] * repeat) + "\n"
+    assert len(content.encode("utf-8")) > 65536
+    log.write_text(content, encoding="utf-8")
+    rows = _tail_audit(str(log), limit=9999)
+    assert len(rows) > 0
+    for r in rows:
+        assert "post_id" in r
+
+
+def test_audit_skips_empty_lines_and_renders_good(tmp_path):
+    """_tail_audit skips empty lines and still renders valid entries (_helpers.py:131,136)."""
+    client, tp = _client(tmp_path)
+    (tp / "audit.jsonl").write_text(
+        '{"ts":"t1","stage":"first","status":"ok","post_id":"p1"}\n'
+        '\n'  # empty line — should be skipped
+        '{"ts":"t2","stage":"second","status":"ok","post_id":"p2"}\n',
+        encoding="utf-8")
+    r = client.get("/audit")
+    assert r.status_code == 200
+    assert "first" in r.text
+    assert "second" in r.text

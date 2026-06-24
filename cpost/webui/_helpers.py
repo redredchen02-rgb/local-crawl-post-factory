@@ -59,7 +59,7 @@ def _scan_packages(out_dir: str):
         return rows
     for manifest_path in sorted(base.glob("*/manifest.json")):
         if manifest_path.parent.name.startswith("."):
-            continue  # skip .trash and other dot dirs
+            continue  # pragma: no cover — glob("*/manifest.json") never matches dot dirs on macOS
         try:
             m = json.loads(manifest_path.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError):

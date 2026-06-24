@@ -252,3 +252,61 @@ def test_missing_api_key_raises_before_transport(monkeypatch):
     _patch_urlopen(monkeypatch, boom)
     with pytest.raises(ValidationError, match="API key"):
         llm.chat(_CFG, "sp", "uc")
+
+
+# --- load_config / load_system_prompt / build_user_content (R12 edge cases) ----
+
+
+def test_load_config_file_not_found(monkeypatch):
+    """When the yaml file does not exist, load_config returns defaults unchanged."""
+    cfg = llm.load_config("/nonexistent/path.yaml")
+    assert cfg["base_url"] == ""
+
+
+def test_load_config_merges_yaml(tmp_path):
+    """When yaml exists and has valid keys, they are merged over defaults (llm.py:42-44)."""
+    p = tmp_path / "cfg.yaml"
+    p.write_text("base_url: https://my-llm.example.com/v1\nmodel: gpt-4\n", encoding="utf-8")
+    cfg = llm.load_config(str(p))
+    assert cfg["base_url"] == "https://my-llm.example.com/v1"
+    assert cfg["model"] == "gpt-4"
+
+
+def test_load_config_resolves_relative_prompt_path(tmp_path):
+    """When prompt_path is relative, it is resolved next to the config file (llm.py:47-50)."""
+    cfg_dir = tmp_path / "cfg"
+    cfg_dir.mkdir()
+    p = cfg_dir / "llm.yaml"
+    p.write_text("prompt_path: prompts/system.txt\n", encoding="utf-8")
+    cfg = llm.load_config(str(p))
+    expected = str(cfg_dir / "prompts" / "system.txt")
+    assert cfg["prompt_path"] == expected
+
+
+def test_load_config_yaml_not_a_dict(tmp_path):
+    """When yaml content is not a mapping (e.g. a list), ValidationError is raised (llm.py:41)."""
+    p = tmp_path / "cfg.yaml"
+    p.write_text("- item1\n- item2\n", encoding="utf-8")
+    with pytest.raises(ValidationError, match="mapping"):
+        llm.load_config(str(p))
+
+
+def test_load_system_prompt_success(tmp_path):
+    """When prompt_path exists, returns file content (llm.py:59)."""
+    prompt_file = tmp_path / "prompt.txt"
+    prompt_file.write_text("You are a helpful assistant.", encoding="utf-8")
+    result = llm.load_system_prompt({"prompt_path": str(prompt_file)})
+    assert result == "You are a helpful assistant."
+
+
+def test_load_system_prompt_file_not_found():
+    """When prompt_path is empty or file is missing, ValidationError is raised (llm.py:58)."""
+    with pytest.raises(ValidationError, match="system prompt file not found"):
+        llm.load_system_prompt({"prompt_path": ""})
+
+
+def test_build_user_content_wraps_correctly():
+    """build_user_content produces the expected wrapper format."""
+    result = llm.build_user_content("測試標題", "測試正文")
+    assert "測試標題" in result
+    assert "測試正文" in result

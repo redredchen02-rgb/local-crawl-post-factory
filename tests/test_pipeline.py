@@ -276,7 +276,7 @@ def test_a1_state_published_url_returns_none_not_empty_string(tmp_path):
     An empty string is not None, so it would incorrectly enter the re-entry branch
     and skip the browser publish for an item that was NEVER actually published.
     """
-    from cpost.cli.publish_post import _state_published_url  # type: ignore[attr-defined]
+    from cpost.cli.publish_post import _state_published_url
     state_path = str(tmp_path / "state.sqlite")
     # state_mod.connect auto-creates schema; no explicit setup needed
     manifest = {"source": {"canonical_url": "https://example.com/never-published"}}
@@ -388,7 +388,7 @@ def test_b6_draft_success_run_not_duplicated_on_reentry(tmp_path, monkeypatch):
                         status="ok", run_id=run_id, severity="info")
 
     # Second call (re-entry): must NOT insert another ok row
-    from cpost.core.pipeline import _stage_run_recorded  # type: ignore[attr-defined]
+    from cpost.core.pipeline import _stage_run_recorded
     assert _stage_run_recorded(state_path, "p1", "draft"), (
         "_stage_run_recorded should return True after first ok run"
     )
@@ -396,3 +396,70 @@ def test_b6_draft_success_run_not_duplicated_on_reentry(tmp_path, monkeypatch):
     all_runs = runs_mod.list_runs(state_path, post_id="p1")
     ok_runs = [r for r in all_runs if r.get("stage") == "draft" and r.get("status") == "ok"]
     assert len(ok_runs) == 1, f"expected 1 ok run, got {len(ok_runs)}"
+
+
+# --- Edge cases for internal helpers (pipeline.py:121, 132-133, 383) ----------
+
+
+def test_stage_run_recorded_no_state_path_returns_false():
+    """_stage_run_recorded returns False when state_path is falsy (pipeline.py:121)."""
+    from cpost.core.pipeline import _stage_run_recorded
+    assert _stage_run_recorded("", "p1", "draft") is False
+    assert _stage_run_recorded(None, "p1", "draft") is False
+
+
+def test_host_of_bad_url_returns_empty_string():
+    """_host_of returns empty string on unparseable URL (pipeline.py:132-133)."""
+    from cpost.core.pipeline import _host_of
+    assert _host_of("") == ""
+    assert _host_of("://bad") == ""
+
+
+def test_run_auto_pipeline_empty_built_via_setstatus(monkeypatch):
+    """run_auto_pipeline with empty built + non-None on_status exercises
+    the _setstatus call on line 383 of pipeline.py."""
+    from cpost.core.pipeline import run_auto_pipeline
+    calls = []
+    result = run_auto_pipeline([], {}, on_progress=calls.append, on_status=calls.append)
+    assert result == {"ok": 0, "failed": [], "verify_fail_count": 0}
+
+
+def test_run_auto_pipeline_on_status_called(monkeypatch, tmp_path):
+    """When on_status is set and built is non-empty, _setstatus is called (pipeline.py:383)."""
+    import json
+    from cpost.core import pipeline as pipeline_mod
+
+    # Create a minimal package
+    pkg = tmp_path / "pkgs" / "p1"
+    pkg.mkdir(parents=True)
+    manifest = {"backend": {}, "content": {"title": "T", "canonical_url": "https://e.com/1"}}
+    (pkg / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+    # Mock the stage runners so they pass without a real backend
+    def fake_draft(inv):
+        return {"draft_url": "https://e.com/draft/1"}
+    def fake_verify(inv):
+        return {"draft_url": "https://e.com/draft/1"}
+    def fake_publish(inv):
+        return {"published_url": "https://e.com/published/1"}
+
+    monkeypatch.setattr(pipeline_mod.draft_post, "run", fake_draft)
+    monkeypatch.setattr(pipeline_mod.verify_draft, "run", fake_verify)
+    monkeypatch.setattr(pipeline_mod.publish_post, "run", fake_publish)
+
+    status_calls = []
+
+    built = [{"post_id": "p1", "title": "T", "manifest_path": str(pkg / "manifest.json")}]
+    cfg = {
+        "backend_config": "configs/backend.yaml",
+        "storage_state": str(tmp_path / "auth.json"),
+        "state_path": str(tmp_path / "state.sqlite"),
+    }
+    pipeline_mod.run_auto_pipeline(
+        built,
+        cfg,
+        on_status=status_calls.append,
+        timeout_ms=5000,
+    )
+    # at least one _setstatus call should have fired per item
+    assert len(status_calls) >= 1, f"expected status calls, got {status_calls}"

@@ -700,5 +700,33 @@ def test_backend_invocation_attribute_access_for_runners():
     assert inv.headless is True
     assert inv.retries is None
     assert inv.dry_run is False
-    assert inv.approve is False           # inert for draft/verify
-    assert inv.expected_content_id is None  # inert for draft/verify
+    assert inv.approve is False
+    assert inv.expected_content_id is None
+
+
+def test_default_timeout_ms_import_error_fallback():
+    """When browser module is absent, _default_timeout_ms returns CORE_DEFAULT_TIMEOUT_MS (backend_args.py:33-34)."""
+    import builtins as _b
+    import importlib
+    import cpost.core.backend_args as ba
+
+    # purge browser modules so the import inside _default_timeout_ms will fail
+    import sys as _sys
+    for _k in list(_sys.modules):
+        if 'browser' in _k or 'playwright' in _k:
+            del _sys.modules[_k]
+
+    _real_import = _b.__import__
+    def _mock_import(name, *a, **kw):
+        if 'cpost.browser' in name:
+            raise ImportError(f'No module named {name}')
+        return _real_import(name, *a, **kw)
+    _b.__import__ = _mock_import
+    importlib.reload(ba)
+
+    result = ba._default_timeout_ms()
+    assert result == ba.CORE_DEFAULT_TIMEOUT_MS
+
+    _b.__import__ = _real_import
+    importlib.reload(ba)
+

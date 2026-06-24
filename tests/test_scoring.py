@@ -31,6 +31,12 @@ def test_completeness_normalizes_and_caps():
     assert scoring.completeness(5000, full_text_chars=1000) == 1.0
 
 
+def test_completeness_zero_chars_returns_one_if_any_text():
+    """completeness(): full_text_chars <= 0 returns 1.0 if max_text_len > 0 else 0.0 (scoring.py:42)."""
+    assert scoring.completeness(100, full_text_chars=0) == 1.0
+    assert scoring.completeness(0, full_text_chars=0) == 0.0
+
+
 # --- recency ---
 
 def test_recency_decays_linearly():
@@ -67,6 +73,12 @@ def test_recency_future_is_full():
 def test_material_caps():
     assert scoring.material(1, material_cap=3) < scoring.material(3, material_cap=3)
     assert scoring.material(9, material_cap=3) == 1.0
+
+
+def test_material_zero_cap_returns_one_if_any_members():
+    """material(): material_cap <= 0 returns 1.0 if member_count > 0 else 0.0 (scoring.py:59)."""
+    assert scoring.material(1, material_cap=0) == 1.0
+    assert scoring.material(0, material_cap=0) == 0.0
 
 
 # --- quality / combined weighting ---
@@ -212,6 +224,14 @@ def test_freshness_velocity_no_members():
     v = scoring.freshness_velocity(
         0, window_hours=24,
         published_ats=[], now=NOW, velocity_cap=5)
+    assert v == 0.0
+
+
+def test_freshness_velocity_invalid_now_returns_zero():
+    """freshness_velocity(): when now is not parseable, ref is None → 0.0 (scoring.py:100)."""
+    v = scoring.freshness_velocity(
+        3, window_hours=24,
+        published_ats=[NOW], now="not-a-date", velocity_cap=5)
     assert v == 0.0
 
 

@@ -675,3 +675,187 @@ def test_two_packages_show_distinct_source_ids(tmp_path):
     assert "source-alpha" in ra and "source-beta" not in ra
     rb = client.get("/packages/20260615_b").text
     assert "source-beta" in rb and "source-alpha" not in rb
+
+
+# --- Coverage gaps: helpers + actions + packages edge cases -------------------
+
+
+def test_batch_delete_returns_hint_when_empty(tmp_path):
+    """POST /batch/delete without post_ids shows hint (actions.py:69)."""
+    client = _client(tmp_path, tmp_path / "out")
+    r = client.post("/batch/delete")
+    assert r.status_code == 200
+    assert "未選取任何貼文" in r.text
+
+
+def test_batch_delete_skips_invalid_post_id(tmp_path):
+    """Traversal/bad post_ids are skipped with a message (actions.py:75-76,82-83)."""
+    out = tmp_path / "out"
+    _pkg(out, "20260615_ok", "好文")
+    client = _client(tmp_path, out)
+    r = client.post("/batch/delete", data={"post_ids": ["20260615_ok", "../etc/passwd"]})
+    assert r.status_code == 200
+    assert "已移入垃圾桶：1 篇" in r.text
+    assert "找不到（已略過）" in r.text
+    assert not (out / ".trash" / "..%2f..%2fetc%2fpasswd").exists()
+
+
+def test_publish_unknown_package_404(tmp_path):
+    """POST /packages/nope/publish returns 404 (actions.py:47)."""
+    client = _client(tmp_path, tmp_path / "out")
+    r = client.post("/packages/nope/publish", data={"title": "x"})
+    assert r.status_code == 404
+
+
+def test_detail_with_bad_receipt_does_not_crash(tmp_path):
+    """Broken publish_receipt.json does not crash the detail page (packages.py:57-60)."""
+    out = tmp_path / "out"
+    _pkg(out, "20260615_a", "甲文", status="published")
+    (out / "20260615_a" / "publish_receipt.json").write_text("{ not json", encoding="utf-8")
+    client = _client(tmp_path, out)
+    r = client.get("/packages/20260615_a")
+    assert r.status_code == 200
+    assert "甲文" in r.text
+
+
+def test_detail_with_valid_receipt_shows_it(tmp_path):
+    """Valid publish_receipt.json renders on the detail page (packages.py:57-60)."""
+    out = tmp_path / "out"
+    _pkg(out, "20260615_a", "甲文", status="published")
+    receipt = {"post_id": "20260615_a", "published_url": "https://ex.com/p/1"}
+    (out / "20260615_a" / "publish_receipt.json").write_text(
+        json.dumps(receipt), encoding="utf-8")
+    client = _client(tmp_path, out)
+    r = client.get("/packages/20260615_a")
+    assert r.status_code == 200
+    assert "https://ex.com/p/1" in r.text
+
+
+def test_generate_unknown_package_404(tmp_path):
+    """POST /packages/nope/generate returns 404 (packages.py:123)."""
+    client = _client(tmp_path, tmp_path / "out")
+    r = client.post("/packages/nope/generate")
+    assert r.status_code == 404
+
+
+def test_generate_cli_error_returns_502(tmp_path, monkeypatch):
+    """POST /packages/{id}/generate when LLM returns CliError returns 502 (packages.py:142-143)."""
+    from cpost.core.errors import CliError
+    import cpost.core.llm as llm_mod
+    monkeypatch.setattr(llm_mod, "chat", lambda *a, **kw: (_ for _ in ()).throw(CliError("LLM failed")))
+    out = tmp_path / "out"
+    d = out / "20260615_gen"
+    d.mkdir(parents=True)
+    (d / "manifest.json").write_text(json.dumps(
+        {"post_id": "20260615_gen", "content": {"title": "生成測試", "body": "一些素材"},
+         "backend": {"status": "package_built"},
+         "source": {"canonical_url": "https://ex.com/gen"}}), encoding="utf-8")
+    (d / "caption.txt").write_text("一些素材", encoding="utf-8")
+    client = _client(tmp_path, out)
+    r = client.post("/packages/20260615_gen/generate")
+    assert r.status_code == 502
+    assert "生成失敗" in r.text
+
+
+def test_generate_empty_material_400(tmp_path):
+    """POST /packages/{id}/generate with empty caption+body returns 400 (packages.py:131-135)."""
+    out = tmp_path / "out"
+    d = out / "20260615_empty"
+    d.mkdir(parents=True)
+    (d / "manifest.json").write_text(json.dumps(
+        {"post_id": "20260615_empty", "content": {"title": "空文", "body": ""},
+         "backend": {"status": "package_built"},
+         "source": {"canonical_url": "https://ex.com/empty"}}), encoding="utf-8")
+    (d / "caption.txt").write_text("", encoding="utf-8")  # empty caption, no source_text
+    assert not (d / "source_text.txt").exists()
+    client = _client(tmp_path, out)
+    r = client.post("/packages/20260615_empty/generate")
+    assert r.status_code == 400
+    assert "沒有可用素材" in r.text
+
+
+def test_failure_image_unknown_package_404(tmp_path):
+    """GET /packages/nope/failure-image returns PlainText 404 (packages.py:167)."""
+    client = _client(tmp_path, tmp_path / "out")
+    r = client.get("/packages/nope/failure-image")
+    assert r.status_code == 404
+    assert r.text == "not found"
+
+
+def test_scan_packages_skips_dot_dirs(tmp_path):
+    """_scan_packages skips directories starting with dot (_helpers.py:62)."""
+    from cpost.webui._helpers import _scan_packages
+    out = tmp_path / "out"
+    _pkg(out, "20260615_a", "甲文")
+    # Create a dot-dir with a manifest — should be skipped
+    (out / ".trash" / "20260615_b").mkdir(parents=True, exist_ok=True)
+    (out / ".trash" / "20260615_b" / "manifest.json").write_text(
+        json.dumps({"post_id": "20260615_b", "content": {"title": "被刪文"}}), encoding="utf-8")
+    rows = _scan_packages(str(out))
+    titles = {r["title"] for r in rows}
+    assert "甲文" in titles
+    assert "被刪文" not in titles
+
+
+def test_read_failure_bad_json_returns_none(tmp_path):
+    """_read_failure returns None when failure.json is malformed (_helpers.py:111-112)."""
+    from cpost.webui._helpers import _read_failure
+    out = tmp_path / "out"
+    _pkg(out, "20260615_a", "甲文")
+    (out / "20260615_a" / "failure.json").write_text("{ broken", encoding="utf-8")
+    assert _read_failure(out / "20260615_a") is None
+
+
+def test_move_to_trash_overwrites_existing(tmp_path):
+    """_move_to_trash silently replaces an already-trashed package (_helpers.py:150)."""
+    from cpost.webui._helpers import _move_to_trash
+    out = tmp_path / "out"
+    _pkg(out, "20260615_a", "甲文")
+    _move_to_trash(str(out), Path(out / "20260615_a"))
+    assert (out / ".trash" / "20260615_a").exists()
+    # re-create and trash again
+    _pkg(out, "20260615_a", "甲文再現")
+    _move_to_trash(str(out), Path(out / "20260615_a"))  # must not raise
+    assert (out / ".trash" / "20260615_a").exists()
+
+
+def test_scan_trash_empty_directory(tmp_path):
+    """_scan_trash returns [] when .trash does not exist (_helpers.py:158)."""
+    from cpost.webui._helpers import _scan_trash
+    assert _scan_trash(str(tmp_path / "out")) == []
+
+
+def test_scan_trash_skips_files_and_dot_entries(tmp_path):
+    """_scan_trash skips non-dir and dot-starting entries (_helpers.py:162)."""
+    from cpost.webui._helpers import _scan_trash
+    out = tmp_path / "out"
+    (out / ".trash").mkdir(parents=True)
+    (out / ".trash" / "not-a-dir").write_text("file", encoding="utf-8")
+    (out / ".trash" / ".hidden").mkdir(exist_ok=True)
+    _pkg(out, "real_pkg", "真實包", status="package_built")
+    # move real_pkg into trash
+    import shutil
+    shutil.move(str(out / "real_pkg"), str(out / ".trash" / "real_pkg"))
+    rows = _scan_trash(str(out))
+    ids = {r["post_id"] for r in rows}
+    assert "real_pkg" in ids
+    assert "not-a-dir" not in ids
+    assert ".hidden" not in ids
+
+
+def test_scan_trash_bad_manifest_does_not_crash(tmp_path):
+    """_scan_trash handles JSONDecodeError in manifest gracefully (_helpers.py:169-170)."""
+    from cpost.webui._helpers import _scan_trash
+    out = tmp_path / "out"
+    (out / ".trash" / "broken_pkg").mkdir(parents=True)
+    (out / ".trash" / "broken_pkg" / "manifest.json").write_text(
+        "{ bad json", encoding="utf-8")
+    rows = _scan_trash(str(out))
+    assert len(rows) == 1
+    assert rows[0]["post_id"] == "broken_pkg"
+
+
+def test_restore_from_trash_rejects_dot_prefix(tmp_path):
+    """_restore_from_trash returns 'not_found' for dot-prefixed post_ids (_helpers.py:181)."""
+    from cpost.webui._helpers import _restore_from_trash
+    assert _restore_from_trash(str(tmp_path / "out"), ".hidden") == "not_found"

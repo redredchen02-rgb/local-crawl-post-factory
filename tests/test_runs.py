@@ -176,6 +176,12 @@ def test_open_run_conn_readable_after_scope(tmp_path):
     assert len(runs.list_runs(db)) == 1
 
 
+def test_purge_before_missing_db_returns_zero(tmp_path):
+    """purge_before on a non-existent DB returns 0 (runs.py:121)."""
+    result = runs.purge_before(str(tmp_path / "nope.sqlite"), "2026-01-01T00:00:00")
+    assert result == 0
+
+
 def test_fresh_and_migrated_schema_match(tmp_path):
     """Fresh DB (via _SCHEMA) and migrated DB (via ALTER) end with same columns."""
     fresh = _db(tmp_path)

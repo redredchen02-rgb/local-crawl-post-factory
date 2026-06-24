@@ -227,3 +227,13 @@ def test_threshold_controls_merge():
     strict = cluster.cluster_items(items, similarity_threshold=0.9)
     assert len(loose) == 1   # low bar merges the near-identical titles
     assert len(strict) == 2  # high bar keeps them apart
+
+
+# --- _ngrams edge cases (cluster.py:37-38) ----------------------------------
+
+
+def test_ngrams_short_text_returns_itself():
+    from cpost.core.cluster import _ngrams
+    assert _ngrams("", 3) == set()          # empty → empty set
+    assert _ngrams("a", 3) == {"a"}          # single char ≤ n → text itself
+    assert _ngrams("ab", 3) == {"ab"}        # short text ≤ n → text itself

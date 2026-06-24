@@ -436,3 +436,37 @@ def test_runs_retention_days_negative_rejected(tmp_path):
 def test_retention_days_non_int_rejected(tmp_path):
     with pytest.raises(ValidationError, match="audit_retention_days"):
         webui_config.save(str(tmp_path / "webui.yaml"), {"audit_retention_days": "abc"})
+
+
+# --- validate() number bound checks (webui_config.py:178,188,190) ----------
+
+def test_max_pages_zero_rejected(tmp_path):
+    with pytest.raises(ValidationError, match="max_pages"):
+        webui_config.save(str(tmp_path / "webui.yaml"), {"start_url": "https://x.com",
+                                                          "max_pages": 0})
+
+
+def test_min_confidence_negative_rejected(tmp_path):
+    with pytest.raises(ValidationError, match="min_confidence"):
+        webui_config.save(str(tmp_path / "webui.yaml"), {"min_confidence": -1})
+
+
+def test_min_score_negative_rejected(tmp_path):
+    with pytest.raises(ValidationError, match="min_score"):
+        webui_config.save(str(tmp_path / "webui.yaml"), {"min_score": -1})
+
+
+# --- _coerce float ValueError (webui_config.py:254-255) -------------------
+
+def test_download_delay_non_numeric_rejected(tmp_path):
+    with pytest.raises(ValidationError, match="download_delay"):
+        webui_config.save(str(tmp_path / "webui.yaml"), {"download_delay": "abc"})
+
+
+# --- yaml parse error (webui_config.py:103-104) ---------------------------
+
+def test_invalid_yaml_syntax_rejected(tmp_path):
+    p = tmp_path / "webui.yaml"
+    p.write_text("start_url: https://x.com\n  bad_indent: oops\n", encoding="utf-8")
+    with pytest.raises(ValidationError, match="invalid webui yaml"):
+        webui_config.load(str(p))

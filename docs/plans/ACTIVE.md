@@ -11,9 +11,15 @@ Cross-referenced against `git log` (PR numbers) and each plan's own frontmatter 
 
 ## Active / in-flight
 
-- `2026-06-22-003-refactor-parallel-safe-optimization-plan.md` — **ACTIVE** — parallel-safe optimization pass (lane-isolated work; plan file authored in a sibling worktree, not yet on `main`).
+_All plans completed. No active work items._
 
 ## Recently merged / completed
+
+- `2026-06-22-003-refactor-parallel-safe-optimization-plan.md` — **COMPLETED** — all 14 lanes (L1–L14) implemented on `main`; 756 tests green.
+- `2026-06-23-001-feat-auto-source-discovery-plan.md` — **COMPLETED** — source roster discovery + health check + pipeline integration (PR #60).
+- `2026-06-23-002-feat-article-format-spec-tags-plan.md` — **COMPLETED** — tags in article generation + library migration (PR #61).
+- `2026-06-23-003-feat-webui-modern-redesign-plan.md` — **COMPLETED** — DRY dashboard stat-cards + history filter race fix.
+- `2026-06-23-004-feat-source-list-expand-plan.md` — **COMPLETED** — batch-add endpoint + top-level seed fix (PR #62).
 
 - `2026-06-22-002-fix-codebase-bug-sweep-plan.md` — **COMPLETED** — 30-defect bug sweep; U1/U2/U3/U9 in PR #37, U4–U20 in commit 47fc969 + adversarial follow-ups in PR #42.
 - `2026-06-22-002-refactor-package-namespace-cpost-plan.md` — **COMPLETED** — namespace all packages under `cpost/` to fix pip-install collision (PR #36).

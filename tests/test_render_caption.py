@@ -8,8 +8,11 @@ from pathlib import Path
 import pytest
 
 from cpost.core import url_utils
+from cpost.core.errors import ValidationError
 from cpost.cli.render_caption import (
+    _enforce_max_chars,
     _render,
+    _run,
     load_template,
     make_content_hash,
     render_record,
@@ -273,3 +276,72 @@ def test_command_adds_caption_and_content_hash():
     out = json.loads(proc.stdout.strip())
     assert "caption" in out
     assert len(out["content_hash"]) == 64
+
+
+def test_load_template_nonexistent_file_raises_validation_error():
+    """L38-39: OSError on read -> ValidationError with diagnostics."""
+    with pytest.raises(ValidationError, match="cannot read template"):
+        load_template("/no/such/template.yaml")
+
+
+def test_load_template_invalid_yaml_raises_validation_error(tmp_path):
+    """L42-43: YAML parse error -> ValidationError."""
+    f = tmp_path / "bad.yaml"
+    f.write_text(": [invalid yaml: unmatched", encoding="utf-8")
+    with pytest.raises(ValidationError, match="invalid template YAML"):
+        load_template(str(f))
+
+
+def test_load_template_missing_format_key_raises_validation_error(tmp_path):
+    """L45: valid YAML but no 'format' key -> ValidationError."""
+    f = tmp_path / "no_format.yaml"
+    f.write_text("name: test", encoding="utf-8")
+    with pytest.raises(ValidationError, match="missing 'format' key"):
+        load_template(str(f))
+
+
+def test_enforce_max_chars_no_url():
+    """L63: canonical_url is empty -> caption[:max_chars] truncation."""
+    result = _enforce_max_chars("hello world body", "body", "", 5)
+    assert result == "hello"
+
+
+def test_enforce_max_chars_url_exceeds_budget():
+    """L69: url alone exceeds max_chars -> url[:max_chars]."""
+    result = _enforce_max_chars("prefix\nhttps://long.url", "prefix", "https://long.url", 5)
+    assert result == "https"[:5]
+
+
+def test_enforce_max_chars_non_positive():
+    """L60: max_chars <= 0 returns caption verbatim."""
+    result = _enforce_max_chars("any caption", "body", "https://url", 0)
+    assert result == "any caption"
+    result_neg = _enforce_max_chars("any caption", "body", "https://url", -1)
+    assert result_neg == "any caption"
+
+
+def test_load_template_returns_dict(tmp_path):
+    """Happy-path: valid yaml with format key returns the parsed dict."""
+    f = tmp_path / "good.yaml"
+    f.write_text("format: '{title}'", encoding="utf-8")
+    assert load_template(str(f)) == {"format": "{title}"}
+
+
+def test_run_processes_stdin_to_stdout(tmp_path):
+    """_run() reads NDJSON from stdin, renders each record, writes to stdout."""
+    import io
+    template = tmp_path / "t.yaml"
+    template.write_text("format: '{title}'", encoding="utf-8")
+    record = {"title": "Hello", "canonical_url": "https://x.com/1"}
+    stdin = io.StringIO(json.dumps(record) + "\n")
+    stdout = io.StringIO()
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr("sys.stdin", stdin)
+    monkeypatch.setattr("sys.stdout", stdout)
+    try:
+        _run(str(template))
+    finally:
+        monkeypatch.undo()
+    out = json.loads(stdout.getvalue().strip())
+    assert out["title"] == "Hello"
+    assert "caption" in out

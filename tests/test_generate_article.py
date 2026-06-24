@@ -355,7 +355,7 @@ def test_migration_legacy_row_tags_empty(tmp_path):
 
 def test_tags_flow_to_manifest(tmp_path):
     out_dir = str(tmp_path / "out")
-    log = str(tmp_path / "audit.jsonl")
+    log = str(tmp_path / "audit.log")
     with library.connect(str(tmp_path / "s.sqlite")) as conn:
         _seed_cluster(conn)
         item = generate_article.generate(
@@ -364,3 +364,23 @@ def test_tags_flow_to_manifest(tmp_path):
     manifest_path = build_manifest.build(item, out_dir, log)
     manifest = json.loads(open(manifest_path, encoding="utf-8").read())
     assert manifest["content"]["tags"] == ["人物A", "平台X"]
+
+
+def test_run_success_path_writes_line(tmp_path):
+    """_run() success path exercises write_line + return 0."""
+    db = str(tmp_path / "s.sqlite")
+    llm_cfg = tmp_path / "llm.yaml"
+    llm_cfg.write_text("model: m\nbase_url: http://localhost:9999\napi_key_env: X\n", encoding="utf-8")
+    prompt = tmp_path / "prompt.md"
+    prompt.write_text("system prompt", encoding="utf-8")
+    with library.connect(db):
+        pass
+    from unittest.mock import patch
+    import io
+    args = type("A", (), {"state": db, "cluster_id": "c1",
+                          "llm_config": str(llm_cfg), "prompt": str(prompt)})()
+    item = {"title": "T", "body": "B", "canonical_url": "https://x.com/1", "source_id": "s"}
+    with patch.object(generate_article, "generate", return_value=item), \
+         patch("sys.stdout", io.StringIO()):
+        code = cli.run(lambda: generate_article._run(args))
+    assert code == 0
