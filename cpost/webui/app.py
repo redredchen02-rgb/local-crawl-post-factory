@@ -13,6 +13,7 @@ from cpost.webui.routers import (
     actions,
     crawl,
     dashboard,
+    gossip_materials,
     history_audit,
     packages,
     roster,
@@ -37,6 +38,7 @@ def create_app(config_path: str = WEBUI_CONFIG_PATH) -> FastAPI:
     app.include_router(settings_auth.router)
     app.include_router(crawl.router)
     app.include_router(scoops.router)
+    app.include_router(gossip_materials.router)
     app.include_router(roster.router)
     app.include_router(packages.router)
     app.include_router(actions.router)

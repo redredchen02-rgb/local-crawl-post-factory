@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% block heading %}吃瓜素材{% endblock %}
+{% block content %}
+
+<section class="gossip-submit">
+  <h2>投入新素材</h2>
+  <form hx-post="/gossip-materials/crawl" hx-target="#gossip-job-status" hx-swap="innerHTML">
+    <div class="form-row">
+      <input type="url" name="url" placeholder="https://example.com/gossip-page" required
+             style="flex:1;min-width:0">
+      <input type="text" name="label" placeholder="備註（選填）" style="width:12rem">
+      <button type="submit">爬取</button>
+    </div>
+  </form>
+  <div id="gossip-job-status"></div>
+</section>
+
+<section class="gossip-list">
+  <h2>素材庫</h2>
+  {% if not gossip_list %}
+  <p class="empty">尚未投入任何素材 URL。</p>
+  {% else %}
+  <table class="scoops">
+    <thead>
+      <tr>
+        <th>URL</th>
+        <th>備註</th>
+        <th>狀態</th>
+        <th>文章數</th>
+        <th>最後爬取</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for g in gossip_list %}
+      <tr>
+        <td style="max-width:22rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+          <a href="{{ g.url }}" target="_blank" rel="noopener">{{ g.url }}</a>
+        </td>
+        <td>{{ g.label or '' }}</td>
+        <td>
+          {% if g.crawl_status == 'done' %}<span class="ok">完成</span>
+          {% elif g.crawl_status == 'failed' %}<span class="error">失敗</span>
+          {% elif g.crawl_status == 'running' %}<span class="current">爬取中</span>
+          {% else %}<span class="hint">待爬取</span>{% endif %}
+        </td>
+        <td>{{ g.item_count }}</td>
+        <td>{{ g.last_crawled_at[:10] if g.last_crawled_at else '—' }}</td>
+        <td>
+          <form hx-post="/gossip-materials/crawl" hx-target="#gossip-job-status" hx-swap="innerHTML"
+                style="display:inline">
+            <input type="hidden" name="url" value="{{ g.url }}">
+            <input type="hidden" name="label" value="{{ g.label or '' }}">
+            <button type="submit" class="secondary" style="padding:0.2rem 0.6rem">重新爬取</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</section>
+
+<section class="gossip-intersection">
+  <h2>瓜交集</h2>
+  <p class="hint">顯示同時出現在「您投入素材」與「自動化來源」中的話題。交集以目前 cluster 快照為準，「開始備稿」後更新。</p>
+  {% if not intersection_clusters %}
+  <p class="empty">尚無多源交集。爬取更多素材、或先執行「開始備稿」以更新聚類後再查看。</p>
+  {% else %}
+  <table class="scoops">
+    <thead>
+      <tr>
+        <th>話題（代表標題）</th>
+        <th>來源數</th>
+        <th>品質</th>
+        <th>綜合分</th>
+        <th>來源</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for c in intersection_clusters %}
+      <tr>
+        <td>{{ c.representative_title or c.cluster_id }}</td>
+        <td>{{ c.source_count }}</td>
+        <td>{{ '%.2f'|format(c.quality or 0) }}</td>
+        <td>
+          {% set s = c.score or 0 %}
+          {% if s >= 0.7 %}<span class="score-high">{{ '%.2f'|format(s) }}</span>
+          {% elif s >= 0.4 %}<span class="score-mid">{{ '%.2f'|format(s) }}</span>
+          {% else %}<span class="score-low">{{ '%.2f'|format(s) }}</span>
+          {% endif %}
+        </td>
+        <td>{{ c.sources | join(', ') }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</section>
+
+{% endblock %}
