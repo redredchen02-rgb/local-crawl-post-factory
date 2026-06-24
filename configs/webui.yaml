@@ -1,4 +1,5 @@
 audit_log: ../logs/audit.jsonl
+audit_retention_days: 0
 auto_pipeline: false
 backend_config: ./configs/backend.yaml
 concurrency: 8
@@ -7,26 +8,22 @@ download_delay: 0.0
 download_dir: ../out/assets
 item_regex: archives/\d+
 limit: 30
+llm_config: ./configs/llm.yaml
+max_pages: 200
 max_text_chars: 20000
-# min_text_chars: drop crawled items shorter than this many chars. 0 = no clamp.
+min_confidence: 0
+min_score: 0.0
 min_text_chars: 0
 out_dir: ../out
-source_id: '51cg'
-# sources: multi-source aggregation. Empty list = single-site (uses start_url).
-# Each entry needs source_id + start_url; the rest are optional overrides.
-# Example (uncomment + edit to enable multi-source crawling):
-# sources:
-#   - source_id: 51cg
-#     start_url: https://51cg1.com/
-#     enabled: true
-#     item_regex: archives/\d+      # optional, overrides base item_regex
-#     body_selector: ""             # optional (R6), empty = built-in fallback
-#     image_selector: ""            # optional (R6)
-#     date_selector: ""             # optional (R6)
-sources: []
-# roster_path: path to the site_roster SQLite DB (U4 roster integration).
-# Empty string = skip roster (default). Set to activate roster-driven crawls.
 roster_path: ../state/roster.sqlite
+runs_retention_days: 0
+scoop_prompt: ./configs/scoop_prompt.zh.md
+scoring_config: ./configs/scoring.yaml
+source_id: 51cg
+sources:
+- enabled: true
+  source_id: 91cg
+  start_url: https://www.91cg1.com/
 start_url: https://51cg1.com/
 state_path: ../state/published.sqlite
 storage_state: ../auth/storage-state.json

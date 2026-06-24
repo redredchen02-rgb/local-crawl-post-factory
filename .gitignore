@@ -9,6 +9,7 @@ logs/*.jsonl
 out/assets/
 auth/
 .coverage
+coverage.json
 htmlcov/
 .ruff_cache/
 *.bak
